@@ -1,0 +1,260 @@
+Skip to content
+Navigation Menu
+ Platform
+Solutions
+Resources
+Open Source
+Enterprise
+Pricing
+
+Search or jump to...
+Sign in
+Sign up
+fd0
+/
+build-go
+Public
+Code
+Issues
+Pull requests
+Actions
+Security and quality
+Insights
+fd0/build-go
+
+Name		
+fd0
+fd0
+build: Fix building in ~/go
+2ab78b3
+ · 
+7 years ago
+.gitignore
+Initial commit
+10 years ago
+.travis.yml
+Add tag to test run
+8 years ago
+LICENSE
+Add LICENSE text to build.go
+9 years ago
+README.md
+Mention -mod=vendor for Go >= 1.11
+8 years ago
+build.go
+build: Fix building in ~/go
+7 years ago
+version_test.go
+Detect release candidate versions of Go
+8 years ago
+Repository files navigation
+README
+BSD-2-Clause license
+This repository contains a small and self-contained Go program called build.go. It used to compile a binary (package main) from either a checkout of the repository, or from an extracted release tar file. This enables end-users to compile the program without having to setup a GOPATH.
+
+For it to function correctly, all dependencies need to be vendored, e.g. with dep or go mod vendor. Then, your build does not depend on any third-party resources on the Internet. For Go >= 1.11, modules are used for building and GOPROXY is set to off so that no Internet is needed when building.
+
+The program has a build tag that is not set normally (ignore_build_go) so it is not considered when compiling the other Go code in a repository.
+
+Usage
+
+In order to use it, copy build.go to the root level into your repository and edit the configuration section at the top. You can see an example in the restic repository.
+
+Instruct your users to call go run build.go and it will produce a binary from either a checkout of the repository or from an extracted release tar file. For Go 1.11, it needs to be called as go run -mod=vendor build.go so that no network access is needed.
+
+For cross-compilation, the options --goos and --goarch can be used, e.g. like this:
+
+$ go run build.go --goos windows --goarch 386
+The tests can be run by specifying --test. By default, cgo is explicitly disabled by passing CGO_ENABLED=0 to go build, it can be re-enabled manually by running go run build.go --enable-cgo.
+
+The program will set the string variable version in package main to a version string consisting of the contents of the file VERSION (if present) and the output of git describe (if available).
+
+The version string can then be used e.g. in a version command, like with restic:
+
+$ ./restic version
+restic 0.8.1 (v0.8.1-154-g74665a22)
+The version string consists of:
+
+The contents of the VERSION file: 0.8.1
+The nearest tag (v0.8.1), the number of commits (154) and the Git commit hash (74665a22)
+Background
+
+The program build.go constructs a temporary GOPATH (for Go < 1.11, or when no go.mod exists) in a temporary directory as configured at the beginning of the program, then calls go build using the temporary GOPATH. This means that end-users do not have to setup a GOPATH of their own.
+
+Testing
+
+The tests need to be run with the build tag ignore_build_go set:
+
+$ go test -tags ignore_build_go
+PASS
+ok  	github.com/fd0/build-go	0.001s
+About
+
+build.go - Program for building Go binaries without a GOPATH
+
+Resources
+ Readme
+License
+ BSD-2-Clause license
+ Activity
+Stars
+ 20 stars
+Watchers
+ 1 watching
+Forks
+ 2 forks
+Report repository
+Releases
+
+No releases published
+Packages
+
+No packages published
+Contributors
+3
+
+@fd0
+fd0 Alexander Neumann
+@jfparis
+jfparis Jean-François Paris
+@jacobvosmaer
+jacobvosmaer Jacob Vosmaer
+Languages
+
+Go
+100.0%
+Footer
+© 2026 GitHub, Inc.
+Footer navigation
+Terms
+Privacy
+Security
+Status
+Community
+Docs
+Contact
+Manage cookies
+Do not share my personal information
+Skip to content
+Navigation Menu
+ Platform
+Solutions
+Resources
+Open Source
+Enterprise
+Pricing
+
+Search or jump to...
+Sign in
+Sign up
+ @fd0	fd0
+Overview
+Repositories
+67
+Projects
+Packages
+Stars
+178
+@fd0	fd0	
+ View fd0's full-sized avatar
+Alexander Neumann
+fd0
+ 605 followers · 20 following
+Aachen, Germany
+Achievements
+
+Achievement: Arctic Code Vault Contributor
+Achievement: Starstruckx4
+Achievement: Pull Sharkx3
+Organizations
+
+@oldeurope   @restic   @GophersAachen
+Pinned Loading
+
+ restic/restic Public
+Fast, secure, efficient backup program
+ Go    33.4k    1.8k
+ rabin-cdc Public
+Fast implementation of Content Defined Chunking (CDC) based on a rolling Rabin Checksum in C.
+ C    55    19
+ machma Public
+Easy parallel execution of commands with live feedback
+ Go    499    13
+ fnordlicht Public archive
+fnordlicht firmware in C, next generation
+ C    31    7
+ grobi Public
+Automatically configure monitors/outputs for Xorg via RANDR
+ Go    186    24
+ foodloader Public archive
+Atmel ATmega serial bootloader
+ C    17    4
+17 contributions in the last year
+
+Skip to contributions year list
+Contribution Graph
+Day of Week	MayMay	JuneJun	JulyJul	AugustAug	SeptemberSep	OctoberOct	NovemberNov	DecemberDec	JanuaryJan	FebruaryFeb	MarchMar	AprilApr
+Sunday Sun																																																					
+Monday Mon																																																					
+Tuesday Tue																																																					
+Wednesday Wed																																																					
+Thursday Thu																																																					
+Friday Fri																																																					
+Saturday Sat																																																					
+Learn how we count contributions
+Less
+No contributions.
+Low contributions.
+Medium-low contributions.
+Medium-high contributions.
+High contributions.
+More
+ @restic
+Activity overview
+
+Contributed to restic/restic.net, fd0/randall, restic/restic and 1 other repository
+Loading
+12%
+Code review
+ 
+Issues
+ 
+Pull requests
+88%
+Commits
+Contribution activity
+
+May 2026
+
+fd0 has no activity yet for this period.
+Loading
+2026
+2025
+2024
+2023
+2022
+2021
+2020
+2019
+2018
+2017
+2016
+2015
+2014
+2013
+2012
+2011
+2010
+2009
+Footer
+© 2026 GitHub, Inc.
+Footer navigation
+Terms
+Privacy
+Security
+Status
+Community
+Docs
+Contact
+Manage cookies
+Do not share my personal information

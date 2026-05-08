@@ -1,0 +1,304 @@
+
+Discussion:
+[go-nuts] time.Ticker not being garbage collected
+Nick Craig-Wood 11 years ago
+Permalink This program (run locally) starts 1000000 go routines each of which
+starts a ticker then closes the goroutines down again in an orderly fashion
+
+http://play.golang.org/p/zy5X4hAq0I
+
+It sleeps at the end so you can run top or equivalent. If you do you'll
+see it using a lot of CPU at this point. kill the process with -QUIT
+and you'll find that this is the only goroutine of significance running.
+
+goroutine 100005 [running]:
+runtime.siftdownTimer(0xe0a)
+/usr/local/go/src/runtime/time.go:265 +0xbf fp=0xc21641a768 sp=0xc21641a718
+runtime.timerproc()
+/usr/local/go/src/runtime/time.go:172 +0x1cb fp=0xc21641a7e0
+sp=0xc21641a768
+runtime.goexit()
+/usr/local/go/src/runtime/asm_amd64.s:2232 +0x1 fp=0xc21641a7e8
+sp=0xc21641a7e0
+created by runtime.addtimerLocked
+/usr/local/go/src/runtime/time.go:113 +0x1ba
+
+It appears that all those tickers got leaked and the code is spending
+all the CPU keeping them up to date.
+
+Naively I was expecting that once the goroutines returned they would be
+garbage collected but that doesn't appear to be the case.
+
+This is easy to fix of course (with NewTicker and Stop()), but is it
+expected that the tickers aren't garbage collected?
+--
+Nick Craig-Wood <***@craig-wood.com> -- http://www.craig-wood.com/nickNick Craig-Wood
+unread,
+Feb 3, 2014, 9:40:06 AM
+to Tomás Senart, golan...@googlegroups.com
+On 03/02/14 14:30, Tomás Senart wrote:
+> This package provides a generic lock-free implementation of the "Token
+> bucket" algorithm where the handling of non-conformity is left to the
+> user. Read more about in this Wikipedia page
+> <http://en.wikipedia.org/wiki/Token_bucket>.
+> I would love to get some constructive feedback,
+> please! https://github.com/tsenart/tb
+
+Looks very useful! Here are some notes I made on a quick code review...
+
+....
+
+I don't like your example which uses a global variable DefaultThrottler
+- I think you should get rid of that and get the user to make their own.
+
+....
+
+
+IMHO locks look nicer when anonymous
+
+type Throttler struct {
+mu sync.RWMutex
+buckets map[string]*Bucket
+}
+
+t.mu.RLock()
+b := t.buckets[key]
+t.mu.RUnlock()
+
+Becomes
+
+type Throttler struct {
+sync.RWMutex
+buckets map[string]*Bucket
+}
+
+t.RLock()
+b := t.buckets[key]
+t.RUnlock()
+
+....
+
+Your Stop() methods are leaking go routines - from the docs
+http://golang.org/pkg/time/#Ticker.Stop
+
+Stop turns off a ticker. After Stop, no more ticks will be sent. Stop
+does not close the channel, to prevent a read from the channel
+succeeding incorrectly.
+
+So you'll want to close the channel too in order to stop the go routines
+probably. The documentation should state that a go routine is started
+and you'll need to call Stop() to stop it.
+
+....
+
+It isn't clear to me from the docs exactly what happens when there
+aren't enough tokens in the bucket. Do those tokens get taken out the
+bucket or not? I would hope not, but I'm not sure from this.
+
+// Take will take n tokens out of the bucket. If there aren't enough
+// tokens, the difference is returned. Otherwise n is returned.
+// This method is thread-safe.
+func (b *Bucket) Take(n int64) int64 {
+
+I would have though a better API would be something like this
+
+// Take will attempt to take n tokens out of the bucket. If there
+// aren't enough in the bucket it returns false, otherwise it removes
+// the tokens from the bucket and returns true.
+// This method is thread-safe.
+func (b *Bucket) Take(n int64) bool {
+
+
+--
+Nick Craig-Wood <ni...@craig-wood.com> -- http://www.craig-wood.com/nickZeyad_Shapan
+Act as if it is deleted
+
+1
+Oct 2020
+I come from Python/JavaScript so I really don’t have any idea about how should I make code run faster besides writing less.
+I really get confused when I hear YouTuber saying something like “C compiled 3 run faster than C compiled 1” (or something like that)
+Now I started to get into my first static language, Go, I got introduced to a few things that can make my code run faster than my normal Python as using uint8 instead of uint when I’m declaring a human age for example (as age will be <0 <120)
+But I can assume that there are many many other things that could make my Go code run much faster, or even as fast as Java or C++ as some here say.
+I would really appreciate if someone could just list them out and I will spend my time googling for them, thanks so much
+
+I don’t think I should ask in the same question but… can Golang run faster than the very fast languages like C++ or Java or it can only run faster than Python/ JS/ Ruby, etc…
+
+
+I’d say, don’t worry about specific tricks for making things faster. Instead, learn how to use the excellent profiling tools Go has. You’ll then be solving actual problems which will give you much better payback. To take the example of the uint8 - if you asked me to guess, I’d say it is probably sl…
+
+1.1k
+views
+
+7
+likes
+
+2
+links
+ 
+ 
+ 
+ 
+ 
+ncw
+Nick Craig-Wood
+Oct 2020
+I’d say, don’t worry about specific tricks for making things faster. Instead, learn how to use the excellent profiling tools Go has. You’ll then be solving actual problems which will give you much better payback.
+
+To take the example of the uint8 - if you asked me to guess, I’d say it is probably slower than an int because modern CPUs aren’t optimised for byte arithmetic.
+
+
+Skip to content
+Navigation Menu
+ Platform
+Solutions
+Resources
+Open Source
+Enterprise
+Pricing
+
+Search or jump to...
+Sign in
+Sign up
+ @ncw	ncw
+Overview
+Repositories
+103
+Projects
+Packages
+Stars
+603
+@ncw	ncw	
+ View ncw's full-sized avatar
+💥
+Nick Craig-Wood
+ncw
+Open source. Rclone. Family. Sleep. Pick any two. Having fun with Go.
+ 1.2k followers · 3 following
+Guildford, UK
+http://www.craig-wood.com/nick/
+https://orcid.org/0009-0009-2130-3856
+
+@njcw
+Sponsors
+
+@szarka
+@jlaundry
+@geoah
+
+@matomer
+@BryanPinsker
+
+@wobblywob
+@Havoc24k
+@smbl64
+@aa-ko
+@TacoYaco
+@darthShadow
++68
+Achievements
+
+Achievement: Pair Extraordinairex3
+Achievement: Pull Sharkx3
+Achievement: Quickdraw
+Achievement: Arctic Code Vault Contributor
+Achievement: Starstruckx4
+Highlights
+
+ 1 security advisory credit
+Organizations
+
+@Memset   @rclone
+Pinned Loading
+
+ rclone/rclone Public
+"rsync for cloud storage" - Google Drive, S3, Dropbox, Backblaze B2, One Drive, Swift, Hubic, Wasabi, Google Cloud Storage, Azure Blob, Azure Files, Yandex Files
+ Go    57.1k    5.1k
+ go-python/gpython Public
+gpython is a python interpreter written in go "batteries not included"
+ Go    1k    105
+ swift Public
+Go language interface to Swift / Openstack Object Storage / Rackspace cloud files (golang)
+ Go    328    114
+ stressdisk Public
+Stress test your disks / memory cards / USB sticks before trusting your valuable data to them
+ Go    422    29
+ directio Public
+This is library for the Go language to enable use of Direct IO under all OSes
+ Go    339    36
+ gotemplate Public
+Package based templating system for Go
+ Go    257    28
+1,667 contributions in the last year
+
+Skip to contributions year list
+Contribution Graph
+Day of Week	MayMay	JuneJun	JulyJul	AugustAug	SeptemberSep	OctoberOct	NovemberNov	DecemberDec	JanuaryJan	FebruaryFeb	MarchMar	AprilApr
+Sunday Sun																																																					
+Monday Mon																																																					
+Tuesday Tue																																																					
+Wednesday Wed																																																					
+Thursday Thu																																																					
+Friday Fri																																																					
+Saturday Sat																																																					
+Learn how we count contributions
+Less
+No contributions.
+Low contributions.
+Medium-low contributions.
+Medium-high contributions.
+High contributions.
+More
+2026
+2025
+2024
+2023
+2022
+2021
+2020
+2019
+2018
+2017
+2016
+2015
+2014
+2013
+2012
+2011
+2010
+2009
+2008
+2007
+2006
+2005
+2004
+Contribution activity
+
+May 2026
+
+rclone/rclone 36 commits
+
+rclone/integration-test-ui 2 commits
+
+microsoft/winget-pkgs 1 commit
+
+Created a pull request in microsoft/winget-pkgs that received 2 comments
+May 1
+New version: Rclone.Rclone version 1.74.0
+Pull request has been created with WinGet Releaser 🚀 Microsoft Reviewers: Open in CodeFlow
+
++67 −0  lines changed • 2 comments
+ New version: Rclone.Rclone version 1.74.1
+This contribution was made on May 8 May 8
+Loading
+Footer
+© 2026 GitHub, Inc.
+Footer navigation
+Terms
+Privacy
+Security
+Status
+Community
+Docs
+Contact
+Manage cookies
+Do not share my personal information

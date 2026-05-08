@@ -1,0 +1,283 @@
+
+golang-nuts
+
+Privacy
+ • 
+Terms
+
+There are changes to how emails from other groups are displayed
+Re: golang and x86 store order
+1,036 views
+Subscribe 
+Dmitry Vyukov's profile photo
+Dmitry Vyukov
+unread,
+Jun 9, 2014, 2:29:56 AM
+to Gustav Paul, golang-nuts
+On Mon, Jun 9, 2014 at 12:41 AM, Gustav Paul <gusta...@gmail.com> wrote:
+> Hi Dmitry
+>
+> I'm have two golang processes shared memory via mmap'd memory.
+>
+> The first
+> a) appends bytes to the region
+> b) then updates a uint64 length header accordingly
+>
+> The second
+> c) reads the length header,
+> d) and processes bytes upto the that point.
+>
+> The target architecture is intel x86 which makes the following two handy
+> guarantees:
+>
+> 1.) Writes by a single processor are observed in the same order by all
+> processors.
+> 2.) Any two stores are seen in a consistent order by processors other than
+> those performing the stores
+>
+> I don't care whether the reader process has an up to date view of the memory
+> region, only that the length header is updated after new data is made
+> available.
+>
+> I notice that the golang specification is silent about execution order. Is
+> it safe to assume that golang will execute the two instructions in that
+> order without any explicit synchronization? If so, it sounds like I don't
+> have to use an XCHG (ie. LOCK) or MFENCE instruction in the writer.
+>
+> My understanding is that the golang scheduler of the writer process can be
+> invoked between my two memory updates and may move my goroutine to a
+> different thread, on a different core. If this occurs the two writes will be
+> made by different cores and the result may be inconsistent.
+>
+> Am I correct in trusting that such a scheduling action will flush the store
+> buffers anyway.
+>
+> Is this program memory safe for amd64? Should I use sync/atomic.StoreUint64
+> to trigger a lock and ensure cache coherency?
+>
+> I only started learning and worrying about these issues about a week ago, so
+> sorry if these impressions are uneducated.
+>
+> What are your thoughts?
+
+
++golang-nuts
+
+Hi Gustav,
+
+The x86 guarantees are relevant only if you code in assembly. When you
+code in Go, you have no idea what is the store order observed by
+processor.
+
+In Go any data races has undefined behavior. And for such protocol you
+need to use atomic.Store/Load.
+
+Go does not reason in such terms as "cache coherency", this is pure
+hardware term (and in fact, all commodity hardware always ensure cache
+coherency without you doing anything special). You reason about Go in
+abstract terms like happens-before, data-race and visible side-effect.
+Gustav Paul's profile photo
+Gustav Paul
+unread,
+Jun 9, 2014, 5:20:51 AM
+to Dmitry Vyukov, golang-nuts
+Hi Dmitry,
+
+Thanks for the reply. I'll use atomic.Store/Load
+
+Cheers,
+Gustav
+weds...@google.com's profile photo
+weds...@google.com
+unread,
+Oct 11, 2014, 3:15:40 AM
+to golan...@googlegroups.com, dvy...@google.com
+Why is atomic.Store/Load guaranteed to solve this?
+
+If I look at the amd64 implementation I can see that it uses xchg to store values, so it has an implicit barrier for this arch. However, I don't see anywhere in the go memory model that atomics establish any order relationship.
+
+So it appears quite within spec for the atomics package to be implemented without any memory fences/barriers. In fact, it appears to me that an x86 "store" implementation could be just a regular MOV (similar to the plain load).
+
+It also looks like the compiler would be within its own rights to reorder two atomic stores [to different locations].
+
+What am I missing?
+Dmitry Vyukov's profile photo
+Dmitry Vyukov
+unread,
+Oct 11, 2014, 3:54:03 AM
+to weds...@google.com, golang-nuts
+On Sat, Oct 11, 2014 at 2:15 PM, <weds...@google.com> wrote:
+> Why is atomic.Store/Load guaranteed to solve this?
+
+That is the intention.
+
+
+> If I look at the amd64 implementation I can see that it uses xchg to store
+> values, so it has an implicit barrier for this arch. However, I don't see
+> anywhere in the go memory model that atomics establish any order
+> relationship.
+>
+> So it appears quite within spec for the atomics package to be implemented
+> without any memory fences/barriers. In fact, it appears to me that an x86
+> "store" implementation could be just a regular MOV (similar to the plain
+> load).
+
+Formally it is true today.
+
+
+I had a change that clarifies it in the spec, but later I abandon it
+as Russ put moratorium on changes to memory model:
+https://codereview.appspot.com/101330056/#msg5
+Dmitry Vyukov's profile photo
+Dmitry Vyukov
+unread,
+Oct 11, 2014, 4:36:13 AM
+to Wedson Almeida Filho, Russ Cox, golang-nuts
+On Sat, Oct 11, 2014 at 3:28 PM, Wedson Almeida Filho
+<weds...@google.com> wrote:
+> On Sat, Oct 11, 2014 at 3:53 AM, Dmitry Vyukov <dvy...@google.com> wrote:
+>>
+>> On Sat, Oct 11, 2014 at 2:15 PM, <weds...@google.com> wrote:
+>> > Why is atomic.Store/Load guaranteed to solve this?
+>>
+>> That is the intention.
+>
+>
+> Then I feel like the mem ref doc should specify what we can expect.
+>
+>>
+>> I had a change that clarifies it in the spec, but later I abandon it
+>> as Russ put moratorium on changes to memory model:
+>> https://codereview.appspot.com/101330056/#msg5
+>>
+>
+> In some code that I'm writing now I only need the atomicity guarantees from
+> the atomics package, so I'm inclined to send a patch to modify Store* on
+> amd64 to be a plain MOV, which *is* atomic, and would improve the
+> performance of my code as I don't need barriers.
+>
+> This would obviously break code for example in Once.Do, which uses
+> StoreUint32 and needs the barrier. But I could argue that this code (and a
+> bunch more in sync) is incorrect, given that atomics don't formally offer
+> any ordering guarantees.
+>
+> Is that a good enough reason to update the doc?
+
+
++rsc for this question
+Wedson Almeida Filho's profile photo
+Wedson Almeida Filho
+unread,
+Oct 11, 2014, 8:55:10 AM
+to Dmitry Vyukov, golang-nuts
+On Sat, Oct 11, 2014 at 3:53 AM, Dmitry Vyukov <dvy...@google.com> wrote:
+On Sat, Oct 11, 2014 at 2:15 PM,  <weds...@google.com> wrote:
+> Why is atomic.Store/Load guaranteed to solve this?
+
+That is the intention.
+
+Then I feel like the mem ref doc should specify what we can expect.
+
+I had a change that clarifies it in the spec, but later I abandon it
+as Russ put moratorium on changes to memory model:
+https://codereview.appspot.com/101330056/#msg5
+
+Ian Lance Taylor's profile photo
+Ian Lance Taylor
+unread,
+Oct 11, 2014, 10:23:13 AM
+to Wedson Almeida Filho, Dmitry Vyukov, golang-nuts
+On Sat, Oct 11, 2014 at 4:28 AM, 'Wedson Almeida Filho' via
+golang-nuts <golan...@googlegroups.com> wrote:
+> On Sat, Oct 11, 2014 at 3:53 AM, Dmitry Vyukov <dvy...@google.com> wrote:
+>>
+>> On Sat, Oct 11, 2014 at 2:15 PM, <weds...@google.com> wrote:
+>> > Why is atomic.Store/Load guaranteed to solve this?
+>>
+>> That is the intention.
+>
+> Then I feel like the mem ref doc should specify what we can expect.
+
+I'm not opposed to updating the memory model.
+
+That said, we've tried to be clear all along that we don't want people
+to write Go code with one eye on the memory model. Use channels and
+mutexes. Don't try to be too clever.
+
+
+> In some code that I'm writing now I only need the atomicity guarantees from
+> the atomics package, so I'm inclined to send a patch to modify Store* on
+> amd64 to be a plain MOV, which *is* atomic, and would improve the
+> performance of my code as I don't need barriers.
+>
+> This would obviously break code for example in Once.Do, which uses
+> StoreUint32 and needs the barrier. But I could argue that this code (and a
+> bunch more in sync) is incorrect, given that atomics don't formally offer
+> any ordering guarantees.
+
+The behaviour of sync.Once is specified in the memory model. Clearly,
+breaking that behaviour would be wrong. The code in sync is correct
+(assuming there aren't any bugs). The code in sync/atomic is there to
+support the code in sync. To say that the code in sync is wrong
+because the memory model doesn't provide guarantees about sync/atomic
+is to confuse yourself about priorities. We want sync to be clearly
+documented and used when appropriate. We generally don't want
+sync/atomic to be used at all.
+
+> Is that a good enough reason to update the doc?
+
+No.
+
+
+Let me try to say this in another way. Experience has shown us again
+and again that very very few people are capable of writing correct
+code that uses atomic operations. Go has strong support for
+concurrent programming, and we want to give people the tools they need
+to give them a fighting chance to write that code correctly without
+handcuffing them so much that they look for escape clauses. Those
+tools are channels and mutexes, and supporting functionality like
+sync.Once and sync.WaitGroup. Encourating people to use atomic
+operations like the functions in sync/atomic is not giving people the
+tools they need: most people who use those functions will write code
+that does not work as they expect. If we had thought of internal
+packages when we added the sync/atomic package, perhaps we would have
+used that. Now we can't remove the package because of the Go 1
+guarantee. But it's not particularly important to carefully specify
+how the package behaves, because rule 1 is that you shouldn't use it.
+And rule 2 is that if you think you might want to use it, see rule 1.
+
+Ian
+Wedson Almeida Filho's profile photo
+Wedson Almeida Filho
+unread,
+Oct 11, 2014, 8:37:40 PM
+to Ian Lance Taylor, Dmitry Vyukov, golang-nuts
+On Sat, Oct 11, 2014 at 10:22 AM, Ian Lance Taylor <ia...@golang.org> wrote:
+> Is that a good enough reason to update the doc?
+
+No.
+
+Let me try to say this in another way.  Experience has shown us again
+and again that very very few people are capable of writing correct
+code that uses atomic operations.  Go has strong support for
+concurrent programming, and we want to give people the tools they need
+to give them a fighting chance to write that code correctly without
+handcuffing them so much that they look for escape clauses.  Those
+tools are channels and mutexes, and supporting functionality like
+sync.Once and sync.WaitGroup.  Encourating people to use atomic
+operations like the functions in sync/atomic is not giving people the
+tools they need: most people who use those functions will write code
+that does not work as they expect.  If we had thought of internal
+packages when we added the sync/atomic package, perhaps we would have
+used that.  Now we can't remove the package because of the Go 1
+guarantee.  But it's not particularly important to carefully specify
+how the package behaves, because rule 1 is that you shouldn't use it.
+And rule 2 is that if you think you might want to use it, see rule 1.
+
+We are in agreement wrt giving people the tools they need. I'm not arguing for people to use atomics instead of channels and primitives in sync.
+
+I'm arguing for proper documentation of an exported package. I'd also see deprecating or making it private as a step forward.
+
+People are using sync/atomic with expectations that you may or may not want to support in the future, see the start of this thread for an example. My own expectation was that it was only an atomic package, so plain load/stores could be made more performant than they currently are. My point being that I don't see underspecifying it as a way to discourage its use, but rather as a way to have people make their owns assumptions about it, which might be quite different from your own.
+
+

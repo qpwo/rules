@@ -1,0 +1,100 @@
+1. Clarity beats cleverness; code is read far more than it is written.
+2. Keep the design small: fewer moving parts, fewer packages, fewer knobs, fewer dependencies.
+3. Prefer boring, explicit control flow; magic saves lines now and costs days later.
+4. Start from the data: pick representations first, then let algorithms follow.
+5. Use the simplest correct algorithm; switch to fancy only after measuring.
+6. Measure before tuning; profile before rewriting; benchmark before bragging.
+7. Design for failure paths first; success is the easy case.
+8. Make defaults safe for production; make unsafe modes loud and explicit.
+9. If a feature adds complexity, require a real user, a real use case, and a real test.
+10. When in doubt, delete code.
+11. Each package should have one purpose you can explain in one sentence.
+12. Package names are short, lowercase, no underscores, no stutter, no mixedCaps.
+13. Avoid meaningless packages (util, common, misc, api, types); split by concept instead.
+14. Do not steal good client names (buf, err, ctx); name packages so client code reads well.
+15. Avoid repeating the package name in exported identifiers (http.Server, not http.HTTPServer).
+16. If exported names read awkwardly with the package prefix, the boundary is wrong.
+17. Keep import graphs shallow; avoid cycles by moving shared concepts into small leaf packages.
+18. Use internal/ to enforce boundaries and prevent accidental API growth.
+19. Keep packages cohesive; if files in a package do not belong together, split.
+20. Make entry points obvious: doc.go or a top comment explains the package in plain English.
+21. Treat every exported identifier as a contract you will regret breaking.
+22. Accept interfaces, return concrete types; keep interfaces small and consumer-defined.
+23. Do not export third-party types in your public API; wrap them or translate at the boundary.
+24. Prefer constructors that return ready-to-use values with sane defaults.
+25. If the zero value is useful, document it and preserve it; if not, make misuse hard.
+26. Avoid global singletons like DefaultX; make callers construct their own instances.
+27. Keep methods focused; a type with many unrelated methods wants to be split.
+28. Prefer io.Reader/io.Writer for streaming APIs; avoid forcing full-buffer reads.
+29. Avoid reflection in APIs; use typed options or generics when it buys real clarity.
+30. Provide escape hatches, but label them (Unsafe..., Advanced..., Expert...) and document risks.
+31. Handle errors where they occur; do not hide them behind recover or swallowed logs.
+32. In libraries, never call os.Exit or log.Fatal; return errors and let main decide.
+33. Add context to errors (operation, key inputs) but keep the original error via wrapping.
+34. Use fmt.Errorf with %w so callers can use errors.Is and errors.As.
+35. Prefer typed errors or sentinel errors for stable decisions; avoid string matching.
+36. Do not return (nil, nil) for failure; nil should mean success for pointers/slices/maps.
+37. Prefer early returns over deep nesting; keep the success path left.
+38. Panic only for programmer bugs and impossible states; never for expected runtime failures.
+39. If you retry, bound it and surface the final error; invisible retries become outages.
+40. Treat should never happen as a branch that needs a test and a log.
+41. Plumb context.Context from the top; do not create background contexts in libraries.
+42. Every network call should have a timeout and respect context cancellation.
+43. Do not store contexts in structs long-term; pass them per call.
+44. Cancellation is part of correctness: goroutines should stop promptly when ctx is done.
+45. Time is an input: inject clocks where determinism matters (tests, scheduling, expiry).
+46. Leave concurrency to the caller unless you can hide it completely and safely.
+47. Before launching a goroutine, know how it stops; document the stop condition.
+48. Prefer channels for ownership transfer and sequencing; prefer mutexes for shared state.
+49. Avoid mixing channels and mutexes casually; pick one model per component.
+50. Use sync.WaitGroup for lifecycle, not sleeps; shutdown with contexts or done channels.
+51. Stop tickers and timers you create; leaked timers and goroutines burn CPU.
+52. Avoid package-level mutable state; it becomes hidden shared state and breaks tests.
+53. Do not rely on hardware memory ordering guesses; data races are undefined behavior.
+54. Use the race detector early and often; treat races as correctness bugs.
+55. Use sync/atomic only when you can explain the happens-before edges in writing.
+56. Do not micro-optimize types (uint8 vs int) without evidence; smaller can be slower.
+57. Use pprof to find hot paths; fix the top line, not the whole program.
+58. Optimize allocations before cycles when possible; fewer allocs often wins big.
+59. Use bytes.Buffer or strings.Builder for incremental building; avoid repeated concat in loops.
+60. Avoid fmt.Sprintf in hot paths; write directly to buffers or io.Writer when it matters.
+61. Reduce contention before parallelism; a single lock can erase a thousand goroutines.
+62. Prefer simple loops over clever generics in hot code; clarity and predictability win.
+63. Benchmark end-to-end operations, not toys; measure latency, throughput, and tail behavior.
+64. If you think it is slow, prove it with a benchmark; then prove the fix the same way.
+65. Make performance changes reversible; keep diffs small and explain the why.
+66. Write tests that lock observable behavior of your public API, not implementation trivia.
+67. Prefer table-driven tests; name cases so failures explain themselves.
+68. Make tests deterministic: control time, randomness, temp dirs, and external I/O.
+69. Use subtests to isolate behavior; keep each test small and single-purpose.
+70. Use fuzzing for parsers and protocol edges; keep crashers as regression tests.
+71. Run tests with -race for concurrent code; make it part of CI.
+72. Use integration tests sparingly but seriously; they should be reproducible and automated.
+73. Benchmarks should include the baseline and the goal; reset timers and report allocs.
+74. Examples in docs should compile and run (go test runs Examples); runnable docs stay true.
+75. Flaky tests are bugs; fix the cause or remove the nondeterminism.
+76. A little copying is better than a little dependency; prefer stdlib and small local code.
+77. Inspect dependencies like hiring: docs, code quality, tests, issue tracker, release history.
+78. Count transitive deps; every indirect dep is your risk and your future outage.
+79. Keep deps behind your own interface if replacement is plausible; avoid hard coupling.
+80. Prefer deps with stable APIs, minimal deps, and active maintainers; avoid abandonware.
+81. Keep go.mod and go.sum clean; run go mod tidy intentionally and review changes.
+82. Follow semantic import versioning: breaking changes require a new major and /vN path.
+83. Vendor when you need reproducible/offline builds; document go mod vendor workflow.
+84. For hermetic builds, pin versions and consider GOPROXY=off; do not depend on live internet.
+85. Upgrade deps deliberately and promptly; read diffs/release notes and rerun your tests.
+86. Security beats flexibility: choose safe defaults; require explicit opt-in for unsafe modes.
+87. Keep crypto simple and modern; use well-reviewed primitives, not homegrown designs.
+88. Reduce configuration knobs in security code; fewer paths are easier to audit and test.
+89. Treat untrusted input as hostile: validate sizes, bounds, and time; fuzz parsers.
+90. Log security-relevant events carefully; include IDs, not secrets; avoid leaking keys/tokens.
+91. gofmt is not optional; format code automatically and never argue about whitespace.
+92. Use go test, go vet, and staticcheck; make CI enforce them.
+93. Keep build tags and cgo rare and documented; they multiply complexity across platforms.
+94. Use go generate only with clear, reproducible commands; generated code is still code to own.
+95. Godoc comments should explain purpose, invariants, and usage; not restate the name.
+96. Keep pull requests small and focused; make review easy and future reverts cheap.
+97. Write commit messages that explain intent and constraints, not just what changed.
+98. Make programs observable: structured logs, metrics, tracing, and pprof endpoints as needed.
+99. Fail fast on misconfiguration at startup; validate flags/env and print actionable errors.
+100. Be kind to future maintainers: delete dead code, document invariants, and leave it simpler.
