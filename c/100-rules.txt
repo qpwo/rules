@@ -1,0 +1,100 @@
+001 Write down requirements, invariants, and threat model first; C code is an attempt to prove them, not discover them.
+002 Eliminate code before eliminating bugs: delete features, delete options, delete branches; every line is an attack surface.
+003 Minimize trusted code: run parsers/decoders as unprivileged filters with strict inputs/outputs, rlimits, and no filesystem/network access.
+004 Make data flow explicit; avoid hidden state via globals, mutable statics, implicit caches, environment variables, or errno as control flow.
+005 Separate parse/validate from act; never mix untrusted input handling with privileged operations.
+006 Prefer whitelists: accept only known-good characters, ranges, and encodings; replace or reject everything else.
+007 Avoid parsing when you can: use OS primitives (files, dirs, argv, env) and simple formats over ad-hoc mini-languages.
+008 If you must parse, define a grammar, implement a small deterministic parser, and test every quoting/escaping rule.
+009 Never build shell commands with untrusted data; avoid system(3) and popen(3); use execve with argv.
+010 Assume dependencies are hostile: a simple API can hide huge parsers; avoid regex/ASN.1/XML/HTML in critical paths.
+011 Prefer simple algorithms and simple state machines; fewer states means fewer security holes.
+012 Do not secure by patching yesterday; build designs that remain secure under new attacks.
+013 Least privilege is not enough; also reduce the amount of code that can violate the security goal.
+014 Drop privileges early and permanently; if you must keep privilege, isolate it in a tiny monitor with a strict message protocol.
+015 For network daemons, consider fork+exec per connection to refresh ASLR/stack canaries; avoid children inheriting one address space layout forever.
+016 Treat all inputs as potentially malicious and all errors as normal; design for low memory, I/O failure, EINTR, partial reads/writes.
+017 Prefer measured performance work over premature optimization; security and correctness beat speed.
+018 If performance matters, prove the bottleneck with profiling, then optimize the smallest hot spot and keep the fast path readable.
+019 Keep interfaces narrow; fewer knobs means fewer invalid states and fewer tests you can forget to write.
+020 Document trust boundaries and invariants in comments near the code that enforces them; future you will forget.
+021 Follow a consistent style guide; inconsistency is a bug farm.
+022 Keep indentation stable: tabs for indentation, spaces for alignment; no trailing whitespace; keep lines <= 80 columns unless there is a strong reason.
+023 Put the function return type on its own line; no space before function call parens; spaces after keywords and commas.
+024 Include order: <sys/*> then network headers then standard C headers then local headers; keep includes minimal and sorted.
+025 All non-static functions are prototyped in headers; file-local functions are static and prototyped at top of the .c file.
+026 In prototypes, omit parameter names unless needed for documentation; keep headers usable from C++ with __BEGIN_DECLS/__END_DECLS.
+027 Use __dead (or _Noreturn) for non-returning functions; the compiler can then warn better.
+028 Use getopt(3) for option parsing; keep option strings and switch cases sorted unless intentional fallthrough is documented.
+029 Usage strings should match the man-page synopsis; print "usage: prog ..." and exit nonzero on error.
+030 Use err(3)/warn(3) style helpers (or equivalent) for consistent error reporting; do not roll your own half-logging.
+031 Avoid typedef for struct types; use "struct tag" so callers can forward-declare and keep types opaque.
+032 When declaring struct members, group by use then by size (largest to smallest); one member per line; comment non-obvious fields.
+033 Use <sys/queue.h> macros (LIST/TAILQ/RB) instead of hand-rolled linked lists unless you have measured reason.
+034 Avoid macros with side effects; if you need a statement macro, use do { ... } while (0) and parenthesize all arguments.
+035 Prefer static inline functions over macros; you get types, scope, debuggability, and the compiler can still inline.
+036 Avoid function definitions inside other functions; keep scope simple and searchable.
+037 Keep functions short (target <30 lines) and single-purpose; split by responsibility, not by helper naming.
+038 Prefer early returns on error; the happy path should read top-to-bottom with minimal nesting.
+039 For multi-resource cleanup, use one goto cleanup label; it is clearer than duplicated frees and less error-prone.
+040 One obvious owner per resource; define lifetime rules for every pointer, fd, lock, and allocation.
+041 Never ignore compiler warnings; keep builds warning-free on all supported compilers and architectures.
+042 Compile debug builds with sanitizers (ubsan/asan/tsan as relevant) and with assertions enabled; treat findings as real bugs.
+043 Do not rely on undefined/implementation-defined behavior; if the standard does not guarantee it, neither will attackers.
+044 Signed integer overflow is undefined; detect overflow before arithmetic, or use unsigned/wider types with explicit bounds.
+045 Avoid mixing signed and unsigned; convert at boundaries and keep internal arithmetic consistent.
+046 Use size_t for sizes and counts; use off_t for file offsets; use uint64_t/int64_t for serialized counters with explicit units.
+047 When computing allocation sizes, check multiplication overflow (n > SIZE_MAX/elem); prefer reallocarray/xcalloc helpers.
+048 Prefer calloc(n, size) over malloc(n*size) when you want count*size; it avoids overflow and can zero-init.
+049 Always check allocation failure in portable code; decide policy: propagate error, or fail fast with a clear message.
+050 Avoid lazy allocations that can fail where failure is not reportable; allocate upfront when you can still return an error.
+051 Design APIs so errors are hard to ignore: return explicit status, keep outputs as out-params, and do not overload return values.
+052 Preserve errno carefully; do not clobber it before logging; include errno, path, and sizes in error messages.
+053 Treat short reads/writes as normal; loop until done or error; centralize retry-on-EINTR logic.
+054 Treat temporary errors as distinct from permanent errors (e.g., EAGAIN vs EINVAL); tests should cover both.
+055 Initialize variables deliberately; never read uninitialized memory; do not depend on zero-fill except where guaranteed.
+056 Do not call complex functions in variable initializers; keep side effects visible in statements.
+057 Use memcpy only for non-overlapping ranges; if overlap is possible, use memmove.
+058 Do not type-pun through casts; avoid strict-aliasing traps; use memcpy to move bytes between object representations.
+059 Do not depend on struct layout for external formats; pack/unpack explicitly; define endianness and alignment.
+060 Prefer fixed-width types for on-disk/on-wire formats; validate every length field before use.
+061 Never trust attacker-controlled lengths; check bounds before indexing, copying, allocating, or shifting.
+062 Avoid unsafe string APIs: no gets/strcpy/strcat/sprintf; use snprintf and bounded copies and always check for truncation.
+063 Never pass untrusted data as a printf format string; use "%s" and escape or sanitize control chars for logs.
+064 Prefer dynamic buffers with explicit (ptr,len,cap); update len on every write; keep invariants checked with asserts.
+065 Keep derived summary state (counts, cached lengths) in sync or compute it on demand; stale summaries cause bugs.
+066 Use strong randomness for keys/tokens; never seed from time/pid; use getrandom/arc4random/urandom.
+067 Do not store secrets in pageable/shared memory longer than needed; wipe secrets before dropping privileges or freeing memory.
+068 Use explicit_bzero/memset_s or a proven volatile wipe; plain memset may be optimized away.
+069 Disable core dumps for privileged or secret-holding processes; also limit ptrace/debug access where possible.
+070 Avoid TOCTOU: operate on file descriptors, not paths; prefer openat, fstat, O_NOFOLLOW, and directory fds.
+071 Use close-on-exec: set O_CLOEXEC or FD_CLOEXEC on every fd that should not leak to children.
+072 For durable updates, use atomic patterns: write temp file, fsync file, fsync dir, then rename; never partially update state.
+073 Treat the filesystem as concurrent and hostile: permissions can change, mounts can disappear, and symlinks can be swapped.
+074 Never trust environment variables for security decisions in privileged code; clear or whitelist env on startup.
+075 Prefer constant-time comparisons for authentication secrets; avoid early-exit memcmp on keys/tokens.
+076 Avoid global writable state in libraries; make reentrancy explicit; thread safety is part of correctness.
+077 In signal handlers, do only async-signal-safe work; set a volatile sig_atomic_t flag and handle real work in the main loop.
+078 If you use longjmp/vfork, compile with -Wall/-Wextra and mark clobbered locals volatile; otherwise optimizers will break you.
+079 For multi-threaded code, define locking rules; assert mutex held/notheld in debug builds; avoid ad-hoc lock ordering.
+080 Implement sandboxes with OS primitives where possible: chroot/pledge/seccomp, rlimits, no-new-privs, and dedicated uids.
+081 Use modern hardening flags by default: -fstack-protector-strong, -D_FORTIFY_SOURCE=2, PIE, RELRO, now, noexecstack; measure and fix any breakage.
+082 Keep build systems simple and explicit; reproducible builds beat clever auto-detection.
+083 Avoid optional features controlled by compile-time ifdefs; they rot, reduce test coverage, and create unreviewed configurations.
+084 Prefer small, orthogonal modules over deep inheritance-like abstractions; in C, simple structs + functions win.
+085 Choose naming and layout for grep-ability: predictable prefixes, one concept per file, and consistent suffixes (_init, _free, _parse).
+086 Do not duplicate logic; factor common patterns into small functions (even tiny ones); repeated sequences breed bugs.
+087 Keep error-handling code small and uniform; central helpers reduce missed checks.
+088 Prefer deterministic behavior: stable output, stable ordering, and explicit locale/encoding choices; nondeterminism hides bugs.
+089 When you add a new invariant, add an assert and a test; otherwise it is a comment and will be violated.
+090 Do not fix bugs by disabling checks or swallowing errors; make the program loudly correct or loudly failing.
+091 Every bug fix requires a regression test that would have caught it; the test is part of the fix.
+092 Factor code so logic can be tested without real I/O; pure functions + thin syscall wrappers enable exhaustive tests.
+093 Test failure paths deliberately: simulate out-of-memory, I/O errors, EINTR, short reads/writes, and partial state updates.
+094 Add crash/power-loss tests for persistent state: after simulated crash, state must be either old or new, never corrupted.
+095 Run fuzzers on parsers, file formats, and protocols; keep a corpus of interesting cases and rerun it forever.
+096 Measure coverage for critical code; branch coverage beats statement coverage; add testcase-style hooks for boundary conditions.
+097 Run tests with optimizations on and off; output must match; differences often indicate undefined behavior.
+098 Run dynamic analysis regularly: asan/ubsan/tsan, valgrind, leak detectors; treat any report as a release blocker.
+099 Use mutation testing where feasible: if flipping a branch does not fail tests, either remove the branch or add tests.
+100 Before shipping, test the worst day: malicious input + low memory + failing disk + crash mid-write; the program must remain safe, restartable, and debuggable.
