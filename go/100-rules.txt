@@ -98,3 +98,54 @@
 98. Make programs observable: structured logs, metrics, tracing, and pprof endpoints as needed.
 99. Fail fast on misconfiguration at startup; validate flags/env and print actionable errors.
 100. Be kind to future maintainers: delete dead code, document invariants, and leave it simpler.
+rules 101 through 150 are from graphics/games people idk whatever
+101. Pick an architecture because it serves your goals, not because its trendy (ECS, OOP, etc); the right answer depends on what you are building.
+102. Avoid flame wars: explain tradeoffs, stress context, and assume other approaches can be valid.
+103. Compose at the level users think in; too-low-level composition leaks complexity into every project.
+104. Keep high-level objects event-driven; if users need per-frame loops everywhere, the engine failed to hide work.
+105. Optimize the engine subsystems internally; dont force game code to adopt your data layout to get good physics/render/audio.
+106. Separate "interfaces for users" from "data in servers"; stable front, aggressively optimized back.
+107. If a pattern needs special cases (mandatory components, implicit relationships), maybe the pattern isnt buying you simplicity.
+108. Support extreme-performance games with an escape hatch (servers/direct APIs/compute), not by turning the default path into a research project.
+109. Clever optimization beats brute force: skip work when offscreen, amortize updates, process subsets per frame.
+110. Allocate resources on demand and choose sane defaults; dont make users tune knobs just to not waste memory.
+111. Remove hacks even if they make old behavior "nicer"; hidden hacks rot APIs and block new features.
+112. If a hack adds branches in a shader, assume it costs perf and complicates custom shaders; fix it in data (padding/atlas) when possible.
+113. Communicate breaking changes with a concrete reproduction, conditions, and what users should do.
+114. If a feature needs padding/guard pixels, make that explicit in assets; dont pretend GPUs wont sample neighbors.
+115. Prefer automatic systems that users dont have to think about, but know where the edge cases are (subimages, atlases, filters).
+116. When replacing platform syscalls, do it incrementally: implement only what fails on real hardware, one call at a time.
+117. Avoid platform-specific APIs when portability or open-source distribution matters; pay the extra engineering cost once.
+118. Invent tooling/patch formats that are human-editable; standard patches are great for machines, not for long-term manual maintenance.
+119. When patching upstream code, expect version drift; minimize patches and make it easy to rebase.
+120. Runtime code is different: you cant just use cgo; understand the constraints before you "just call C".
+121. If you call C from runtime, use the proper trampoline mechanism (libcCall/etc); a C stack on a goroutine stack is nightmare fuel.
+122. If signals arent portable, consider ignoring them deliberately; accept the tradeoff and document the failure mode.
+123. A tiny pseudo filesystem might be enough to boot; implement stdout/stderr first so diagnostics work.
+124. If your memory allocator cant free, admit the compromise; track monotonic growth and plan a future fix.
+125. Spurious wakeups are acceptable if the higher-level code expects them; pick the simplest correct synchronization model.
+126. When you cant query CPU affinity portably, make it an explicit option; dont lie about core count.
+127. If something freezes only on real devices, assume scheduling/affinity is involved; debug by changing core counts and thread binding.
+128. The entry point is platform-owned; sometimes c-archive plus a tiny C main is the least-bad portability trick.
+129. Read the runtime with a purpose: modify it, instrument it, or port it; passive reading is overwhelming.
+130. Expect your clever solution to become obsolete; thats fine if it bought you learning and shipped something.
+131. Immediate mode UI is a valid design: keep state in your code, not in a hidden widget tree.
+132. Dont impose a layout hierarchy if you can avoid it; let applications choose structure.
+133. Portability wins: target mobile and desktop with the same codepath; avoid platform toolkits when they block that.
+134. Vector rendering avoids baking everything into textures; it enables scaling, transforms, and crisp text.
+135. Release early, but label it experimental and be honest about missing docs/tests; dont pretend its done.
+136. Make contributing easy: avoid gatekeeping, accept patches by email, and keep your infra simple.
+137. Dont ask users for credentials for a demo; if you must, make it optional and explain the default permissions.
+138. Start with the naive algorithm, then remove obviously wasted work (hidden faces, dead pixels) before inventing new math.
+139. If only 5% of triangles are visible, dont render the other 95%; face culling is table stakes.
+140. Convert 3D problems into 2D slices when possible; plane-by-plane reasoning is simpler and faster.
+141. Use dynamic programming to find large rectangles/regions; fewer bigger primitives beat millions of tiny ones.
+142. When a mesh optimization introduces T-junctions, either prove its safe or add a cleanup pass; correctness first.
+143. Prefer triangulations that avoid long skinny triangles; aspect ratio matters for rasterization quality.
+144. Duplicate work is sometimes fine if it doesnt move the needle; optimize only after measuring.
+145. Do outlines in a separate pass when it simplifies the main renderer; use depth bias to avoid z-fighting.
+146. Build small renderers/tools for learning; a "toy" that teaches you the pipeline is valuable.
+147. Keep performance accounting: time each stage and know where your milliseconds go.
+148. Design APIs like you will maintain them for years: hacks today become constraints on every future feature.
+149. When you cant support every edge case cheaply, drop it and document the fallout; trying to be perfect can kill the project.
+150. Your job is to ship a usable system: pragmatic tradeoffs, clear docs, and escape hatches beat grand rewrites.

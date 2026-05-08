@@ -1,0 +1,2985 @@
+begin https://eliasnaur.com/blog/immediate-mode-gui-programming
+begin https://groups.google.com/g/golang-nuts/c/H4us4194WQ4
+Groups
+Conversations
+All groups and messages
+Sign in
+golang-nuts
+Conversations
+About
+Privacy
+ • 
+Terms
+
+
+
+
+[ANN] Gio: portable immediate mode GUI programs in Go for iOS/tvOS, Android, macOS, Linux, Windows
+3,739 views
+Skip to first unread message
+
+ma...@eliasnaur.com
+unread,
+Mar 31, 2019, 6:16:44 AM
+
+
+
+to golang-nuts
+Hi,
+ 
+I'm very happy to announce the first public release of Gio, a project for writing portable, hardware accelerated, immediate mode GUI programs in Go.
+
+If you have Go 1.12 installed,
+
+    $ export GO111MODULE=on
+    $ go run gioui.org/apps/hello
+
+should display the proverbial hello world message. If not, please follow the setup guide at
+
+https://gioui.org/
+
+The setup guide describes how to run the gio programs on Android an iOS.
+
+The command
+
+    $ go run gioui.org/apps/gophers
+
+runs a simple demo displaying Go contributors fetched from Github. Specify a github token with the -token flag if you run out of quota.
+
+Gio programs run on all the major platforms: iOS/tvOS, Android, Linux (Wayland), macOS and Windows. The project is very much experimental; don't expect Gio to produce production ready programs and apps yet.
+
+Gio only depends on the platform libraries for drawing and input and avoids the platform toolkits. Gio has an immediate mode design where no structure is imposed on the program, not even for the layout hierachy. Unlike any other Go project I know of, Gio runs on all the major platforms, mobile and desktop alike: iOS/tvOS, Android, macOS, Linux, Windows.
+
+Gio includes an efficient vector renderer based on the Pathfinder project (https://github.com/pcwalton/pathfinder). Text and other shapes are rendered without baking them into texture images, to support efficient animations, transformed drawing and pixel resolution independence.
+
+I decided to release Gio a little earlier than planned because of increasing activity in the Go GUI space. Fyne recently reached 1.0 and just two days ago Johann Freymuth released his ui library.
+
+It is my ambition to make Go a natural choice for GUI programs everywhere. I hope you will be inspired to help me with Gio, but if you don't, Gio is dual licensed under MIT and the UNLICENSE, anyone is free to use Gio's code as their own, even without attribution. The gioui.org/ui/app package is particularly interesting; it abstracts window management, input and vector drawing into a simple Go API. The gioui.org/cmd/gio tool packages Gio programs into iOS/tvOS frameworks or Android AAR files.
+
+The wide platform support is Gio's eye-catcher, but I'm most proud of its design. I've spent more than a year on the project and most of that time went into designing the API. However, this early release contains very little documentation (and no tests!); expect much more documentation in the coming months.
+
+The project is hosted on Sourcehut (https://git.sr.ht/~eliasnaur/gio). Despite its very young age, I chose Sourcehut because it is strictly open source, its business model is simple and because it supports contributions without registration. The mailing list (https://lists.sr.ht/~eliasnaur/gio-dev) is open to everyone and patches are sent with git send-email. I expect that even bug reports (https://todo.sr.ht/~eliasnaur/gio) can be filed with an email in the future.
+
+ - elias
+
+Wojciech S. Czarnecki
+unread,
+Mar 31, 2019, 5:33:52 PM
+
+
+
+to golan...@googlegroups.com, ma...@eliasnaur.com
+On Sun, 31 Mar 2019 06:16:43 -0700 (PDT)
+ma...@eliasnaur.com wrote:
+
+> Hi,
+> I'm very happy to announce the first public release of Gio, a project for
+> writing portable, hardware accelerated, immediate mode GUI programs in Go.
+
+@elias_naur
+Sounds interesting. **BUT**
+
+[Quote from README.md in the repo]
+
+> supply a Github token with the `-token` flag:
+> $ go run gioui.org/apps/gophers -token <github token>
+
+I will gladly translate "supply a Github token...":
+
+"If you want to see my demo trust me and possibly give
+me access to all your repositories hosted on github.
+Remember to trust me!"
+
+Because my code is not on github but sits somewhere in Philadelphia
+datacenter bunker under domain registered on Haitan TLD by an unknown
+European private person. Uph! At least https://gioui.org/ points to G cloud
+216.239.32.0/19 network... but it then redirects to Quonix, Philly.
+
+I recognize real Elias Naur name from this list and other places.
+I do not recall him loudly going out of github, but I know real
+Elias Naur still commits to the Go source tree and other github places.
+
+So — regarding this announcement — I may assume that at best it might
+be a kind of research in "password for chocolate"[1] style. But what if it is not?
+
+I wish I was mistaken.
+
+[1] https://www.sciencedaily.com/releases/2016/05/160512085123.htm
+
+--
+Wojciech S. Czarnecki
+<< ^oo^ >> OHIR-RIPE
+
+Raffaele Sena
+unread,
+Mar 31, 2019, 8:24:29 PM
+
+
+
+to Wojciech S. Czarnecki, golan...@googlegroups.com, ma...@eliasnaur.com
+While I do find it odd that this project doesn't use github, because github requires an account, but SourceHut currently also requires to sign up for an account to submit issues or to submit to the mailing list, I don't think the fact that the demo asks for a GitHub token is really "nefarious".
+
+The demo runs even without passing the token (you get a bunch of messages, but you also get some results) and looking at the code, the token is currently only used to authenticate the GitHub library in order to get extra capacity.
+
+And I guess you can always fork the code clean up the nastiness :)
+
+-- Raffaele
+
+
+
+--
+You received this message because you are subscribed to the Google Groups "golang-nuts" group.
+To unsubscribe from this group and stop receiving emails from it, send an email to golang-nuts...@googlegroups.com.
+For more options, visit https://groups.google.com/d/optout.
+
+Daniel Theophanes
+unread,
+Mar 31, 2019, 10:18:49 PM
+
+
+
+to golang-nuts
+I don't typically run wayland anywhere, but I was interested in this project and installed wayland and weston from my package manager. However, it seems my package manager's version of weston (v4.0.0) is too old(?) because I get the Go error: "wayland: no xdg_wm_base available". Probably from [here](https://git.sr.ht/~eliasnaur/gio/tree/master/ui/app/os_wayland.go#L1051).
+
+Do you have any tips?  Tried googling various terms, but nothing seemed relevant.
+
+
+fresh.g...@gmail.com
+unread,
+Mar 31, 2019, 11:06:48 PM
+
+
+
+to golang-nuts
+Hi Daniel,
+
+Just for reference, I have Weston 6.0 and Goi runs just fine!
+
+u@x1 ~> weston -v
+Date: 2019-04-01 KST
+[15:02:25.589] weston 6.0.0
+
+https://i.imgur.com/tjV0tJ2.png
+
+And, thanks Elias for releasing Gio! It looks like a really interesting project and you've clearly put a lot of thought into designing the API and the interaction between various components. Wish you all the best in future adventures.
+
+Happy coding!
+
+Cheers,
+Robin
+
+
+ma...@eliasnaur.com
+unread,
+Apr 1, 2019, 12:15:49 AM
+
+
+
+to golang-nuts
+
+On Monday, April 1, 2019 at 2:33:52 AM UTC+2, ohir wrote:
+On Sun, 31 Mar 2019 06:16:43 -0700 (PDT)
+ma...@eliasnaur.com wrote:
+
+> Hi,  
+> I'm very happy to announce the first public release of Gio, a project for
+> writing portable, hardware accelerated, immediate mode GUI programs in Go.
+
+@elias_naur
+Sounds interesting. **BUT**
+
+[Quote from README.md in the repo]
+
+> supply a Github token with the `-token` flag:
+> $ go run gioui.org/apps/gophers -token <github token>
+
+I will gladly translate "supply a Github token...":
+
+"If you want to see my demo trust me and possibly give
+me access to all your repositories hosted on github.
+Remember to trust me!"
+
+Hi,
+
+As I recall, github tokens don't have access to any of your data per default.
+Regardless, definitely don't supply a token if you don't feel comfortable doing so;
+the demo will run with the limited anonymous quota.
+
+In the future I will add a demo that doesn't depend on GitHub and still shows something
+interesting; the current demo was the extend of my imagination :)
+
+ - elias
+
+ma...@eliasnaur.com
+unread,
+Apr 1, 2019, 12:17:50 AM
+
+
+
+to golang-nuts
+
+On Monday, April 1, 2019 at 5:24:29 AM UTC+2, Raffaele Sena wrote:
+While I do find it odd that this project doesn't use github, because github requires an account, but SourceHut currently also requires to sign up for an account to submit issues or to submit to the mailing list, I don't think the fact that the demo asks for a GitHub token is really "nefarious".
+
+The sourcehut mailing list is open to everyone and should not require an account. An account is required for issues, but that should change in the future.
+
+  - elias
+
+ma...@eliasnaur.com
+unread,
+Apr 3, 2019, 7:51:59 AM
+
+
+
+to golang-nuts
+
+On Monday, April 1, 2019 at 7:18:49 AM UTC+2, Daniel Theophanes wrote:
+I don't typically run wayland anywhere, but I was interested in this project and installed wayland and weston from my package manager. However, it seems my package manager's version of weston (v4.0.0) is too old(?) because I get the Go error: "wayland: no xdg_wm_base available". Probably from [here](https://git.sr.ht/~eliasnaur/gio/tree/master/ui/app/os_wayland.go#L1051).
+
+Do you have any tips?  Tried googling various terms, but nothing seemed relevant.
+
+I'm sorry I missed your question. The precursor "unstable" version of the "xdg_wm_base" is "zxdg_shell_v6", which is supported by weston but not by gio. However, weston is only a reference compositor and is not intended for serious use. On my Fedora 29, the Gnome shell supports xdg_wm_base, but its version of weston (5.0.0) does not.
+
+What distribution and version are you running? If your distribution supports Wayland in general, you should be able to choose Wayland from the login chooser.
+
+ - elias
+
+Daniel Theophanes
+unread,
+Apr 3, 2019, 9:41:43 AM
+
+
+
+to golang-nuts
+I'm running Deepin, debian based. Looking into the forums, the devs aren't interested in Wayland at the moment. [1] Though they are switching over the WM over to QT and kwin, so maybe in the future that will be an option.
+
+I was only trying to run weston to try out gio. Thanks for the feedback, good to know.
+
+1. https://bbs.deepin.org/forum.php?mod=viewthread&tid=133029&page=1#pid279019
+
+dol...@gmail.com
+unread,
+Jun 5, 2019, 3:43:22 PM
+
+
+
+to golang-nuts
+Him
+
+Source Hut actually requires me to create an account to read the mailing list. Hmph.
+Anyway, I tried to run it on android and web (don't have wayland), and they work!
+It's just weird to interact within a canvas on the web and not get all the niceties of the classic html controls.
+And on android, I can delete characters, but not input any (Samsung Galaxy S8, Android 9)
+
+
+Elias Naur
+unread,
+Jun 5, 2019, 11:18:08 PM
+
+
+
+to golang-nuts
+
+On Thursday, 6 June 2019 00:43:22 UTC+2, dol...@gmail.com wrote:
+Him
+
+Source Hut actually requires me to create an account to read the mailing list. Hmph.
+
+That's surprising. I went to https://lists.sr.ht/~eliasnaur/gio-dev with a private browser session and it showed up fine. The "new post" link also worked fine (it's just a mailto: URL).
+ 
+Anyway, I tried to run it on android and web (don't have wayland), and they work!
+It's just weird to interact within a canvas on the web and not get all the niceties of the classic html controls.
+
+Indeed. The webassembly/webgl port is intended for easy porting of an existing native app, not as a competitor to the web native controls.
+ 
+And on android, I can delete characters, but not input any (Samsung Galaxy S8, Android 9)
+
+Thanks for bringing it up, I've added it to the issue tracker: https://todo.sr.ht/~eliasnaur/gio/7. It's not entirely unexpected; I have only implemented the very basic parts of the Android and iOS text input interfaces.
+
+ - elias
+Elias Naur
+unread,
+Jun 11, 2019, 7:46:53 AM
+
+
+
+to golang-nuts
+And on android, I can delete characters, but not input any (Samsung Galaxy S8, Android 9)
+
+Thanks for bringing it up, I've added it to the issue tracker: https://todo.sr.ht/~eliasnaur/gio/7. It's not entirely unexpected; I have only implemented the very basic parts of the Android and iOS text input interfaces.
+
+That issue should now be resolved. I don't have a Samsung phone myself, but the fix worked with the SwiftKey keyboard that had the same symptoms.
+
+ - elias
+
+Mark Bauermeister
+unread,
+Jun 14, 2019, 3:58:40 AM
+
+
+
+to golang-nuts
+Any plans for a Vulkan back-end?
+Elias Naur
+unread,
+Jun 14, 2019, 6:58:20 AM
+
+
+
+to golang-nuts
+
+On Friday, June 14, 2019 at 12:58:40 PM UTC+2, Mark Bauermeister wrote:
+Any plans for a Vulkan back-end?
+
+When I'm happy with the OpenGL ES backend then yes, Vulkan is the logical next step.
+
+ - elias
+
+Nuclear Squid!!
+unread,
+Sep 4, 2019, 8:41:19 PM
+
+
+
+to golang-nuts
+Hi, I wanted to try gio this week, and after a lot of work getting kde-plasma v5.14.3 working on Wayland (Funtoo x86_64), I now have hit the same issue here:
+
+https://git.sr.ht/~eliasnaur/gio/tree/master/ui/app/os_wayland.go#L1134
+
+"wayland: no xdg_wm_base available"
+
+I'm a newbie to Wayland -- what does this mean and what component needs upgrading?
+
+Thanks,
+-Russ
+
+Elias Naur
+unread,
+Sep 5, 2019, 2:18:45 AM
+
+
+
+to Nuclear Squid!!, golang-nuts
+>
+> Hi, I wanted to try gio this week, and after a lot of work getting
+> kde-plasma v5.14.3 working on Wayland (Funtoo x86_64), I now have hit the
+> same issue here:
+>
+> https://git.sr.ht/~eliasnaur/gio/tree/master/ui/app/os_wayland.go#L1134
+>
+> "wayland: no xdg_wm_base available"
+>
+> I'm a newbie to Wayland -- what does this mean and what component needs
+> upgrading?
+>
+
+I'm sorry that you had to go through all that work. If its any
+consolation, there is progress on the X11 port over at
+gioui.org/issue/8.
+
+In the shorter term, I'm not sure why the xdg_wm_base is not available
+in your version of Plasma. According to
+
+https://phabricator.kde.org/D13510
+
+and
+
+http://blog.davidedmundson.co.uk/blog/my-month-in-kwinwayland/
+
+"...KWin 5.14 will have support for XDG WM Base..."
+
+the xdg_wm_base extension should be available in the version you run.
+
+Is there a chance you might be running the Weston reference compositor?
+Being a reference implementation, it lags behind on the desktop-oriented
+features. For example, you need Weston 6.0 to get xdg_wm_base support.
+
+If you can, please post a dump of running a Gio program with
+WAYLAND_DEBUG=1 set. That dump should reveal whether it is really your
+compositor lacking xdg_wm_base or a Gio bug.
+
+-- elias
+
+husam alkdary
+unread,
+Mar 12, 2020, 10:03:52 AM
+
+
+
+to golang-nuts
+where I can find a simple examples of GIO with golang so I can try it
+
+Elias Naur
+unread,
+Mar 12, 2020, 10:34:29 AM
+
+
+
+to husam alkdary, golang-nuts
+On Thu, Mar 12, 2020 at 6:03 PM husam alkdary <husamal...@gmail.com> wrote:
+>
+> where I can find a simple examples of GIO with golang so I can try it
+>
+
+There are 4 examples here:
+
+https://git.sr.ht/~eliasnaur/gio/tree/master/example
+
+You can run them from a Go module with `go run`. For example:
+
+$ go run gioui.org/example/kitchen
+
+For a primer of the unusual stateless approach to GUI programming, see the
+article
+
+https://eliasnaur.com/blog/immediate-mode-gui-programming
+
+-- elias
+
+Jason E. Aten
+unread,
+Mar 16, 2020, 7:55:33 PM
+
+
+
+to golang-nuts
+As an addition to Elias' examples, I wrote a little hello world++ here.
+
+https://github.com/glycerine/hello_gio
+
+nuskent...@gmail.com
+unread,
+Apr 17, 2020, 9:18:26 PM
+
+
+
+to golang-nuts
+Thank you for your Contribution to ease the gioui.
+Following link you mentioned for installation in your read file
+
+https://man.sr.ht/~eliasnaur/gio/install.md
+
+does not working now.
+
+Please explain me how to install goui.
+Thank you again.
+
+
+Elias Naur
+unread,
+Apr 18, 2020, 12:52:04 AM
+
+
+
+to nuskent...@gmail.com, golang-nuts
+On Fri Apr 17, 2020 at 6:38 PM, wrote:
+>
+> Thank you for your Contribution to ease the gioui.
+> Following link you mentioned for installation in your read file
+>
+> https://man.sr.ht/~eliasnaur/gio/install.md
+>
+> does not working now.
+>
+> Please explain me how to install goui.
+> Thank you again.
+>
+
+Hi,
+
+The website for Gio is gioui.org, which should contain enough
+information for you to get started.
+
+-- elias
+
+Fino
+unread,
+Apr 28, 2020, 6:22:53 AM
+
+
+
+to golang-nuts
+hello Elias,
+
+as far as I understand, GIO is a 2D GUI lib, maybe similar with Flutter, 
+
+is it possible to embed one/multi 3D widget inside a view/window? 
+
+any architecture thinking on such requirement?
+
+BR fino
+Elias Naur
+unread,
+Apr 28, 2020, 6:42:13 AM
+
+
+
+to Fino, golang-nuts
+
+The other way around is possible: embedding Gio into a program that uses
+the GPU. See the "glfw" example:
+
+https://git.sr.ht/~eliasnaur/gio/tree/master/example/glfw/main.go
+
+-- elias
+
+Fino
+unread,
+Apr 28, 2020, 6:45:40 PM
+
+
+
+to golang-nuts
+OK, more complex than I thought.  need more learning ~ 
+
+BR fino
+osose...@gmail.com
+unread,
+Jul 24, 2020, 9:15:48 AM
+
+
+
+to golang-nuts
+Hello, I do not want to drag us back but i really dont understand the way to install gio everywhere i look the mwthod is not straightforward and i dont ubderstand it can i know if there is a better way to install it
+Thanks from Africa!
+
+Reply all
+
+Reply to author
+
+Forward
+
+LINKS
+https://groups.google.com/g/golang-nuts/c/my-groups
+https://www.google.com/intl/en/about/products?tab=gh
+https://accounts.google.com/ServiceLogin?hl=en&passive=true&continue=https://groups.google.com&ec=GAZA0AM
+https://groups.google.com/g/golang-nuts/c/g/golang-nuts
+https://groups.google.com/g/golang-nuts/c/g/golang-nuts/about
+https://policies.google.com/privacy?hl=en_US
+https://policies.google.com/terms?hl=en_US
+http://gioui.org/apps/hello
+https://gioui.org/
+http://gioui.org/apps/gophers
+https://github.com/pcwalton/pathfinder
+http://gioui.org/ui/app
+http://gioui.org/cmd/gio
+https://git.sr.ht/~eliasnaur/gio
+https://lists.sr.ht/~eliasnaur/gio-dev
+https://todo.sr.ht/~eliasnaur/gio
+http://216.239.32.0/19
+https://www.sciencedaily.com/releases/2016/05/160512085123.htm
+https://groups.google.com/d/optout
+https://git.sr.ht/~eliasnaur/gio/tree/master/ui/app/os_wayland.go#L1051
+https://i.imgur.com/tjV0tJ2.png
+https://bbs.deepin.org/forum.php?mod=viewthread&tid=133029&page=1#pid279019
+https://todo.sr.ht/~eliasnaur/gio/7
+https://git.sr.ht/~eliasnaur/gio/tree/master/ui/app/os_wayland.go#L1134
+http://gioui.org/issue/8
+https://phabricator.kde.org/D13510
+http://blog.davidedmundson.co.uk/blog/my-month-in-kwinwayland/
+https://git.sr.ht/~eliasnaur/gio/tree/master/example
+http://gioui.org/example/kitchen
+https://eliasnaur.com/blog/immediate-mode-gui-programming
+https://github.com/glycerine/hello_gio
+https://man.sr.ht/~eliasnaur/gio/install.md
+http://gioui.org/
+https://git.sr.ht/~eliasnaur/gio/tree/master/example/glfw/main.go
+
+IMAGES
+https://fonts.gstatic.com/s/i/productlogos/groups/v9/web-48dp/logo_groups_color_1x_web_48dp.png
+https://lh3.googleusercontent.com/a-/ALV-UjVhEvjtk4k3lWxbmPUljmazdj5qVGkDH9kWbMeZ2jf280nkAA=s40-c
+https://lh3.googleusercontent.com/a-/ALV-UjVWpFZJvj6eceb7G9oxNmJhNepYmfYt-DRp2Eka9FPvCyJVyQ=s40-c
+https://lh3.googleusercontent.com/a-/ALV-UjXOUIb2wMQSr_M11VA_TS9hfSVdVCTIGWHaZ4YBzS5QNxfoDHnN=s40-c
+https://lh3.googleusercontent.com/a-/ALV-UjW9vBO1wICEeqYpG95kVT1I2cZnBcOhNAZ8p1Sg3D8jTaaIs5mJ=s40-c
+https://lh3.googleusercontent.com/a-/ALV-UjW78ZSGuAUA08UDKiOfwvJTUASiELxi6yuzeXsI8u768AWCdA=s40-c
+https://lh3.googleusercontent.com/a-/ALV-UjWWHN38p3lS-An0FN7OqTxm5BZGWwSDBgnQlAVVqJhEeaLqlgdt=s40-c
+https://lh3.googleusercontent.com/a-/ALV-UjWKLF-_pz4RaBzAi3kiqUCudNMr0a40qlk6QdTBnKEL72RO-PLY=s40-c
+https://lh3.googleusercontent.com/a-/ALV-UjUhEo-ltfq1FzjLXFl12WS3GjeawBhLdxIaic3y6_Bh6i4Zhr4I=s40-c
+https://lh3.googleusercontent.com/a-/ALV-UjX__TMAfm34c_F-EqiOAvus6P5sFsfeeLIYY822usYpwJPV3XQh=s40-c
+https://lh3.googleusercontent.com/a-/ALV-UjUjvrd9EVDTnXytJLOvmd3hGWmFgZaIKOYmHQRPUw7dEGbu_w=s40-c
+https://lh3.googleusercontent.com/a-/ALV-UjWmTajOX3wMwr0KNjCnpRst9i_BFJFkE0OL2QBEG9aIXZLUFQ=s40-c
+https://lh3.googleusercontent.com/a-/ALV-UjXO9ytcM88uHLDHrHoycjLBpB918IkeXz-Qs9jh68KdigmXz5xl=s40-c
+https://lh3.googleusercontent.com/a-/ALV-UjWvp3v_vS8yVQFV7-BIj_sxkzJmzvE-v3WyrD6ZyQf2HCiotAY7=s40-c
+end https://groups.google.com/g/golang-nuts/c/H4us4194WQ4
+
+FULL TEXT FOR URL https://groups.google.com/g/golang-nuts/c/H4us4194WQ4 SAVED TO ./https-groups-google-com-g-golang-nuts-c-H4us4194WQ4-6685231.txt
+eliasnaur.com
+Immediate Mode GUI Programming
+
+The initial focus of the Gio project was to create a simple cross-platform Go library for creating user interfaces for mobile and the desktop, avoiding the platform bound and often complex native toolkits. This is also the apparent selling point of Gio.
+
+However, as work progressed it became clear that the immediate mode programming model is a key driver for longer term adoption of Gio. After all, there are plenty of cross-platform GUI toolkits available, but very few attempt the direct and stateless programming model of immediate mode libraries.
+
+This article is an introduction to immediate mode programming, comparing Gio’s approach with popular retained mode toolkits.
+
+What is immediate mode?
+
+In traditional retained mode UI toolkits, the state of the user interface is owned by the toolkit, and event handling, layout and animation is handled internally. The application can only indirectly manipulate the UI state, and responding to user input happen in callbacks.
+
+The following JavaScript program implements a button and a click event handler:
+
+var count = 0;
+
+var root = document.getElementById("clickcounter");
+
+var label = document.createElement("h3");
+label.innerText = "Number of clicks: 0";
+root.appendChild(label);
+
+var btn = document.createElement("button");
+btn.innerText = "Click Me!";
+btn.addEventListener("click", function() {
+	count++;
+	label.innerText = "Number of clicks:" + count;
+});
+root.appendChild(btn);
+
+Number of clicks: 0
+Click Me!
+
+In retained mode the label and button must explicitly be created, added to a widget hierrarchy (the HTML DOM) and the click handler must be registered. The handler callback is invoked at the discretion of the UI library, not when convenient for the program.
+
+In the immediate mode model, library owned state is minimized, and the program is responsible for drawing, layout and event handling, supported by the facilities offered by the UI library.
+
+A complete Gio version of the click counter is reproduced below (import statements omitted).
+
+func main() {
+	go func() {
+		w := app.NewWindow()
+		loop(w)
+	}()
+	app.Main()
+}
+
+func loop(w *app.Window) {
+	th := material.NewTheme(gofont.Collection())
+	var ops op.Ops
+
+	// UI state.
+	var btn widget.Clickable
+	var count int
+
+	for e := range w.Events() {
+		if e, ok := e.(system.FrameEvent); ok {
+			gtx := layout.NewContext(&ops, e)
+
+			for btn.Clicked() {
+				count++
+			}
+
+			layout.W.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						return material.H5(th, fmt.Sprintf("Number of clicks: %d", count)).Layout(gtx)
+					}),
+					layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+						return material.Button(th, &btn, "Click me!").Layout(gtx)
+					}),
+				)
+			})
+
+			e.Frame(gtx.Ops)
+		}
+	}
+}
+
+If your browser supports WebAssembly and WebGL, you can run the program by clicking the run button. It may take a little while to load.
+
+Run
+
+Notice the differences: the program is in control of the main event loop, user input is handled as part of program flow, and the program state is both minimal and cleanly separated. The counter doesn’t respond to user input, and so is reduced to a (high-level) drawing command. The same applies to layout; both the aligning and listing of the two widgets are stateless.
+
+Drawing
+
+If a user interface is a form of I/O system, drawing is the output part. Mixing custom drawing and animation with higher level widgets is where the retained model typically struggles.
+
+Here’s a program that displays a bouncing ball, controlled by a button.
+
+type state struct {
+	btn         widget.Clickable
+	ballVisible bool
+	time        time.Time
+}
+
+var programState state
+
+func (s *state) layout(gtx layout.Context, th *material.Theme) {
+	for s.btn.Clicked() {
+		s.ballVisible = !s.ballVisible
+		s.time = gtx.Now
+	}
+
+	if s.ballVisible {
+		s.drawBall(gtx)
+	}
+	layout.Center.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+		label := "Throw ball"
+		if s.ballVisible {
+			label = "Hide ball"
+		}
+		return material.Button(th, &s.btn, label).Layout(gtx)
+	})
+}
+
+func (s *state) drawBall(gtx layout.Context) {
+	defer op.Save(gtx.Ops).Load()
+	const size = 50
+
+	// Animate bounce.
+	const (
+		v0 = 50.0
+		g  = -9.81
+	)
+	now := gtx.Now
+	t := now.Sub(s.time).Seconds()
+	t *= 10
+	t1 := -v0 / (.5 * g)
+	t = math.Mod(t, t1)
+	y := v0*t + .5*g*t*t
+
+	// Position.
+	bottom := float32(gtx.Constraints.Max.Y)
+	op.Offset(f32.Point{X: 20, Y: bottom - size - float32(y)}).Add(gtx.Ops)
+
+	// Draw.
+	paint.ColorOp{Color: color.NRGBA{A: 0xff, G: 0xff}}.Add(gtx.Ops)
+	clip.RRect{
+		Rect: f32.Rectangle{Max: f32.Point{X: size, Y: size}},
+		NE:   size * .5, NW: size * .5, SE: size * .5, SW: size * .5,
+	}.Op(gtx.Ops).Add(gtx.Ops)
+	paint.PaintOp{}.Add(gtx.Ops)
+
+	// Request immediate redraw.
+	op.InvalidateOp{}.Add(gtx.Ops)
+}
+
+Run
+
+See how the high-level button and its centering is naturally mixed with the low-level animation and drawing of the sphere. There is no separate animation system; rather, the program draws and requests redrawing as long as the ball is bouncing, and simply stops when it is not. The required state is minimized to just the ballVisible boolean and the throwing time.
+
+Compare the retained mode version:
+
+var root = document.getElementById("bounce");
+root.style = "display: flex; position: relative; height: 200px";
+
+var ball = document.createElement("div");
+ball.style = "background-color: green; position: absolute; width: 40px; height: 40px; border-radius: 50%";
+ball.style.bottom = 0;
+
+var btn = document.createElement("button");
+btn.style = "margin: auto";
+btn.innerText = "Throw ball";
+root.appendChild(btn);
+
+var ballVisible = false;
+var now;
+var animHandle;
+
+btn.addEventListener("click", function() {
+	ballVisible = !ballVisible;
+	if (ballVisible) {
+		root.appendChild(ball);
+		now = performance.now();
+		btn.innerText = "Hide ball";
+		animate(now);
+	} else {
+		cancelAnimationFrame(animHandle);
+		btn.innerText = "Throw ball";
+		ball.remove();
+	}
+});
+
+function animate(time) {
+	var v0 = 50.0;
+	var g = -9.81;
+	var t = (time - now)/1000;
+	t *= 10;
+	var t1 = -v0 / (.5 * g);
+	var t = t % t1;
+	var y = v0*t + .5*g*t*t;
+
+	ball.style.bottom = y+"px";
+
+	animHandle = window.requestAnimationFrame(animate);
+}
+
+Throw ball
+
+Several redundant state variables appear in the program: the innerText property, the ball object, the callback handle animHandle. As a result, the click listener must reset the extra state and remember to unregister the callback. A lingering callback may be invoked when the program is unprepared or leak memory.
+
+Layout
+
+The examples so far demonstrate some advantages of immediate mode layouts such as centering, aligning and listing interface elements: operations are stateless, and they’re specified and controlled with regular programming constructs such as functions, loops and conditions.
+
+However, state for static layout is about as harmless as having extra program constants in your program; the advantages are clearer for dynamic layouts.
+
+This program implements a scrollable list of many rows, with a button to modify their content.
+
+var root = document.getElementById("list");
+
+var list = document.createElement("div");
+list.style = "overflow-y: scroll; max-height: 200px;"
+root.appendChild(list);
+
+var factor = 1;
+
+function addRows() {
+	for (var i = 0; i < 1000; i++) {
+		var row = document.createElement("p");
+		row.innerText = "Row #" + i*factor;
+		list.appendChild(row);
+	}
+}
+addRows()
+
+var btn = document.createElement("button");
+btn.innerText = "Multiply by 10";
+btn.addEventListener("click", function() {
+	while (list.firstChild) {
+		list.firstChild.remove();
+	}
+	factor *= 10;
+	addRows();
+});
+root.appendChild(btn);
+
+Row #0
+
+Row #1
+
+Row #2
+
+Row #3
+
+Row #4
+
+Row #5
+
+Row #6
+
+Row #7
+
+Row #8
+
+Row #9
+
+Row #10
+
+Row #11
+
+Row #12
+
+Row #13
+
+Row #14
+
+Row #15
+
+Row #16
+
+Row #17
+
+Row #18
+
+Row #19
+
+Row #20
+
+Row #21
+
+Row #22
+
+Row #23
+
+Row #24
+
+Row #25
+
+Row #26
+
+Row #27
+
+Row #28
+
+Row #29
+
+Row #30
+
+Row #31
+
+Row #32
+
+Row #33
+
+Row #34
+
+Row #35
+
+Row #36
+
+Row #37
+
+Row #38
+
+Row #39
+
+Row #40
+
+Row #41
+
+Row #42
+
+Row #43
+
+Row #44
+
+Row #45
+
+Row #46
+
+Row #47
+
+Row #48
+
+Row #49
+
+Row #50
+
+Row #51
+
+Row #52
+
+Row #53
+
+Row #54
+
+Row #55
+
+Row #56
+
+Row #57
+
+Row #58
+
+Row #59
+
+Row #60
+
+Row #61
+
+Row #62
+
+Row #63
+
+Row #64
+
+Row #65
+
+Row #66
+
+Row #67
+
+Row #68
+
+Row #69
+
+Row #70
+
+Row #71
+
+Row #72
+
+Row #73
+
+Row #74
+
+Row #75
+
+Row #76
+
+Row #77
+
+Row #78
+
+Row #79
+
+Row #80
+
+Row #81
+
+Row #82
+
+Row #83
+
+Row #84
+
+Row #85
+
+Row #86
+
+Row #87
+
+Row #88
+
+Row #89
+
+Row #90
+
+Row #91
+
+Row #92
+
+Row #93
+
+Row #94
+
+Row #95
+
+Row #96
+
+Row #97
+
+Row #98
+
+Row #99
+
+Row #100
+
+Row #101
+
+Row #102
+
+Row #103
+
+Row #104
+
+Row #105
+
+Row #106
+
+Row #107
+
+Row #108
+
+Row #109
+
+Row #110
+
+Row #111
+
+Row #112
+
+Row #113
+
+Row #114
+
+Row #115
+
+Row #116
+
+Row #117
+
+Row #118
+
+Row #119
+
+Row #120
+
+Row #121
+
+Row #122
+
+Row #123
+
+Row #124
+
+Row #125
+
+Row #126
+
+Row #127
+
+Row #128
+
+Row #129
+
+Row #130
+
+Row #131
+
+Row #132
+
+Row #133
+
+Row #134
+
+Row #135
+
+Row #136
+
+Row #137
+
+Row #138
+
+Row #139
+
+Row #140
+
+Row #141
+
+Row #142
+
+Row #143
+
+Row #144
+
+Row #145
+
+Row #146
+
+Row #147
+
+Row #148
+
+Row #149
+
+Row #150
+
+Row #151
+
+Row #152
+
+Row #153
+
+Row #154
+
+Row #155
+
+Row #156
+
+Row #157
+
+Row #158
+
+Row #159
+
+Row #160
+
+Row #161
+
+Row #162
+
+Row #163
+
+Row #164
+
+Row #165
+
+Row #166
+
+Row #167
+
+Row #168
+
+Row #169
+
+Row #170
+
+Row #171
+
+Row #172
+
+Row #173
+
+Row #174
+
+Row #175
+
+Row #176
+
+Row #177
+
+Row #178
+
+Row #179
+
+Row #180
+
+Row #181
+
+Row #182
+
+Row #183
+
+Row #184
+
+Row #185
+
+Row #186
+
+Row #187
+
+Row #188
+
+Row #189
+
+Row #190
+
+Row #191
+
+Row #192
+
+Row #193
+
+Row #194
+
+Row #195
+
+Row #196
+
+Row #197
+
+Row #198
+
+Row #199
+
+Row #200
+
+Row #201
+
+Row #202
+
+Row #203
+
+Row #204
+
+Row #205
+
+Row #206
+
+Row #207
+
+Row #208
+
+Row #209
+
+Row #210
+
+Row #211
+
+Row #212
+
+Row #213
+
+Row #214
+
+Row #215
+
+Row #216
+
+Row #217
+
+Row #218
+
+Row #219
+
+Row #220
+
+Row #221
+
+Row #222
+
+Row #223
+
+Row #224
+
+Row #225
+
+Row #226
+
+Row #227
+
+Row #228
+
+Row #229
+
+Row #230
+
+Row #231
+
+Row #232
+
+Row #233
+
+Row #234
+
+Row #235
+
+Row #236
+
+Row #237
+
+Row #238
+
+Row #239
+
+Row #240
+
+Row #241
+
+Row #242
+
+Row #243
+
+Row #244
+
+Row #245
+
+Row #246
+
+Row #247
+
+Row #248
+
+Row #249
+
+Row #250
+
+Row #251
+
+Row #252
+
+Row #253
+
+Row #254
+
+Row #255
+
+Row #256
+
+Row #257
+
+Row #258
+
+Row #259
+
+Row #260
+
+Row #261
+
+Row #262
+
+Row #263
+
+Row #264
+
+Row #265
+
+Row #266
+
+Row #267
+
+Row #268
+
+Row #269
+
+Row #270
+
+Row #271
+
+Row #272
+
+Row #273
+
+Row #274
+
+Row #275
+
+Row #276
+
+Row #277
+
+Row #278
+
+Row #279
+
+Row #280
+
+Row #281
+
+Row #282
+
+Row #283
+
+Row #284
+
+Row #285
+
+Row #286
+
+Row #287
+
+Row #288
+
+Row #289
+
+Row #290
+
+Row #291
+
+Row #292
+
+Row #293
+
+Row #294
+
+Row #295
+
+Row #296
+
+Row #297
+
+Row #298
+
+Row #299
+
+Row #300
+
+Row #301
+
+Row #302
+
+Row #303
+
+Row #304
+
+Row #305
+
+Row #306
+
+Row #307
+
+Row #308
+
+Row #309
+
+Row #310
+
+Row #311
+
+Row #312
+
+Row #313
+
+Row #314
+
+Row #315
+
+Row #316
+
+Row #317
+
+Row #318
+
+Row #319
+
+Row #320
+
+Row #321
+
+Row #322
+
+Row #323
+
+Row #324
+
+Row #325
+
+Row #326
+
+Row #327
+
+Row #328
+
+Row #329
+
+Row #330
+
+Row #331
+
+Row #332
+
+Row #333
+
+Row #334
+
+Row #335
+
+Row #336
+
+Row #337
+
+Row #338
+
+Row #339
+
+Row #340
+
+Row #341
+
+Row #342
+
+Row #343
+
+Row #344
+
+Row #345
+
+Row #346
+
+Row #347
+
+Row #348
+
+Row #349
+
+Row #350
+
+Row #351
+
+Row #352
+
+Row #353
+
+Row #354
+
+Row #355
+
+Row #356
+
+Row #357
+
+Row #358
+
+Row #359
+
+Row #360
+
+Row #361
+
+Row #362
+
+Row #363
+
+Row #364
+
+Row #365
+
+Row #366
+
+Row #367
+
+Row #368
+
+Row #369
+
+Row #370
+
+Row #371
+
+Row #372
+
+Row #373
+
+Row #374
+
+Row #375
+
+Row #376
+
+Row #377
+
+Row #378
+
+Row #379
+
+Row #380
+
+Row #381
+
+Row #382
+
+Row #383
+
+Row #384
+
+Row #385
+
+Row #386
+
+Row #387
+
+Row #388
+
+Row #389
+
+Row #390
+
+Row #391
+
+Row #392
+
+Row #393
+
+Row #394
+
+Row #395
+
+Row #396
+
+Row #397
+
+Row #398
+
+Row #399
+
+Row #400
+
+Row #401
+
+Row #402
+
+Row #403
+
+Row #404
+
+Row #405
+
+Row #406
+
+Row #407
+
+Row #408
+
+Row #409
+
+Row #410
+
+Row #411
+
+Row #412
+
+Row #413
+
+Row #414
+
+Row #415
+
+Row #416
+
+Row #417
+
+Row #418
+
+Row #419
+
+Row #420
+
+Row #421
+
+Row #422
+
+Row #423
+
+Row #424
+
+Row #425
+
+Row #426
+
+Row #427
+
+Row #428
+
+Row #429
+
+Row #430
+
+Row #431
+
+Row #432
+
+Row #433
+
+Row #434
+
+Row #435
+
+Row #436
+
+Row #437
+
+Row #438
+
+Row #439
+
+Row #440
+
+Row #441
+
+Row #442
+
+Row #443
+
+Row #444
+
+Row #445
+
+Row #446
+
+Row #447
+
+Row #448
+
+Row #449
+
+Row #450
+
+Row #451
+
+Row #452
+
+Row #453
+
+Row #454
+
+Row #455
+
+Row #456
+
+Row #457
+
+Row #458
+
+Row #459
+
+Row #460
+
+Row #461
+
+Row #462
+
+Row #463
+
+Row #464
+
+Row #465
+
+Row #466
+
+Row #467
+
+Row #468
+
+Row #469
+
+Row #470
+
+Row #471
+
+Row #472
+
+Row #473
+
+Row #474
+
+Row #475
+
+Row #476
+
+Row #477
+
+Row #478
+
+Row #479
+
+Row #480
+
+Row #481
+
+Row #482
+
+Row #483
+
+Row #484
+
+Row #485
+
+Row #486
+
+Row #487
+
+Row #488
+
+Row #489
+
+Row #490
+
+Row #491
+
+Row #492
+
+Row #493
+
+Row #494
+
+Row #495
+
+Row #496
+
+Row #497
+
+Row #498
+
+Row #499
+
+Row #500
+
+Row #501
+
+Row #502
+
+Row #503
+
+Row #504
+
+Row #505
+
+Row #506
+
+Row #507
+
+Row #508
+
+Row #509
+
+Row #510
+
+Row #511
+
+Row #512
+
+Row #513
+
+Row #514
+
+Row #515
+
+Row #516
+
+Row #517
+
+Row #518
+
+Row #519
+
+Row #520
+
+Row #521
+
+Row #522
+
+Row #523
+
+Row #524
+
+Row #525
+
+Row #526
+
+Row #527
+
+Row #528
+
+Row #529
+
+Row #530
+
+Row #531
+
+Row #532
+
+Row #533
+
+Row #534
+
+Row #535
+
+Row #536
+
+Row #537
+
+Row #538
+
+Row #539
+
+Row #540
+
+Row #541
+
+Row #542
+
+Row #543
+
+Row #544
+
+Row #545
+
+Row #546
+
+Row #547
+
+Row #548
+
+Row #549
+
+Row #550
+
+Row #551
+
+Row #552
+
+Row #553
+
+Row #554
+
+Row #555
+
+Row #556
+
+Row #557
+
+Row #558
+
+Row #559
+
+Row #560
+
+Row #561
+
+Row #562
+
+Row #563
+
+Row #564
+
+Row #565
+
+Row #566
+
+Row #567
+
+Row #568
+
+Row #569
+
+Row #570
+
+Row #571
+
+Row #572
+
+Row #573
+
+Row #574
+
+Row #575
+
+Row #576
+
+Row #577
+
+Row #578
+
+Row #579
+
+Row #580
+
+Row #581
+
+Row #582
+
+Row #583
+
+Row #584
+
+Row #585
+
+Row #586
+
+Row #587
+
+Row #588
+
+Row #589
+
+Row #590
+
+Row #591
+
+Row #592
+
+Row #593
+
+Row #594
+
+Row #595
+
+Row #596
+
+Row #597
+
+Row #598
+
+Row #599
+
+Row #600
+
+Row #601
+
+Row #602
+
+Row #603
+
+Row #604
+
+Row #605
+
+Row #606
+
+Row #607
+
+Row #608
+
+Row #609
+
+Row #610
+
+Row #611
+
+Row #612
+
+Row #613
+
+Row #614
+
+Row #615
+
+Row #616
+
+Row #617
+
+Row #618
+
+Row #619
+
+Row #620
+
+Row #621
+
+Row #622
+
+Row #623
+
+Row #624
+
+Row #625
+
+Row #626
+
+Row #627
+
+Row #628
+
+Row #629
+
+Row #630
+
+Row #631
+
+Row #632
+
+Row #633
+
+Row #634
+
+Row #635
+
+Row #636
+
+Row #637
+
+Row #638
+
+Row #639
+
+Row #640
+
+Row #641
+
+Row #642
+
+Row #643
+
+Row #644
+
+Row #645
+
+Row #646
+
+Row #647
+
+Row #648
+
+Row #649
+
+Row #650
+
+Row #651
+
+Row #652
+
+Row #653
+
+Row #654
+
+Row #655
+
+Row #656
+
+Row #657
+
+Row #658
+
+Row #659
+
+Row #660
+
+Row #661
+
+Row #662
+
+Row #663
+
+Row #664
+
+Row #665
+
+Row #666
+
+Row #667
+
+Row #668
+
+Row #669
+
+Row #670
+
+Row #671
+
+Row #672
+
+Row #673
+
+Row #674
+
+Row #675
+
+Row #676
+
+Row #677
+
+Row #678
+
+Row #679
+
+Row #680
+
+Row #681
+
+Row #682
+
+Row #683
+
+Row #684
+
+Row #685
+
+Row #686
+
+Row #687
+
+Row #688
+
+Row #689
+
+Row #690
+
+Row #691
+
+Row #692
+
+Row #693
+
+Row #694
+
+Row #695
+
+Row #696
+
+Row #697
+
+Row #698
+
+Row #699
+
+Row #700
+
+Row #701
+
+Row #702
+
+Row #703
+
+Row #704
+
+Row #705
+
+Row #706
+
+Row #707
+
+Row #708
+
+Row #709
+
+Row #710
+
+Row #711
+
+Row #712
+
+Row #713
+
+Row #714
+
+Row #715
+
+Row #716
+
+Row #717
+
+Row #718
+
+Row #719
+
+Row #720
+
+Row #721
+
+Row #722
+
+Row #723
+
+Row #724
+
+Row #725
+
+Row #726
+
+Row #727
+
+Row #728
+
+Row #729
+
+Row #730
+
+Row #731
+
+Row #732
+
+Row #733
+
+Row #734
+
+Row #735
+
+Row #736
+
+Row #737
+
+Row #738
+
+Row #739
+
+Row #740
+
+Row #741
+
+Row #742
+
+Row #743
+
+Row #744
+
+Row #745
+
+Row #746
+
+Row #747
+
+Row #748
+
+Row #749
+
+Row #750
+
+Row #751
+
+Row #752
+
+Row #753
+
+Row #754
+
+Row #755
+
+Row #756
+
+Row #757
+
+Row #758
+
+Row #759
+
+Row #760
+
+Row #761
+
+Row #762
+
+Row #763
+
+Row #764
+
+Row #765
+
+Row #766
+
+Row #767
+
+Row #768
+
+Row #769
+
+Row #770
+
+Row #771
+
+Row #772
+
+Row #773
+
+Row #774
+
+Row #775
+
+Row #776
+
+Row #777
+
+Row #778
+
+Row #779
+
+Row #780
+
+Row #781
+
+Row #782
+
+Row #783
+
+Row #784
+
+Row #785
+
+Row #786
+
+Row #787
+
+Row #788
+
+Row #789
+
+Row #790
+
+Row #791
+
+Row #792
+
+Row #793
+
+Row #794
+
+Row #795
+
+Row #796
+
+Row #797
+
+Row #798
+
+Row #799
+
+Row #800
+
+Row #801
+
+Row #802
+
+Row #803
+
+Row #804
+
+Row #805
+
+Row #806
+
+Row #807
+
+Row #808
+
+Row #809
+
+Row #810
+
+Row #811
+
+Row #812
+
+Row #813
+
+Row #814
+
+Row #815
+
+Row #816
+
+Row #817
+
+Row #818
+
+Row #819
+
+Row #820
+
+Row #821
+
+Row #822
+
+Row #823
+
+Row #824
+
+Row #825
+
+Row #826
+
+Row #827
+
+Row #828
+
+Row #829
+
+Row #830
+
+Row #831
+
+Row #832
+
+Row #833
+
+Row #834
+
+Row #835
+
+Row #836
+
+Row #837
+
+Row #838
+
+Row #839
+
+Row #840
+
+Row #841
+
+Row #842
+
+Row #843
+
+Row #844
+
+Row #845
+
+Row #846
+
+Row #847
+
+Row #848
+
+Row #849
+
+Row #850
+
+Row #851
+
+Row #852
+
+Row #853
+
+Row #854
+
+Row #855
+
+Row #856
+
+Row #857
+
+Row #858
+
+Row #859
+
+Row #860
+
+Row #861
+
+Row #862
+
+Row #863
+
+Row #864
+
+Row #865
+
+Row #866
+
+Row #867
+
+Row #868
+
+Row #869
+
+Row #870
+
+Row #871
+
+Row #872
+
+Row #873
+
+Row #874
+
+Row #875
+
+Row #876
+
+Row #877
+
+Row #878
+
+Row #879
+
+Row #880
+
+Row #881
+
+Row #882
+
+Row #883
+
+Row #884
+
+Row #885
+
+Row #886
+
+Row #887
+
+Row #888
+
+Row #889
+
+Row #890
+
+Row #891
+
+Row #892
+
+Row #893
+
+Row #894
+
+Row #895
+
+Row #896
+
+Row #897
+
+Row #898
+
+Row #899
+
+Row #900
+
+Row #901
+
+Row #902
+
+Row #903
+
+Row #904
+
+Row #905
+
+Row #906
+
+Row #907
+
+Row #908
+
+Row #909
+
+Row #910
+
+Row #911
+
+Row #912
+
+Row #913
+
+Row #914
+
+Row #915
+
+Row #916
+
+Row #917
+
+Row #918
+
+Row #919
+
+Row #920
+
+Row #921
+
+Row #922
+
+Row #923
+
+Row #924
+
+Row #925
+
+Row #926
+
+Row #927
+
+Row #928
+
+Row #929
+
+Row #930
+
+Row #931
+
+Row #932
+
+Row #933
+
+Row #934
+
+Row #935
+
+Row #936
+
+Row #937
+
+Row #938
+
+Row #939
+
+Row #940
+
+Row #941
+
+Row #942
+
+Row #943
+
+Row #944
+
+Row #945
+
+Row #946
+
+Row #947
+
+Row #948
+
+Row #949
+
+Row #950
+
+Row #951
+
+Row #952
+
+Row #953
+
+Row #954
+
+Row #955
+
+Row #956
+
+Row #957
+
+Row #958
+
+Row #959
+
+Row #960
+
+Row #961
+
+Row #962
+
+Row #963
+
+Row #964
+
+Row #965
+
+Row #966
+
+Row #967
+
+Row #968
+
+Row #969
+
+Row #970
+
+Row #971
+
+Row #972
+
+Row #973
+
+Row #974
+
+Row #975
+
+Row #976
+
+Row #977
+
+Row #978
+
+Row #979
+
+Row #980
+
+Row #981
+
+Row #982
+
+Row #983
+
+Row #984
+
+Row #985
+
+Row #986
+
+Row #987
+
+Row #988
+
+Row #989
+
+Row #990
+
+Row #991
+
+Row #992
+
+Row #993
+
+Row #994
+
+Row #995
+
+Row #996
+
+Row #997
+
+Row #998
+
+Row #999
+
+Multiply by 10
+
+Because every row has a persistent representation to the UI in the form of <p> elements, the program is left with two options for updating the elements: either go through them one by one, or remove them all and recreate them. Both options perform worse as the number of elements grows1.
+
+The equivalent Gio program has just two variables: the integer factor adjusted by the button, and the list object that tracks the scroll position. There is no need for a persistent representation of each row and the list spans a million rows without impacting performance.
+
+type state struct {
+	btn    widget.Clickable
+	factor int
+	list   layout.List
+}
+
+var programState state
+
+func (s *state) layout(gtx layout.Context, th *material.Theme) {
+	for s.btn.Clicked() {
+		s.factor *= 10
+	}
+
+	layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+			const numRows = 1e6 // A million rows.
+			return s.list.Layout(gtx, numRows, func(gtx layout.Context, i int) layout.Dimensions {
+				txt := fmt.Sprintf("Row #%d", i*s.factor)
+				return material.Body1(th, txt).Layout(gtx)
+			})
+		}),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return layout.S.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return material.Button(th, &s.btn, "Multiply by 10").Layout(gtx)
+			})
+		}),
+	)
+}
+
+Run
+User input
+
+Perhaps the most useful effect of state minimization is the elimination of event callbacks. Callbacks are the retained mode answer to the question: given an input event such as a mouse click, where and how should it be delivered? In Gio’s approach filters and unique handler keys replace callbacks for convenient distribution of events among widgets.
+
+The following implementation of a basic checkbox demonstrates low-level input handling:
+
+type checkbox struct {
+	checked bool
+}
+
+var boxes [10]checkbox
+
+func draw(gtx layout.Context) {
+	var children []layout.FlexChild
+	for i := range boxes {
+		box := &boxes[i]
+		children = append(children,
+			layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+				return layout.UniformInset(unit.Dp(10)).Layout(gtx,
+					box.layout,
+				)
+			}),
+		)
+	}
+	layout.Flex{}.Layout(gtx, children...)
+}
+
+func (c *checkbox) layout(gtx layout.Context) layout.Dimensions {
+	const size = 50
+
+	// Process events using the key, c.
+	for _, e := range gtx.Events(c) {
+		if e, ok := e.(pointer.Event); ok {
+			if e.Type == pointer.Press {
+				c.checked = !c.checked
+			}
+		}
+	}
+
+	st := op.Save(gtx.Ops) // Save operation state.
+
+	// Confine input to the area covered by the checkbox.
+	pointer.Rect(image.Rectangle{Max: image.Point{
+		X: size,
+		Y: size,
+	}}).Add(gtx.Ops)
+	// Declare the filter with the key, c.
+	pointer.InputOp{Tag: c, Types: pointer.Press}.Add(gtx.Ops)
+
+	col := color.NRGBA{A: 0xff, R: 0xff} // Red.
+	if c.checked {
+		col = color.NRGBA{A: 0xff, G: 0xff} // Green.
+	}
+
+	// Draw checkbox. Red for unchecked, green for checked.
+	paint.ColorOp{Color: col}.Add(gtx.Ops)
+	clip.Rect{
+		Max: image.Point{
+			X: size,
+			Y: size,
+		},
+	}.Add(gtx.Ops)
+	paint.PaintOp{}.Add(gtx.Ops)
+
+	st.Load() // Restore operation state.
+
+	// Specify layout dimensions.
+	return layout.Dimensions{
+		Size: image.Point{
+			X: size, Y: size,
+		},
+	}
+}
+
+Run
+
+First, notice the simple interface of the checkbox; input handling, drawing and layout are all contained in a single method.
+
+Second, the input protocol. To separate events belonging to different widgets, handler keys that uniquely identify the handlers are used. Keys must be declared in the previous frame, along with any predicates on the input (hit area for pointer input).
+
+Finally, the convenience. The program is free to process events anywhere during the frame, and there is no callback or state to unregister. Key declarations are automatically discarded before the beginning of each frame.
+
+Resources
+Casey Muratori’s presentation
+Dear ImGui C++ library
+Some toolkits such as the Android SDK use list adaptors similar to the function passed to Gio’s List.Layout. However, Android list children must be instantiated and their representations carefully cached and reused to avoid excessive memory allocation during scrolling.
+Sponsoring
+
+I work on open source projects such as Gio, supported by sponsorships. If you find my work useful, please consider sponsoring me.
+
+LINKS
+https://eliasnaur.com/
+https://gioui.org/
+https://eliasnaur.com/include/files/clickcounter/main.go
+https://eliasnaur.com/include/files/bounce/main.go
+https://eliasnaur.com/blog/immediate-mode-gui-programming#fn:1
+https://eliasnaur.com/include/files/list/main.go
+https://eliasnaur.com/include/files/checkbox/main.go
+https://www.youtube.com/watch?v=Z1qyvQsjK5Y
+https://github.com/ocornut/imgui
+https://eliasnaur.com/sponsor
+end https://eliasnaur.com/blog/immediate-mode-gui-programming
+
+FULL TEXT FOR URL https://eliasnaur.com/blog/immediate-mode-gui-programming SAVED TO ./https-eliasnaur-com-blog--iate-mode-gui-programming-a8ff88d.txt

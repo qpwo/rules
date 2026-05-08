@@ -1,0 +1,272 @@
+begin https://www.michaelfogleman.com/projects/go-graphics/begin https://www.michaelfogleman.com/static/wip/projects/fauxgl/begin https://medium.com/%40fogleman/voxel-rendering-techniques-fa8d869457ca
+
+
+Michael Fogleman
+
+Projects • About • Resume • More
+
+Game Frame
+GPS
+Go Graphics February 2016
+
+ 4,684 Go 2D Graphics
+
+Cairo-inspired 2D graphics library written in pure Go.
+
+Go has an excellent set of image packages, but what do you do when you want to render 2D graphics? The golang freetype library implements nice anti-aliased rendering of paths, but is primarily for drawing text. So I built gg on top of it to provide a nice, general purpose 2D graphics API inspired by Cairo.
+
+Features
+Anti-aliased rendering
+Fill and stroke paths
+Draw images and text
+Built-in word wrapping
+Line caps, joins, dashes
+Gradients and patterns
+Transformation matrix
+Push and pop context state
+Clipping regions
+
+Links: GitHub
+
+         
+
+find me elsewhere on the web
+
+LINKS
+https://www.michaelfogleman.com/
+https://www.michaelfogleman.com/projects/
+https://www.michaelfogleman.com/about/
+https://www.michaelfogleman.com/resume/
+https://www.michaelfogleman.com/more/
+https://www.michaelfogleman.com/projects/game-frame/
+https://www.michaelfogleman.com/projects/gps/
+https://github.com/fogleman/gg
+https://www.michaelfogleman.com/projects/tagged/go/
+https://www.michaelfogleman.com/projects/tagged/2d/
+https://www.michaelfogleman.com/projects/tagged/graphics/
+https://www.michaelfogleman.com/static/img/project/go-graphics/1.png?bust=1495842393
+https://www.facebook.com/michael.fogleman
+https://github.com/fogleman
+https://www.instagram.com/michael.fogleman/
+https://www.linkedin.com/in/michael-fogleman-5854341/
+https://medium.com/@fogleman
+https://www.reddit.com/user/FogleMonster/
+https://stackoverflow.com/users/90308/foglebird
+https://twitter.com/FogleBird
+https://www.youtube.com/user/FogleBird
+https://mastodon.social/@fogleman
+
+IMAGES
+https://www.michaelfogleman.com/static/img/project/go-graphics/thumbnail/1.png?bust=1496007705
+end https://www.michaelfogleman.com/projects/go-graphics/
+
+FULL TEXT FOR URL https://www.michaelfogleman.com/projects/go-graphics/ SAVED TO ./https-www-michaelfogleman-com-projects-go-graphics-10d011b.txt
+Get app
+Write
+
+Sign up
+
+Sign in
+
+Voxel Rendering Techniques
+Optimal triangulation & more…
+Michael Fogleman
+Follow
+5 min read
+·
+Feb 4, 2017
+
+460
+
+3
+
+Press enter or click to view image in full size
+
+Suppose we want to render an image like the one shown above. This is a voxel model by @ephtracy (of MagicaVoxel fame) made up of 226,036 voxels. Each voxel has integral X, Y, Z coordinates and a color from a palette.
+
+Naively, we can triangulate all six faces of every voxel cube. That’s 12 triangles per voxel, or 2,712,432 triangles! It works, but seems like an awful lot for such a simple model.
+
+Press enter or click to view image in full size
+Rendering just the triangles, without the nice black lines.
+
+Many of those voxel faces aren’t even visible. We can track which voxel cells are occupied using a 3D array or hash table. Then we only produce triangles for faces which are exposed. That is, they have no neighboring voxel. With this model, that brings the number down to 138,260 triangles, or just 5% of the original!
+
+That’s an easy optimization. But our mesh still looks like this (zoomed in a bit)…
+
+Press enter or click to view image in full size
+Only rendering exposed faces, but still lots of triangles.
+
+That’s a lot of tiny little triangles. We can do better. What we want to do is find large rectangular areas of a like color. The best way to do this is to work in 2D. The first step is to extract faces that are in the same plane and have the same color. Here’s an example, showing the top faces (normal = 0,0,1) of all beige voxels at Z = 6 (the floor).
+
+Press enter or click to view image in full size
+Top faces for beige voxels at Z=6.
+
+Now this looks like a 2D binary grid (0 = no voxel, 1 = voxel). We want to find the largest rectangle (by area) of 1's. This can be done using a dynamic programming algorithm. I used this implementation from Stack Overflow. Once the largest rectangle is identified, those faces are removed and we repeat until all faces in this color-plane are accounted for.
+
+Press enter or click to view image in full size
+Finding the largest rectangular regions.
+
+Of course, each rectangle can then be rendered as two triangles. When we apply this to all 577 color-planes, the entire model uses just 2,966 triangles, or 1,483 rectangular faces, a thousand-fold improvement over the naive approach and just 2% of the visible-faces approach.
+
+Press enter or click to view image in full size
+Press enter or click to view image in full size
+Visualizing the 1483 faces (2966 triangles).
+
+One issue is that the mesh now contains T-junctions which can be problematic. I haven’t had an issue in this particular case, perhaps because everything is axis-aligned, but was still interested in removing the T-junctions after someone pointed it out as a potential issue on Reddit. With a little work, we can remove the junctions. I took two different approaches here. My final approach works like this. Each rectangular face starts with four edges. These edges are first segmented where T-junctions occur. We still have a quad, but these points indicate where we need the triangle vertices to be when we triangulate the quad. I use a recursive solution, repeatedly splitting the polygon into two polygons. The base case of the recursion is when we have 3 points, we can just return a triangle. Otherwise we choose the split that gives us an aspect ratio as close to 1 as possible, to avoid long & skinny triangles. The mesh now contains 4,408 triangles.
+
+Press enter or click to view image in full size
+Press enter or click to view image in full size
+Press enter or click to view image in full size
+1) With T-junctions. 2) First removal attempt. 3) Second and final removal attempt.
+
+I had another idea, which I haven’t really attempted yet. When rectangular-izing each plane, we could have a third value which means the face is hidden. In other words, we don’t care if a rectangle covers that face or not. So, 0=no face, 1=face, 2=don’t care. This could allow us to extend the rectangles into hidden areas if it lets us reduce the total number of rectangles needed. An interesting idea, but maybe not worth pursuing… although it could reduce the mesh size, it would increase load on the rasterizer.
+
+Get Michael Fogleman’s stories in your inbox
+
+Join Medium for free to get updates from this writer.
+
+Subscribe
+
+Remember me for faster sign in
+
+Once I made it this far, I really liked the look of the outlines (they are drawn as thick lines in a separate rendering step), but wanted to only draw the lines at joints. To do that, we need to examine the 12 edges of each voxel and see if they should be drawn based on presence and color of several neighboring voxels. Or do we? Actually, we can do this part with the same 2D color-planes that we are already using. We just generate lines around the perimeter and holes, like this…
+
+Press enter or click to view image in full size
+This shows were we should draw the black outlines.
+
+One minor issue is that this will generate duplicate line segments (exactly 2x, I think), which I haven’t bothered to filter out yet because it doesn’t make much difference.
+
+Putting it all together, we can now render a beautiful voxel model. We’ve mostly been looking at orthographic projections but a perspective projection is shown below. When rendering the black lines, I add in a slight depth buffer bias to avoid z-fighting and make sure the lines show completely.
+
+A perspective projection from another viewpoint.
+
+These images were rendered with FauxGL, a new software renderer I’m writing in Go. I’m doing it mostly for fun and for learning, and I figured some voxel models would make for good test cases.
+
+The code for triangulating and outlining voxels can be found in voxel.go.
+
+Here’s a breakdown of the time spent in each part of the code, for a 1600 px² output with 4x4 supersampling (so actually rendered at 6400 px²)…
+
+loading vox file... 223.133263ms
+generating mesh... 259.45309ms
+226036 voxels
+2966 triangles
+4682 lines
+rendering triangles... 740.274697ms
+rendering lines... 145.852892ms
+downsampling image... 264.575909ms
+writing output... 133.878484ms
+2.058766649s
+
+Thanks for reading! You can follow me on Twitter: @FogleBird
+
+Press enter or click to view image in full size
+Press enter or click to view image in full size
+Press enter or click to view image in full size
+Orthographic view of each axis.
+Programming
+Graphics
+Voxels
+
+460
+
+3
+
+Written by Michael Fogleman
+958 followers
+·
+172 following
+
+Always coding, mostly Python & Go. Computer graphics, 2D & 3D. Art, woodworking, gardening. Space exploration enthusiast. Always busy with side projects. ♥
+
+Follow
+
+Help
+
+Status
+
+About
+
+Careers
+
+Press
+
+Blog
+
+Privacy
+
+Rules
+
+Terms
+
+Text to speech
+
+LINKS
+https://medium.com/sitemap/sitemap.xml
+https://play.google.com/store/apps/details?id=com.medium.reader&referrer=utm_source%3DmobileNavBar&source=post_page---top_nav_layout_nav-----------------------------------------
+https://medium.com/m/signin?operation=login&redirect=https%3A%2F%2Fmedium.com%2F%2540fogleman%2Fvoxel-rendering-techniques-fa8d869457ca&source=post_page---top_nav_layout_nav-----------------------global_nav------------------
+https://medium.com/?source=post_page---top_nav_layout_nav-----------------------------------------
+https://medium.com/m/signin?operation=register&redirect=https%3A%2F%2Fmedium.com%2Fnew-story&source=---top_nav_layout_nav-----------------------new_post_topnav------------------
+https://medium.com/search?source=post_page---top_nav_layout_nav-----------------------------------------
+https://medium.com/@fogleman?source=post_page---byline--fa8d869457ca---------------------------------------
+https://medium.com/m/signin?actionUrl=https%3A%2F%2Fmedium.com%2F_%2Fvote%2Fp%2Ffa8d869457ca&operation=register&redirect=https%3A%2F%2Fmedium.com%2F%40fogleman%2Fvoxel-rendering-techniques-fa8d869457ca&user=Michael+Fogleman&userId=63c1627f6a24&source=---header_actions--fa8d869457ca---------------------clap_footer------------------
+https://medium.com/m/signin?actionUrl=https%3A%2F%2Fmedium.com%2F_%2Fbookmark%2Fp%2Ffa8d869457ca&operation=register&redirect=https%3A%2F%2Fmedium.com%2F%40fogleman%2Fvoxel-rendering-techniques-fa8d869457ca&source=---header_actions--fa8d869457ca---------------------bookmark_footer------------------
+https://medium.com/m/signin?actionUrl=https%3A%2F%2Fmedium.com%2Fplans%3Fdimension%3Dpost_audio_button%26postId%3Dfa8d869457ca&operation=register&redirect=https%3A%2F%2Fmedium.com%2F%2540fogleman%2Fvoxel-rendering-techniques-fa8d869457ca&source=---header_actions--fa8d869457ca---------------------post_audio_button------------------
+https://github.com/ephtracy/voxel-model
+https://twitter.com/ephtracy
+https://ephtracy.github.io/
+http://stackoverflow.com/questions/2478447/find-largest-rectangle-containing-only-zeros-in-an-n%C3%97n-binary-matrix/30418912#30418912
+http://computergraphics.stackexchange.com/questions/1461/why-do-t-junctions-in-meshes-result-in-cracks
+https://www.reddit.com/r/programming/comments/5ses90/voxel_rendering_techniques/ddf4ve5/
+https://en.wikipedia.org/wiki/Z-fighting
+https://github.com/fogleman/fauxgl
+https://github.com/fogleman/fauxgl/blob/master/voxel.go
+https://twitter.com/FogleBird
+https://medium.com/tag/programming?source=post_page-----fa8d869457ca---------------------------------------
+https://medium.com/tag/graphics?source=post_page-----fa8d869457ca---------------------------------------
+https://medium.com/tag/voxels?source=post_page-----fa8d869457ca---------------------------------------
+https://medium.com/m/signin?actionUrl=https%3A%2F%2Fmedium.com%2F_%2Fvote%2Fp%2Ffa8d869457ca&operation=register&redirect=https%3A%2F%2Fmedium.com%2F%40fogleman%2Fvoxel-rendering-techniques-fa8d869457ca&user=Michael+Fogleman&userId=63c1627f6a24&source=---footer_actions--fa8d869457ca---------------------clap_footer------------------
+https://medium.com/m/signin?actionUrl=https%3A%2F%2Fmedium.com%2F_%2Fbookmark%2Fp%2Ffa8d869457ca&operation=register&redirect=https%3A%2F%2Fmedium.com%2F%40fogleman%2Fvoxel-rendering-techniques-fa8d869457ca&source=---footer_actions--fa8d869457ca---------------------bookmark_footer------------------
+https://medium.com/@fogleman?source=post_page---post_author_info--fa8d869457ca---------------------------------------
+https://medium.com/@fogleman/followers?source=post_page---post_author_info--fa8d869457ca---------------------------------------
+https://medium.com/@fogleman/following?source=post_page---post_author_info--fa8d869457ca---------------------------------------
+https://help.medium.com/hc/en-us?source=post_page-----fa8d869457ca---------------------------------------
+https://status.medium.com/?source=post_page-----fa8d869457ca---------------------------------------
+https://medium.com/about?autoplay=1&source=post_page-----fa8d869457ca---------------------------------------
+https://medium.com/jobs-at-medium/work-at-medium-959d1a85284e?source=post_page-----fa8d869457ca---------------------------------------
+https://blog.medium.com/?source=post_page-----fa8d869457ca---------------------------------------
+https://policy.medium.com/medium-privacy-policy-f03bf92035c9?source=post_page-----fa8d869457ca---------------------------------------
+https://policy.medium.com/medium-rules-30e5502c4eb4?source=post_page-----fa8d869457ca---------------------------------------
+https://policy.medium.com/medium-terms-of-service-9db0094a1e0f?source=post_page-----fa8d869457ca---------------------------------------
+https://speechify.com/medium?source=post_page-----fa8d869457ca---------------------------------------
+
+IMAGES
+https://miro.medium.com/v2/resize:fill:32:32/1*dmbNkD5D-u45r44go_cf0g.png
+https://miro.medium.com/v2/resize:fill:32:32/1*5tnxfrcnEL3S8-PFcNsS4A.jpeg
+https://miro.medium.com/v2/resize:fit:1100/format:webp/1*ubPTmL3aBFOKdl_C9ZeY-g.png
+https://miro.medium.com/v2/resize:fit:700/1*KK5U6XYSAZLhcmS23lcRwA.png
+https://miro.medium.com/v2/resize:fit:700/1*fSvSAr3qZOrrl8zLjykEjQ.png
+https://miro.medium.com/v2/resize:fit:700/1*G1K9Xtt_MLXHoTubu50GXA.png
+https://miro.medium.com/v2/resize:fit:700/1*ZYtLTl_0MI16IjGwx6sy8A.png
+https://miro.medium.com/v2/resize:fit:1600/1*uVpesDXGC0Y7L0IDEGOWoA.png
+https://miro.medium.com/v2/resize:fit:1600/1*BFWDxQHZpkOu2VU-3zrItw.png
+https://miro.medium.com/v2/resize:fit:1600/1*DuHL9AHqDwDrq1nKJVD-0A.png
+https://miro.medium.com/v2/resize:fit:1600/1*xrrb5m8AEKwqBZGioAM7sw.png
+https://miro.medium.com/v2/resize:fit:1600/1*SrcqPxu_zFGK6-pqtSd3vA.png
+https://miro.medium.com/v2/resize:fit:700/1*sFBZeLxBsIYbFiMeUJV40Q.png
+https://miro.medium.com/v2/resize:fit:2560/1*gB1CUfQhrlERn2xpPc_0uQ.png
+https://miro.medium.com/v2/resize:fit:1600/1*dIL-fXiIJXRLQYexD5LIRQ.png
+https://miro.medium.com/v2/resize:fit:1600/1*-9k99HKD_iAxALA_as0dPQ.png
+https://miro.medium.com/v2/resize:fit:1600/1*E4SkP5Q8diSqWWrQM_iA5Q.png
+https://miro.medium.com/v2/resize:fill:48:48/1*5tnxfrcnEL3S8-PFcNsS4A.jpeg
+https://miro.medium.com/v2/resize:fill:64:64/1*5tnxfrcnEL3S8-PFcNsS4A.jpeg
+end https://medium.com/%40fogleman/voxel-rendering-techniques-fa8d869457ca
+
+FULL TEXT FOR URL https://medium.com/%40fogleman/voxel-rendering-techniques-fa8d869457ca SAVED TO ./https-medium-com-40foglem-g-techniques-fa8d869457ca-26f1ec4.txt
+goto err: Page.goto: Timeout 8000ms exceeded.
+Call log:
+  - navigating to "https://www.michaelfogleman.com/static/wip/projects/fauxgl/", waiting until "domcontentloaded"
+
+
+end https://www.michaelfogleman.com/static/wip/projects/fauxgl/
+
+FULL TEXT FOR URL https://www.michaelfogleman.com/static/wip/projects/fauxgl/ SAVED TO ./https-www-michaelfogleman-tatic-wip-projects-fauxgl-cffc1ae.txt
