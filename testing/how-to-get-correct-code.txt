@@ -1,0 +1,552 @@
+HOW TO GET CORRECT CODE (IDIOTPROOF, VERIFICATION-FIRST)
+========================================================
+
+If you want correct code from an LLM (or a human), stop thinking "prompt".
+Think "search":
+
+  - Generator proposes code (LLM, Copilot, you, whatever).
+  - Verifier executes checks (compiler, tests, fuzz, sanitizers, benchmarks).
+  - Only verifier output is truth.
+  - Repeat until the verifier says "yes".
+
+If you do not have a strong verifier, you are gambling. Period.
+
+This doc generalizes the "Unvibe" idea (tests as reward function) to:
+  - Go
+  - C/C++
+  - Python
+  - JS/TS
+  - JSX/TSX (React-ish UI)
+  - CUDA
+
+------------------------------------------------------------------------------
+0) THE ONLY REAL DEFINITION OF "CORRECT"
+------------------------------------------------------------------------------
+
+You need a definition you can run automatically.
+
+Sufficient condition (the only one you can enforce):
+  Code is correct <=> code passes a verifier that is sound and complete for your spec.
+
+Reality check:
+  Your verifier is rarely complete, sometimes not sound, and often flaky.
+  So the actual job is: make the verifier strong enough that "passes" means
+  "good enough for production", including performance and safety.
+
+This is why people get burned:
+  - They accept "it compiles" as correctness.
+  - Or they accept "unit tests passed" with weak tests.
+  - Or they ignore UB/data races.
+  - Or they never test perf, then ship O(n^2) and wonder why prod dies.
+
+------------------------------------------------------------------------------
+1) WHAT GOES WRONG (THE GOTCHAS YOU ARE AVOIDING)
+------------------------------------------------------------------------------
+
+LLM-specific failure modes:
+  - Hallucinated APIs that compile in one place, fail in yours.
+  - Off-by-one / edge cases (empty, 1 element, max int, NaN, unicode).
+  - "Cheating" to pass tests (hardcode outputs, read test file, use global state).
+  - Overfitting to examples (passes given cases, fails real distribution).
+  - Silent error swallowing (catch-all exceptions, return defaults).
+  - Accidental algorithmic regression (passes but 100x slower).
+  - Nondeterminism (randomness, time, concurrency) -> flaky tests -> fake confidence.
+  - Undefined behavior (C/C++), data races (Go/C++), OOB (CUDA), uninitialized reads.
+
+Verifier-specific failure modes (your fault):
+  - Tests are missing: you never specified behavior, so you cannot enforce it.
+  - Oracles are wrong: tests encode the wrong spec.
+  - Tests are nondeterministic: intermittent pass/fail trains you to ignore failures.
+  - Tests are too slow: you stop running them, then correctness decays.
+  - Error output is useless: you waste hours debugging "AssertionError".
+  - No negative tests: code "works" until the first bad input in production.
+  - No stress: code fails under load, large inputs, or concurrency.
+
+Performance gotchas:
+  - Microbenchmarks lie (warmup, CPU freq scaling, GC noise, cache effects).
+  - "Fast on small inputs" is meaningless; big-O dominates.
+  - GPU perf: sync points, transfers, wrong launch config, divergent branches.
+
+------------------------------------------------------------------------------
+2) BUILD A VERIFIER THAT IS HARD TO FOOL
+------------------------------------------------------------------------------
+
+A verifier is a pipeline. Example structure:
+
+  1) Format (optional but helps diffs)
+  2) Compile / typecheck
+  3) Lint / static analysis
+  4) Unit tests
+  5) Property tests / fuzz
+  6) Sanitizers / race detectors (where applicable)
+  7) Benchmarks / performance budgets
+  8) Optional: differential tests vs reference, multi-platform runs
+
+DO:
+  - Make it one command to run the whole thing.
+  - Fail fast on the first clear signal (compile/type errors).
+  - Record full logs (verbatim) for LLM feedback.
+  - Cache results when iterating (avoid paying twice).
+
+DO NOT:
+  - "Temporarily" disable a failing check to ship. That is how rot starts.
+  - Accept "mostly passes" unless your spec explicitly allows approximation.
+
+------------------------------------------------------------------------------
+3) UNIT TESTS THAT ACTUALLY SPECIFY BEHAVIOR
+------------------------------------------------------------------------------
+
+Minimum test categories you want (in priority order):
+
+A) Examples (the obvious behavior)
+  - Basic happy paths.
+  - Exact outputs (not just "not None").
+
+B) Edge cases (the ones that always bite)
+  - empty input
+  - single element
+  - min/max sizes
+  - negative / zero
+  - overflow boundaries
+  - NaN, +/-Inf, -0.0 (floating point)
+  - unicode / invalid bytes (if parsing)
+  - very large inputs (size-based behavior)
+
+C) Negative tests (what must fail, and how)
+  - invalid arguments -> specific error type, message pattern if stable
+  - cancellation / timeouts
+  - resource limits (max output length, max recursion)
+
+D) Invariants (properties that must always hold)
+  - length preserved
+  - sorted output
+  - monotonicity
+  - roundtrip encode/decode
+  - determinism (same input -> same output)
+
+E) Differential tests (when possible)
+  - compare to a known-good reference implementation, even if slower
+  - compare to a library or a brute-force implementation for small sizes
+
+F) Metamorphic tests (anti-overfit)
+  - transform input -> predictable transform of output
+  - e.g. permuting items doesn't change multiset, scaling units scales result
+
+Anti-cheat note:
+  If your tests only use fixed literal inputs, a dumb hardcoded solution can pass.
+  Add generated/random cases and invariants.
+
+------------------------------------------------------------------------------
+4) MAKE FAILURES MAXIMALLY INFORMATIVE
+------------------------------------------------------------------------------
+
+The LLM (and you) needs actionable failures.
+
+Bad:
+  assert x == y
+
+Good:
+  if got != want:
+      fail("foo(%r)=%r want %r; context=%r", in, got, want, extra)
+
+Always include:
+  - the input that failed
+  - the observed output
+  - the expected output
+  - any relevant intermediate state
+  - tolerances (for floats)
+
+------------------------------------------------------------------------------
+5) MAKE TESTS DETERMINISTIC (OR YOU ARE WASTING YOUR LIFE)
+------------------------------------------------------------------------------
+
+Rules:
+  - Freeze randomness: set seeds or use deterministic generators.
+  - Freeze time: inject clock or mock time.
+  - Control locale/timezone: tests should not depend on machine settings.
+  - Avoid sleep-based tests. Wait on conditions. Poll with timeouts.
+  - Avoid order dependence: set iteration order explicitly when needed.
+  - Avoid network: run a local stub server or test pure logic.
+
+Flaky test policy:
+  If a test flakes, it is failing. Fix it or delete it (and replace with a
+  deterministic test for the same behavior). Do not ignore flakes.
+
+------------------------------------------------------------------------------
+6) SANDBOX GENERATED CODE (ASSUME IT IS MALICIOUS)
+------------------------------------------------------------------------------
+
+LLM-generated code can:
+  - delete files
+  - exfiltrate secrets (env vars, ~/.ssh)
+  - forkbomb your box
+  - open sockets
+
+Minimum isolation:
+  - run in a container or restricted user
+  - read-only filesystem where possible
+  - no network by default
+  - limited CPU/memory
+  - timeouts on each test run
+
+Also harden your tests:
+  - assert no unexpected file writes
+  - assert no network calls (or run with no network)
+
+------------------------------------------------------------------------------
+7) THE SEARCH LOOP (PRACTICAL, LANGUAGE-AGNOSTIC)
+------------------------------------------------------------------------------
+
+This is the core "Unvibe" idea without needing a specific library:
+
+Step 1: Write/extend verifier so it encodes what you actually want.
+Step 2: Run verifier; confirm it fails (red).
+Step 3: Generate N candidate implementations (diverse).
+Step 4: Evaluate each candidate with the verifier.
+Step 5: Keep the best-scoring candidate(s).
+Step 6: Feed back REAL failure output verbatim.
+Step 7: Iterate until score == 100% and no safety/perf failures.
+
+Scoring (useful when you have partial passes):
+  - compilation/typecheck pass is a prerequisite
+  - then count assertions passed / total assertions
+  - penalize sanitizer findings, race detections, timeouts, perf budget failures
+
+Key practical rule:
+  Always fix the FIRST failing assertion or first failing check. Do not chase
+  secondary failures until the earlier one is fixed (otherwise you thrash).
+
+After it passes:
+  - add the new failing cases you discovered as regression tests
+  - refactor for clarity
+  - run longer fuzz/bench tiers
+
+------------------------------------------------------------------------------
+8) PERFORMANCE IS A SPEC (SO VERIFY IT)
+------------------------------------------------------------------------------
+
+If you care about performance, you must encode it.
+
+Types of performance verification:
+
+A) Complexity tests (cheap, powerful)
+  - run on sizes n, 2n, 4n
+  - assert runtime grows roughly as expected (not exact)
+  - catch accidental O(n^2) vs O(n log n)
+
+B) Allocation budgets
+  - assert max allocations per call (Go: -benchmem, JS: heap snapshots, etc.)
+
+C) Throughput/latency budgets
+  - benchmark representative workloads
+  - fail on big regressions relative to a baseline
+
+Benchmark gotchas:
+  - warm up
+  - pin CPU frequency if possible
+  - isolate machine load
+  - avoid measuring I/O unless that is the point
+  - measure distributions, not just one number
+
+------------------------------------------------------------------------------
+9) LANGUAGE-SPECIFIC "MINIMUM VIABLE VERIFIER" (COMMANDS + GOTCHAS)
+------------------------------------------------------------------------------
+
+GO
+--
+Minimum gate:
+  go test ./... -count=1
+  go test -race ./... -count=1
+  go vet ./...
+  staticcheck ./...            (or golangci-lint run)
+
+Fuzz (built in):
+  go test ./... -fuzz=Fuzz -fuzztime=10s
+
+Perf:
+  go test -bench=. -benchmem ./...
+
+Common Go gotchas to test:
+  - nil slice vs empty slice (len==0 but JSON differs sometimes)
+  - map iteration order is randomized
+  - typed nil interfaces (var r *T = nil; var i I = r; i != nil)
+  - data races in tests that "usually pass"
+  - time.Now() usage in core logic (inject clock)
+
+GO test snippet (table test):
+  package foo
+
+  import "testing"
+
+  func TestParse(t *testing.T) {
+      tests := []struct{
+          name string
+          in   string
+          want int
+          ok   bool
+      }{
+          {"empty", "", 0, false},
+          {"one", "1", 1, true},
+      }
+      for _, tt := range tests {
+          t.Run(tt.name, func(t *testing.T) {
+              got, err := Parse(tt.in)
+              if tt.ok && err != nil {
+                  t.Fatalf("Parse(%q) unexpected err: %v", tt.in, err)
+              }
+              if !tt.ok && err == nil {
+                  t.Fatalf("Parse(%q) expected error", tt.in)
+              }
+              if tt.ok && got != tt.want {
+                  t.Fatalf("Parse(%q)=%d want %d", tt.in, got, tt.want)
+              }
+          })
+      }
+  }
+
+GO fuzz snippet:
+  func FuzzParse(f *testing.F) {
+      f.Add("1")
+      f.Add("")
+      f.Fuzz(func(t *testing.T, s string) {
+          got, err := Parse(s)
+          if err == nil {
+              _ = got
+          }
+      })
+  }
+
+C / C++
+-------
+Minimum gate (debug + warnings + sanitizers):
+  cc -std=c11 -O1 -g -Wall -Wextra -Werror \
+     -fsanitize=address,undefined -fno-omit-frame-pointer \
+     test.c && ./a.out
+
+Threads:
+  cc ... -fsanitize=thread
+
+Common C/C++ gotchas to test:
+  - integer overflow/underflow (define expected behavior)
+  - signed/unsigned mixing
+  - lifetime bugs (use-after-free, stack addresses)
+  - uninitialized reads
+  - buffer overflows
+  - UB that "works on my machine"
+  - locale-dependent parsing
+
+Minimal C test harness snippet:
+  #include <assert.h>
+  #include <stdio.h>
+
+  int add(int a, int b);
+
+  int main(void) {
+      assert(add(1, 2) == 3);
+      assert(add(-1, 1) == 0);
+      printf("ok\n");
+      return 0;
+  }
+
+Property-ish C snippet (cheap randomized):
+  #include <stdlib.h>
+
+  static unsigned rng = 1;
+  static unsigned rnd(void) {
+      rng = rng * 1103515245u + 12345u;
+      return rng;
+  }
+
+  for (int i = 0; i < 100000; i++) {
+      int a = (int)(rnd() % 1000) - 500;
+      int b = (int)(rnd() % 1000) - 500;
+      assert(add(a, b) == add(b, a));   // commutative
+  }
+
+PYTHON
+------
+Minimum gate:
+  python -m pytest -q
+  ruff check .
+  python -m pyright          (or mypy)
+
+Property tests:
+  hypothesis (recommended when correctness matters)
+
+Common Python gotchas to test:
+  - mutable default args
+  - int vs float behavior
+  - recursion depth
+  - timezone/locale issues
+  - accidental global state between tests
+
+pytest snippet:
+  import pytest
+
+  def test_parse_empty():
+      with pytest.raises(ValueError):
+          parse("")
+
+  @pytest.mark.parametrize("s,want", [
+      ("1", 1),
+      ("2", 2),
+  ])
+  def test_parse_numbers(s, want):
+      assert parse(s) == want
+
+hypothesis snippet:
+  from hypothesis import given, strategies as st
+
+  @given(st.integers(), st.integers())
+  def test_add_commutative(a, b):
+      assert add(a, b) == add(b, a)
+
+JS / TS
+-------
+Minimum gate:
+  npm test                    (or pnpm/yarn)
+  npm run lint
+  npm run typecheck           (tsc --noEmit --strict)
+
+Node built-in test runner snippet (JS):
+  import test from "node:test";
+  import assert from "node:assert/strict";
+
+  test("add", () => {
+      assert.equal(add(1, 2), 3);
+  });
+
+TS strictness matters:
+  - turn on strict
+  - noImplicitAny
+  - exactOptionalPropertyTypes if you can handle it
+
+Common JS/TS gotchas to test:
+  - undefined vs null
+  - NaN comparisons (NaN !== NaN)
+  - -0 and +0
+  - async ordering (promises)
+  - timezone-dependent date parsing
+  - JSON parsing: validate shapes, do not assume
+
+Example "typecheck" script:
+  // package.json
+  // "typecheck": "tsc --noEmit"
+
+JS anti-cheat idea:
+  - randomize some tests so hardcoding is painful
+  - assert no fs/network usage in pure functions (or run with sandbox)
+
+JSX / TSX (UI)
+--------------
+Minimum gate:
+  - component tests that assert behavior, not snapshots only
+  - typecheck (tsc)
+  - lint (eslint)
+  - accessibility smoke (roles, labels)
+
+React gotchas:
+  - StrictMode double-invokes some lifecycle behavior in dev
+  - effect cleanup ordering
+  - stale closures in hooks
+  - rerender storms (perf)
+  - async UI tests need deterministic waits
+
+Testing-library snippet:
+  import {render, screen} from "@testing-library/react";
+  import userEvent from "@testing-library/user-event";
+
+  test("search filters", async () => {
+      render(<SearchBox items={["a", "bb"]} />);
+      await userEvent.type(screen.getByRole("textbox"), "b");
+      expect(screen.getByText("bb")).toBeInTheDocument();
+      expect(screen.queryByText("a")).toBeNull();
+  });
+
+CUDA
+----
+Correctness strategy:
+  - write a CPU reference implementation
+  - compare GPU output vs CPU for many random small cases
+  - add edge sizes: 0, 1, blockDim-1, blockDim, blockDim+1, huge
+  - run compute-sanitizer to catch OOB and races
+
+Minimum gate (conceptual):
+  nvcc -O2 -g your_test.cu -o test && ./test
+  compute-sanitizer --tool memcheck ./test
+  compute-sanitizer --tool racecheck ./test
+
+CUDA gotchas:
+  - kernel launch failures ignored unless you check cudaGetLastError
+  - missing cudaDeviceSynchronize hides async errors
+  - out-of-bounds indexing
+  - uninitialized shared memory
+  - non-deterministic reduction order (floating error)
+  - host/device transfer mistakes (size, alignment)
+
+CUDA test skeleton snippet (very rough):
+  // after kernel launch:
+  cudaError_t e1 = cudaGetLastError();
+  if (e1 != cudaSuccess) { printf("kernel launch err: %s\n", cudaGetErrorString(e1)); exit(1); }
+  cudaError_t e2 = cudaDeviceSynchronize();
+  if (e2 != cudaSuccess) { printf("kernel exec err: %s\n", cudaGetErrorString(e2)); exit(1); }
+
+  // compare vs CPU:
+  for (int i = 0; i < n; i++) {
+      float dg = gpu[i];
+      float dc = cpu[i];
+      if (fabsf(dg - dc) > 1e-4f) { printf("mismatch i=%d gpu=%f cpu=%f\n", i, dg, dc); exit(1); }
+  }
+
+------------------------------------------------------------------------------
+10) "DEFINITION OF DONE" CHECKLIST (DO NOT ARGUE WITH IT)
+------------------------------------------------------------------------------
+
+Correctness:
+  [ ] compiles / typechecks cleanly (no warnings you are ignoring)
+  [ ] unit tests pass
+  [ ] negative tests pass (errors are correct)
+  [ ] invariants/properties pass
+  [ ] fuzz smoke passes (at least short runs)
+  [ ] no sanitizer findings / no race detector findings
+
+Performance (if required):
+  [ ] benchmark passes budgets on a stable runner
+  [ ] no obvious algorithmic regression (size scaling sanity checked)
+  [ ] allocations within budget
+
+Safety:
+  [ ] no unexpected filesystem/network side effects
+  [ ] deterministic behavior where required
+  [ ] errors are not swallowed; full errors are surfaced
+
+Maintainability:
+  [ ] code is minimal and readable
+  [ ] invariants are documented (in tests and/or comments)
+  [ ] new discovered edge cases are regression tests
+
+------------------------------------------------------------------------------
+11) WHEN YOU GET STUCK (TYPICAL ROOT CAUSES)
+------------------------------------------------------------------------------
+
+1) The spec is missing.
+   Fix: add tests until you can clearly say what should happen.
+
+2) The tests are wrong.
+   Fix: write the simplest correct reference implementation, compare, and decide.
+
+3) The tests are flaky.
+   Fix: remove nondeterminism. No sleeps. Freeze time and randomness.
+
+4) The LLM keeps looping.
+   Fix:
+     - shrink the task (one function at a time)
+     - reduce context noise (only relevant files)
+     - make failure messages more specific
+     - add a reference implementation for differential tests
+
+5) It passes but is slow.
+   Fix: add perf tests, add scaling tests, and require budgets.
+
+Final rule:
+  If it is not verified, it is not correct.
