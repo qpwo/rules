@@ -1,0 +1,39 @@
+dahl.txt: lines 1-1:
+begin https://docs.deno.com/examples/what_is_deno/
+
+dahl.txt: lines 220-220:
+What is Deno?
+
+dahl.txt: lines 227-227:
+A short introduction to Deno and its history
+
+dahl.txt: lines 229-229:
+Transcript and code 
+
+dahl.txt: lines 233-245:
+Deno is an open source runtime for JavaScript, TypeScript, and WebAssembly projects that's built on V8 and Rust. It's modern, it's fast, it's flexible, and it's secure by default.
+
+Deno was created by Ryan Dahl, the creator of Node.js, and in 2018, he gave a famous talk at JSConf EU about regrets that he had about Node. And Deno provides solutions to all of them.
+
+With the hindsight of someone who's been there, Deno gives us a runtime that's thought a lot about the details. Details like TypeScript support by default. You can run or import TypeScript without installing anything more than the Deno CLI. Deno has a built-in TypeScript compiler, so it'll just run your TypeScript code without any extra configuration.
+
+Details like linting, formatting, and testing. Deno is an all-in-one toolchain that you can use to get started with your project without having to use all of your finite time on earth having to configure it. Details like web standards. Deno is built on web standards that you might recognize, like Fetch and WebSockets.
+
+You don't have to learn anything new to use them. If you've used them in the browser, you're ready to use them in Deno. Deno is secure by default. You have to specifically enable permissions for sensitive APIs like the network, the file system, environment access. Deno has you opt into these permissions like you would to opt into geolocation in the browser.
+
+In this course, we're going to walk through the most important features of Deno with hands-on activities. Whether you've experimented with Deno in the past, or this is all new to you, I think you're going to like it here.
+
+Find more videos in the Examples page and on our YouTube channel.
+
+dahl.txt: lines 282-282:
+Copyright © 2026 the Deno authors.
+
+dahl.txt: lines 492-492:
+https://github.com/denoland/docs/edit/main/examples/videos/what_is_deno.md
+
+dahl.txt: lines 514-514:
+end https://docs.deno.com/examples/what_is_deno/
+
+dahl.txt: lines 516-516:
+FULL TEXT FOR URL https://docs.deno.com/examples/what_is_deno/ SAVED TO ./https-docs-deno-com-examples-what-is-deno-4328ce6.txt
+

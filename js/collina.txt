@@ -1,0 +1,115 @@
+collina.txt: lines 1-3:
+begin https://nodeland.dev/
+OPEN SOURCE DEVELOPER
+Hi Folks, I'm Matteo Collina
+
+collina.txt: lines 5-6:
+CTO of Platformatic — Building the future of Node.js. Creator of Fastify, Pino, and a prolific open source author with 42+ billion annual downloads.
+
+
+collina.txt: lines 12-49:
+01 — OPEN SOURCE
+Node.js
+
+Chair of the Technical Steering Committee. Core focus on streams, diagnostics, and HTTP.
+
+Fastify
+
+The fastest Node.js web framework. High performance, low overhead, extensible.
+
+Pino
+
+Super fast JSON logger for Node.js. 5x faster than alternatives.
+
+Watt
+
+Platformatic's Node.js application server. Run multiple apps that are centrally managed with virtual mesh networking, fast logging, and built-in monitoring.
+
+fast-json-stringify
+
+2x-10x faster than JSON.stringify for specific schemas.
+
+Mercurius
+
+GraphQL adapter for Fastify. Build type-safe APIs with ease.
+
+Avvio
+
+Plugin system for Fastify. Asynchronous bootstrapping made easy.
+
+GitHuman
+
+A more humane way to work with Git. Simplified workflows for developers.
+
+02 — NEWSLETTER
+Adventures in Nodeland
+
+Weekly insights on Node.js, open source, and building the future of web development.
+
+
+collina.txt: lines 51-66:
+03 — BIOGRAPHY
+For Event Organizers
+
+Matteo is the Co-Founder and CTO of Platformatic.dev with the goal to remove all friction from backend development.
+
+He is also a prolific Open Source author in the JavaScript ecosystem and modules he maintains are downloaded more than 17 billion times a year.
+
+Previously he was Chief Software Architect at NearForm, the best professional services company in the JavaScript ecosystem. In 2014, he defended his Ph.D. thesis titled "Application Platforms for the Internet of Things".
+
+Matteo is a member of the Node.js Technical Steering Committee focusing on streams, diagnostics and http.
+
+He is also the author of the fast logger Pino and of the Fastify web framework.
+
+Matteo is a renowned international speaker after more than 60 conferences, including OpenJS World, Node.js Interactive, NodeConf.eu, NodeSummit, JSConf.Asia, WebRebels, and JsDay just to name a few. He is also co-author of the book "Accelerating Server-Side Development with Fastify" edited by Packt.
+
+In the summer he loves sailing the Sirocco.
+
+collina.txt: lines 68-81:
+Download high-resolution photo →
+04 — FEATURED TALKS
+Node.js: More Threads Than You Think
+
+Code Europe 2025 • Krakow, Poland • September 2025
+
+Is Node.js really single-threaded? The answer has changed. Node.js was announced in 2009 as a single-threaded JavaScript runtime. In 2018, it became multi-threaded, and no one noticed. Learn how to leverage multi-threading to build faster, more scalable applications with worker_threads.
+
+The Alleged 'End' of Node.js is Much Ado About Nothing
+
+CityJS London 2024 • London, United Kingdom • April 2024
+
+Despite the exaggerated claims about its decline, Node.js is thriving. Its continued evolution pushes the boundaries of what the modern web can do. We'll start by debunking myths about Node.js, showcasing its recent enhancements and robust performance in the tech landscape. The focus then shifts to ...
+
+
+collina.txt: lines 83-90:
+Do not thrash the Node.js Event Loop
+
+CityJS Athens 2023 • Athens, Greece • May 2023
+
+Deploying Node.js at scale is an art mastered by few. The most common problem is an exhaustion of resources that allows the application to denial of service itself. The result is Node.js systems that are massively overprovisioned, wasting enormous amounts of computing and memory - keeping most of th...
+
+Read more
+View all talks →
+
+collina.txt: lines 97-100:
+https://adventures.nodeland.dev/
+https://github.com/mcollina
+https://twitter.com/matteocollina
+https://bsky.app/profile/nodeland.dev
+
+collina.txt: lines 105-106:
+https://www.npmjs.com/package/wattpm
+https://github.com/mcollina/fast-json-stringify
+
+collina.txt: lines 116-125:
+https://www.youtube.com/watch?v=r5PIqYyRiAg
+https://www.youtube.com/watch?v=-1sMOIgcIo0
+https://www.youtube.com/watch?v=81AqwvXqgG0
+https://nodeland.dev/talks.html
+
+IMAGES
+https://nodeland.dev/profile.jpg
+end https://nodeland.dev/
+
+FULL TEXT FOR URL https://nodeland.dev/ SAVED TO ./https-nodeland-dev-3b4e1e9.txt
+

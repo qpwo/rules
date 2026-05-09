@@ -1,0 +1,64 @@
+lysenko.txt: lines 13-13:
+	mikolalysenko
+
+lysenko.txt: lines 22-38:
+	mikolalysenko	
+Follow
+Mikola Lysenko
+mikolalysenko
+Follow
+0fps.net
+ 2.9k followers · 667 following
+Michigan
+http://0fps.net
+Achievements
+x4
+x4
+x4
+Highlights
+Developer Program Member
+Organizations
+      
+
+lysenko.txt: lines 42-78:
+ regl-project/regl Public
+
+👑 Functional WebGL
+
+ JavaScript  5.5k  326
+
+ glslify/glslify Public
+
+A node.js-style module system for GLSL! ✨
+
+ JavaScript  2.3k  85
+
+ stackgl/headless-gl Public
+
+Forked from mikeseven/node-webgl
+
+🎃 Windowless WebGL for node.js
+
+ C  1.9k  184
+
+ scijs/ndarray Public
+
+📈 Multidimensional arrays for JavaScript
+
+ JavaScript  1.2k  57
+
+ l1-path-finder Public
+
+🗺 Fast path planning for 2D grids
+
+ JavaScript  510  50
+
+ box-intersect Public
+
+📦 Any dimensional box intersection
+
+ JavaScript  287  28
+
+lysenko.txt: lines 81-81:
+© 2026 GitHub, Inc.
+

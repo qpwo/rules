@@ -1,0 +1,224 @@
+cabello.txt: lines 17-17:
+Three.js
+
+cabello.txt: lines 38-51:
+Three.js
+
+Original author	Ricardo Cabello (Mr.doob)
+Developer	Three.js Authors[1]
+Initial release	April 24, 2010; 16 years ago[2]
+Stable release	
+184[3]  / 16 April 2026; 21 days ago
+
+Written in	JavaScript, GLSL
+Type	JavaScript library
+License	MIT[1]
+Website	threejs.org
+Repository	
+github.com/mrdoob/three.js 
+
+cabello.txt: lines 53-120:
+Three.js is a cross-browser JavaScript library and application programming interface (API) used to create and display animated 3D computer graphics in a web browser using WebGL. The source code is hosted in a repository on GitHub.[4]
+
+Overview[edit]
+
+Three.js allows the creation of graphical processing unit (GPU)-accelerated 3D animations using the JavaScript language as part of a website without relying on proprietary browser plugins.[5][6] This is possible due to the advent of WebGL,[7] a low-level graphics API created specifically for the web.[8]
+
+High-level libraries such as Three.js, Babylon.js, Verge3D and many more make it possible to author complex 3D computer animations for display in the browser without the effort required for a traditional standalone application or a plugin.[9]
+
+History[edit]
+
+Three.js was first released by Ricardo Cabello on GitHub in April 2010.[2] The origins of the library can be traced back to his involvement with the demoscene in the early 2000s.[10] The code was originally developed in the ActionScript language used by Adobe Flash, later being ported to JavaScript in 2009. In Cabello's mind, there were two strong points that justified the shift away from ActionScript: Firstly, JavaScript provided greater platform independence. Secondly, applications written in JavaScript would not need to be compiled by the developer beforehand, unlike Flash applications.
+
+Additional contributions by Cabello include API design, CanvasRenderer, SVGRenderer, and being responsible for merging the commits by the various contributors into the project.
+
+With the advent of WebGL, Paul Brunt was able to implement the new rendering technology quite easily as Three.js was designed with the rendering code as a module rather than in the core itself.[11] Branislav Uličný, an early contributor, started with Three.js in 2010 after having posted a number of WebGL demos on his own site. He wanted WebGL renderer capabilities in Three.js to exceed those of CanvasRenderer or SVGRenderer.[11] His major contributions generally involve materials, shaders, and post-processing.
+
+Soon after the introduction of WebGL 1.0 on Firefox 4 in March 2011, Joshua Koo came on board. He built his first Three.js demo for 3D text in September 2011.[11] His contributions frequently relate to geometry generation.
+
+Starting from version 118, Three.js uses WebGL 2.0 by default.[12]
+
+Three.js has over 2000 contributors on GitHub.[13]
+
+Features[edit]
+
+Three.js includes the following features:[14]
+
+Effects: Anaglyph, cross-eyed, and parallax barrier.
+Scenes: add and remove objects at run-time; fog
+Cameras: perspective and orthographic; controllers: trackball, FPS, path and more
+Animation: armatures, forward kinematics, inverse kinematics, morph, and keyframe
+Lights: ambient, direction, point, and spot lights; shadows: cast and receive
+Materials: Lambert, Phong, smooth shading, textures, and more
+Shaders: access to full OpenGL Shading Language (GLSL) capabilities: lens flare, depth pass, and extensive post-processing library
+Objects: meshes, particles, sprites, lines, ribbons, bones, and more - all with Level of detail
+Geometry: plane, cube, sphere, torus, 3D text, and more; modifiers: lathe, extrude, and tube
+Import/export: native serialization/deserialization via JSON, glTF, OBJ, USDZ, and more.
+Utilities: full set of time and 3D math functions including Viewing frustum, matrix, quaternion, UVs, and more
+Support: API documentation is under construction. A public forum and wiki is in full operation.
+Examples: Over 150 files of coding examples plus fonts, models, textures, sounds, and other support files
+Debugging: Stats.js,[15] WebGL Inspector,[16] Three.js Inspector[17]
+Virtual and Augmented Reality via WebXR[18]
+Physically based rendering (PBR): support for physically accurate materials like MeshStandardMaterial and MeshPhysicalMaterial[19][20]
+Instancing: use of InstancedMesh for efficient rendering of thousands of repeated objects[21]
+Post-processing: built-in post-processing pipeline with effects such as bloom, depth of field, outline, motion blur, SSAO, and FXAA[22][23]
+Built-in editor: graphical scene editor available online for building and exporting 3D scenes[24]
+Interactive controls: built-in controls such as OrbitControls, DragControls, TransformControls, and PointerLockControls for user interaction and navigation[25][26]
+Alternative renderers: in addition to WebGLRenderer,[27] Three.js also provides SVGRenderer[28] and CSS3DRenderer,[29] as well as experimental support for WebGPURenderer.
+
+Three.js runs in all browsers with support for WebGL 2.0.
+
+Three.js is made available under the MIT License.[1]
+
+See also[edit]
+	Free and open-source software portal
+Google Chrome Experiments
+List of WebGL frameworks
+JavaScript framework
+JavaScript library
+References[edit]
+^ 
+Jump up to:
+a b c "Three.js/license". github.com/mrdoob. Retrieved 20 May 2012.
+^ 
+Jump up to:
+a b "First commit". github.com/mrdoob. Retrieved 20 May 2012.
+^ "Release 184". 16 April 2026. Retrieved 17 April 2026.
+^ Mr.doob (2021-03-04), mrdoob/three.js, retrieved 2021-03-04
+^ O3D
+
+cabello.txt: lines 122-122:
+^ "Khronos Releases Final WebGL 1.0 Specification". Khronos Group. March 3, 2011. Retrieved 2 June 2012.
+
+cabello.txt: lines 124-181:
+^ Crossley, Rob (11 January 2010). "Study: Average dev costs as high as $28m". Intent Media Ltd. Archived from the original on 13 January 2010. Retrieved 2 June 2012.
+^ NVScene (24 March 2015). "NVScene 2015 Session: Reinventing The Wheel - One Last Time (Ricardo Cabello)". YouTube.
+^ 
+Jump up to:
+a b c "Three.js White Paper". Github.com. 2012-05-21. Retrieved 2013-05-09.
+^ "Release r118 · mrdoob/three.js" (Press release). Retrieved 2023-05-24.
+^ mrdoob (2026-02-17), mrdoob/three.js, retrieved 2026-02-17
+^ mrdoob (2012-11-26). "Features mrdoob/three.js Wiki GitHub". Github.com. Retrieved 2013-05-09.
+^ "Stats.js". Github.com. Retrieved 2013-05-09.
+^ "WebGL Inspector". Benvanik.github.com. Archived from the original on 2023-03-14. Retrieved 2013-05-09.
+^ "Three.js Inspector Labs". Zz85.github.com. Archived from the original on 2023-01-27. Retrieved 2013-05-09.
+^ "three.js examples". threejs.org.
+^ "MeshStandardMaterial – three.js docs". threejs.org.
+^ "MeshPhysicalMaterial – three.js docs". threejs.org.
+^ "InstancedMesh – three.js docs". threejs.org.
+^ "EffectComposer – three.js docs". threejs.org.
+^ "Post-processing examples – three.js". threejs.org.
+^ "three.js editor". threejs.org.
+^ "OrbitControls – three.js docs". threejs.org.
+^ "TransformControls – three.js docs". threejs.org.
+^ "WebGLRenderer – three.js docs". threejs.org.
+^ "SVGRenderer – three.js docs". threejs.org.
+^ "CSS3DRenderer – three.js docs". threejs.org.
+Further reading[edit]
+Dirksen, Jos (2013). Learning Three.js: The JavaScript 3D Library for WebGL. UK: Packt Publishing. ISBN 9781782166283. Archived from the original on 2014-07-08. Retrieved 2013-10-22.
+Parisi, Tony (2012). Webgl Up and Running. Sebastopol: Oreilly & Associates Inc. ISBN 9781449323578.
+Seidelin, Jacob (2012). HTML5 games : creating fun with HTML5, CSS3, and WebGL. Chichester, West Sussex, U.K: John Wiley & Sons. pp. 412–414. ISBN 978-1119975083. - "Three.js can make game development easier by taking care of low-level details"
+Williams, James (2012). Learning HTML5 game programming : a hands-on guide to building online games using Canvas, SVG, and WebGL. Upper Saddle River, NJ: Addison-Wesley. pp. 117–120, 123–131, 136, 140–142. ISBN 978-0321767363.
+Raasch, Jon (2011). Smashing WebKit. Chichester: Wiley. pp. 181, 182, 216. ISBN 978-1119999133.
+External links[edit]
+Wikimedia Commons has media related to Three.js.
+Official website
+hide
+vte
+Free and open-source software
+
+General	
+Alternative terms for free softwareComparison of open-source and closed-source softwareComparison of source-code-hosting facilitiesFree softwareFree software project directoriesGratis versus libreLong-term supportOpen-source softwareOpen-source software developmentOutlineTimeline
+
+Software
+packages	
+AudioBioinformaticsCodecsConfiguration managementDrivers GraphicsWirelessHealthMathematicsOffice suitesOperating systemsRoutingTelevisionVideo gamesWeb applications E-commerceAndroid appsiOS appsCommercialFormerly proprietaryFormerly open-source
+
+Community	
+Free software movementHistoryOpen-source-software movementEventsAdvocacy
+
+Organisations	
+Free Software Movement of IndiaFree Software Foundation
+
+Licenses	
+AFLApacheAPSLArtisticBeerwareBSDCreative CommonsCDDLEPLFree Software Foundation GNU GPLGNU AGPLGNU LGPLISCMITMPLPythonPython Software Foundation LicenseShared Source InitiativeSleepycatUnlicenseWTFPLzlib
+Types and
+standards	
+Comparison of licensesContributor License AgreementCopyleftDebian Free Software GuidelinesDefinition of Free Cultural WorksFree licenseThe Free Software DefinitionThe Open Source DefinitionOpen-source licensePermissive software licensePublic domain
+
+Challenges	
+Digital rights managementLicense proliferationMozilla software rebrandingProprietary device driversProprietary firmwareProprietary softwareSCO/Linux controversiesSoftware patentsSoftware securityTivoizationTrusted Computing
+
+
+cabello.txt: lines 183-183:
+topics	
+
+cabello.txt: lines 187-188:
+Categories: 2010 software3D scenegraph APIsCross-platform softwareFree 3D graphics softwareGraphics librariesJavaScript librariesSoftware using the MIT licenseWebGL
+This page was last edited on 1 May 2026, at 09:26 (UTC).
+
+cabello.txt: lines 204-208:
+https://en.wikipedia.org/wiki/Wikipedia:Contents
+https://en.wikipedia.org/wiki/Portal:Current_events
+https://en.wikipedia.org/wiki/Special:Random
+https://en.wikipedia.org/wiki/Wikipedia:About
+https://en.wikipedia.org/wiki/Wikipedia:Contact_us
+
+cabello.txt: lines 262-262:
+https://en.wikipedia.org/wiki/OpenGL_Shading_Language
+
+cabello.txt: lines 266-266:
+https://en.wikipedia.org/wiki/MIT_License
+
+cabello.txt: lines 270-270:
+https://www.wikidata.org/wiki/Q3525922#P1324
+
+cabello.txt: lines 273-273:
+https://en.wikipedia.org/wiki/3D_computer_graphics
+
+cabello.txt: lines 300-301:
+https://en.wikipedia.org/wiki/Forward_kinematics
+https://en.wikipedia.org/wiki/Inverse_kinematics
+
+cabello.txt: lines 369-369:
+https://github.com/mrdoob/three.js/issues/1960
+
+cabello.txt: lines 375-375:
+https://en.wikipedia.org/wiki/Three.js#cite_ref-15
+
+cabello.txt: lines 384-384:
+https://threejs.org/examples/?q=webxr
+
+cabello.txt: lines 386-386:
+https://threejs.org/docs/#api/en/materials/MeshStandardMaterial
+
+cabello.txt: lines 388-388:
+https://threejs.org/docs/#api/en/materials/MeshPhysicalMaterial
+
+cabello.txt: lines 390-390:
+https://threejs.org/docs/#api/en/objects/InstancedMesh
+
+cabello.txt: lines 392-392:
+https://threejs.org/docs/#examples/en/postprocessing/EffectComposer
+
+cabello.txt: lines 394-394:
+https://threejs.org/examples/?q=post#webgl_postprocessing
+
+cabello.txt: lines 396-396:
+https://threejs.org/editor/
+
+cabello.txt: lines 398-398:
+https://threejs.org/docs/#examples/en/controls/OrbitControls
+
+cabello.txt: lines 400-400:
+https://threejs.org/docs/#examples/en/controls/TransformControls
+
+cabello.txt: lines 402-402:
+https://threejs.org/docs/#api/en/renderers/WebGLRenderer
+
+cabello.txt: lines 404-404:
+https://threejs.org/docs/#examples/en/renderers/SVGRenderer
+
+cabello.txt: lines 406-406:
+https://threejs.org/docs/#examples/en/renderers/CSS3DRenderer
+

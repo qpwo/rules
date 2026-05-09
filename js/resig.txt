@@ -1,0 +1,71 @@
+resig.txt: lines 1-1:
+begin https://johnresig.com/
+
+resig.txt: lines 3-3:
+John Resig
+
+resig.txt: lines 6-12:
+John Resig is best known as an expert in the JavaScript programming language and the creator of the most popular JavaScript library in the world: jQuery. He’s created numerous JavaScript projects that continue to be integral parts of modern day web development. He’s also the author of the popular JavaScript books Secrets of the JavaScript Ninja and Pro JavaScript Techniques.
+
+John is the Chief Software Architect at Khan Academy where he works to provide a free education to everyone, everywhere. He’s worked on many aspects of the product: math exercises, mobile, accessibility, internationalization, build systems, and performance. He created the Computer Programming learning environment and founded the Frontend Infrastructure and Architecture teams.
+
+In his spare time John has combined his interest in art history with his programming skill to improve digital humanities study. He’s developed a three image databases that utilize Computer Vision techniques to aide art researchers: Ukiyo-e.org: Japanese woodblock print database and image search engine, one for PHAROS (now offline), and one for the Art Research Center at Ritsumeikan University (now offline). He’s a board member of the Japanese Art Society of America and was a Visiting Researcher at Ritsumeikan University.
+
+John lives in the Hudson Valley of New York with his partner composer, librettist, and multimedia artist Nell Shaw Cohen.
+
+resig.txt: lines 17-21:
+Projects
+Ukiyo-e.org
+Digital Humanities
+Computer Vision
+Khan Academy
+
+resig.txt: lines 25-28:
+Blog
+Twitter vs. Mastodon November 27, 2022
+10th Anniversary of jQuery January 14, 2016
+Building an Art History Database Using Computer Vision May 28, 2015
+
+resig.txt: lines 32-34:
+Secrets of the JS Ninja
+
+Secret techniques of top JavaScript programmers. Published by Manning.
+
+resig.txt: lines 42-44:
+https://johnresig.com/
+https://johnresig.com/category/blog/
+https://johnresig.com/projects/
+
+resig.txt: lines 49-57:
+http://jquery.com/
+http://amzn.to/2oiS4em
+http://amzn.to/1n080ky
+https://www.khanacademy.org/
+https://www.khanacademy.org/computing/computer-programming
+https://johnresig.com/research
+https://ukiyo-e.org/
+https://artresearch.net/resource/:start
+https://www.arc.ritsumei.ac.jp/e/ijac/
+
+resig.txt: lines 61-69:
+https://johnresig.com/projects/ukiyoe/
+https://johnresig.com/projects/digital-humanities/
+https://johnresig.com/projects/computer-vision/
+https://johnresig.com/projects/khan-academy/
+https://johnresig.com/blog/twitter-mastodon/
+https://johnresig.com/blog/10th-anniversary-of-jquery/
+https://johnresig.com/blog/building-art-history-database-computer-vision/
+https://johnresig.com/blog/
+https://amzn.to/2oiS4em
+
+resig.txt: lines 76-77:
+https://johnresig.com/wp-content/uploads/2026/02/john-headshot-2025-48x48-1.jpeg
+https://johnresig.com/files/jsninja.74.jpg
+
+resig.txt: lines 79-80:
+https://johnresig.com/images/twitter-74.png
+end https://johnresig.com/
+
+resig.txt: lines 82-82:
+FULL TEXT FOR URL https://johnresig.com/ SAVED TO ./https-johnresig-com-cb3213a.txt
+

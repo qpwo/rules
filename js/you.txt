@@ -1,0 +1,27 @@
+you.txt: lines 1-10:
+begin https://evanyou.me/
+Evan You
+
+I am the founder of VoidZero, a company building the next generation toolchain for JavaScript and TypeScript. I am currently based in Singapore working with a globally remote team.
+
+Before founding VoidZero, I had been working as an independent open source developer since 2016. I am the creator of the JavaScript framework Vue.js and the frontend build tool Vite. Most of my work is open source and publicly available on GitHub. If you happen to benefit from my OSS work, you can support me financially via GitHub Sponsors.
+
+You can follow me on X and Bluesky where I mostly post about the JavaScript ecosystem. If you happen to speak Chinese, my Chinese name is 尤雨溪 (yóu yǔ xī) and I have a Chinese-only X alt for non-tech-focused musings.
+
+Outside of programming and helping my wife take care of our two kids, I enjoy video games (soulsborne & roguelikes are my favorite), karaoke, Japanese food, badminton, Gunplas, and mechanical watches.
+
+you.txt: lines 12-21:
+LINKS
+https://voidzero.dev/
+https://vuejs.org/
+https://vitejs.dev/
+https://github.com/yyx990803
+https://github.com/sponsors/yyx990803
+https://x.com/evanyou
+https://bsky.app/profile/evanyou.me
+https://twitter.com/yuxiyou
+end https://evanyou.me/
+
+you.txt: lines 23-23:
+FULL TEXT FOR URL https://evanyou.me/ SAVED TO ./https-evanyou-me-e0fc447.txt
+

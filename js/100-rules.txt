@@ -1,0 +1,100 @@
+001 Clarity beats cleverness; optimize for the reader and the next edit, not the one-liner.
+002 Prefer boring, standard solutions; novelty must earn its keep with measurable value.
+003 Keep side effects at the edges (I/O, DOM); keep core logic pure and deterministic.
+004 Make illegal states unrepresentable with types and data shapes; validate inputs at boundaries.
+005 Split responsibilities early; if a function/module needs "and", it is two things.
+006 Reduce indentation with guard clauses and early returns; deep nesting hides bugs.
+007 Name for intent; rename until behavior is obvious from names without reading the body.
+008 Delete dead code immediately; rely on git history, not commented-out blocks.
+009 Prefer explicit data flow over ambient mutation; avoid hidden globals and singletons.
+010 When unsure, write the smallest correct thing, add tests, then measure before optimizing.
+011 Use an auto-formatter (prettier/biome) and never hand-format; whitespace debates are banned.
+012 Lint and typecheck in CI; keep warnings at zero; suppressions require a comment and a plan.
+013 Use TypeScript strict mode for new code; ratchet legacy code toward strict, never away.
+014 Pin node and package-manager versions (engines, corepack) so dev and CI match.
+015 Keep package.json scripts as the public interface: dev, build, test, lint, typecheck, format.
+016 Prefer one build toolchain per repo; tool sprawl is technical debt with interest.
+017 Commit lockfiles; review dependency diffs like code; large transitive changes get extra review.
+018 Automate dependency updates (renovate/dependabot) and apply them regularly; stale deps are security bugs.
+019 Keep builds reproducible: deterministic outputs, stable environment variables, and explicit config.
+020 Treat deprecations and bundler/browser warnings as bugs; fix the cause, do not silence.
+021 Prefer ESM in 2026; use CJS only when required by a host tool, and keep the boundary explicit.
+022 Expose a small public API; keep internals unexported so refactors do not become breaking changes.
+023 Avoid cyclic imports; if two modules depend on each other, extract shared logic to a third.
+024 Separate domain logic from adapters (HTTP, DB, fs, DOM); adapters translate, domain decides.
+025 Centralize wiring in a composition root; do not construct globals in random modules.
+026 Wrap third-party libraries behind a thin local facade; never scatter vendor calls everywhere.
+027 Prefer named exports; use default export only when the file has exactly one main thing.
+028 Keep one concept per file; if two concepts do not change together, split the file.
+029 Avoid "utils" grab-bags; name modules by the domain concept they serve.
+030 Keep dependencies shallow; if a package exists only to save 5 lines, do not add it.
+031 Use nouns for values, verbs for functions, adjectives for booleans (isReady, hasItems, canEdit).
+032 Prefer positive booleans (isEnabled) over negatives (disableX); double negatives create bugs.
+033 Avoid abbreviations unless universal (id, url, html); spelling is cheaper than confusion.
+034 Keep scopes small; declare variables close to first use; avoid long-lived mutable state.
+035 Do not mutate function parameters; treat inputs as immutable.
+036 Prefer const; use let only for reassignment; use var only for deliberate function-scope/hoist cases you can justify.
+037 Avoid nested ternaries and clever short-circuit chains; write explicit if/return when in doubt.
+038 Prefer small helper functions over comments; code that needs a comment often needs a name.
+039 Use data structures that match intent: Map/Set for keys, arrays for order, objects for records.
+040 Prefer plain objects/arrays over class hierarchies; classes are for resource lifetimes and invariants.
+041 Use === and !==; avoid == except x == null when you explicitly mean null or undefined.
+042 Avoid implicit coercion; convert explicitly at boundaries (Number, String, Boolean).
+043 Prefer ?? over || when 0, false, or empty string are valid values.
+044 Treat NaN and Infinity as bugs; validate numbers and use Number.isFinite.
+045 Use URL and URLSearchParams for URLs; never hand-concat query strings.
+046 Use Intl for user-facing formatting; do not hand-roll locale rules for dates/numbers/currency.
+047 Handle time zones intentionally: store timestamps in UTC; format for the user at the edge.
+048 Avoid regex for parsing structured formats (HTML, JS, JSON, URLs); use parsers or simple scanning.
+049 Never mutate built-in prototypes or global objects; it breaks other code and engine assumptions.
+050 Avoid eval, new Function, and dynamic code loading; they are security and performance traps.
+051 Enable strict, noUncheckedIndexedAccess, and useUnknownInCatchVariables; let the compiler find bugs.
+052 Prefer @ts-expect-error over @ts-ignore, and explain why it is safe.
+053 Never use any in application code; use unknown and narrow with runtime checks.
+054 Model absence consistently: choose undefined or null and stick to it; do not mix without reason.
+055 Use discriminated unions for state machines; avoid ad-hoc boolean flag soups.
+056 Prefer string literal unions over enums for domain values; enums create runtime artifacts and awkward interop.
+057 Avoid type assertions; if you must assert, pair it with a runtime check in the same block.
+058 Use satisfies to validate object literals without widening; keep literal types precise.
+059 Use branded types for identifiers (UserId) when mixing ids could cause real bugs.
+060 Keep public types stable and small; if consumers need to read your implementation to use the types, the API is wrong.
+061 Validate all external input at the boundary (HTTP, env, fs, localStorage, postMessage); types do not run at runtime.
+062 Fail fast on configuration errors at startup; crashing early beats corrupting data later.
+063 Throw Error objects only; never throw strings; preserve the original error as cause when wrapping.
+064 Do not swallow errors; handle, retry with backoff, or rethrow; always keep the stack trace.
+065 Include context in errors/logs (operation, ids, sanitized inputs, timings); "failed" is useless.
+066 Prefer structured logs in services (JSON); correlate with request ids and user/session ids.
+067 Write small assertion helpers (assert/invariant) and use them to document assumptions in code.
+068 Make partial failures visible: return which items failed and why; do not pretend success.
+069 Prefer total functions: handle all union cases; use never checks so new cases fail to compile.
+070 Keep runtime validation close to parsing, not sprinkled throughout business logic.
+071 Prefer async/await for readability; keep promise chains only when they are simpler.
+072 Always await promises you create; deliberate fire-and-forget must be explicit and must handle errors.
+073 Use Promise.all for independent work; use concurrency limits when fan-out can overload systems.
+074 Use AbortController for cancellation and timeouts; plumb signals through fetch and your own APIs.
+075 Avoid blocking the event loop with sync I/O or CPU loops; move CPU work to worker_threads/web workers.
+076 Prefer streaming (streams/async iterators) for large data; do not buffer unbounded input in memory.
+077 Be explicit about ordering: await sequentially only when order matters; parallelize only when safe.
+078 Do not poll when events exist; prefer subscriptions, sockets, and server-sent events when appropriate.
+079 Measure performance with real traces; keep budgets for p95 latency, memory, and bundle size.
+080 Cache deliberately: memoize pure work, use HTTP caching, and invalidate based on data, not guesses.
+081 Use node: prefixes for built-ins and prefer fs/promises; reserve sync fs for tiny startup reads.
+082 Read process.env in one config module; parse and validate once; pass config as data.
+083 In CLIs, keep stdout for data and stderr for logs/errors; exit nonzero on failure.
+084 Handle SIGINT/SIGTERM and close resources (servers, DB pools, file handles); graceful shutdown is correctness.
+085 For libraries, avoid side effects at import time; make initialization explicit and predictable.
+086 Use semantic HTML first; ARIA is for filling gaps, not for rebuilding buttons with divs.
+087 Avoid layout thrash: batch DOM reads then writes; animate with transform/opacity; keep main-thread work small.
+088 Never inject unsanitized HTML (dangerouslySetInnerHTML); treat all user content as untrusted.
+089 Do not store secrets in localStorage; prefer httpOnly cookies and short-lived tokens; protect against XSS/CSRF.
+090 Localize user-visible strings and formatting; use Intl; never hardcode dates/numbers/currency.
+091 In JSX/TSX, keep render output simple: compute values above return, and extract components instead of piling logic into JSX.
+092 In React/Preact, prefer function components and hooks; avoid class components in new code.
+093 useEffect is for side effects, not for deriving state; derive values during render or with memoization.
+094 Keep effect dependencies correct; do not disable exhaustive-deps without a very specific, documented reason.
+095 Prefer controlled form inputs for app state; use uncontrolled + refs only for perf or integration constraints.
+096 Keys must be stable and data-derived; never use array index as key for re-orderable lists.
+097 Use context sparingly and keep it narrow; prefer explicit props for local state to avoid hidden coupling.
+098 Avoid premature useMemo/useCallback; add them only after measuring a real render bottleneck.
+099 Test behavior, not implementation: prefer user-visible queries, avoid brittle snapshots, and eliminate flakiness before adding more tests.
+100 Ship with budgets: bundle size, a11y checks, and p95 latency; regressions without measurement are inevitable.

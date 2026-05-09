@@ -1,0 +1,266 @@
+iamkun.txt: lines 1-1:
+begin https://github.com/iamkun/dayjs
+
+iamkun.txt: lines 13-20:
+iamkun
+/
+dayjs
+Public
+ Sponsor
+Notifications
+Fork 2.4k
+ Star 48.6k
+
+iamkun.txt: lines 30-149:
+iamkun/dayjs
+ dev
+10 Branches
+128 Tags
+Code
+Folders and files
+Name	Last commit message	Last commit date
+
+Latest commit
+iamkun
+chore: update doc
+dcae6d7
+ · 
+History
+1,637 Commits
+
+.github
+	
+chore: update CI config
+	
+
+build
+	
+Fix broken UTC plugin due to rollup (#1453)
+	
+
+docs
+	
+chore: update doc
+	
+
+patches
+	
+chore: update workflow debug @semantic-release/github
+	
+
+src
+	
+fix: preserve unsupported year tokens in format (#3015) (#3016)
+	
+
+test
+	
+fix: preserve unsupported year tokens in format (#3015) (#3016)
+	
+
+types
+	
+fix: Improve typing for min/max plugin (#2573)
+	
+
+.editorconfig
+	
+fix: dayjs.diff improve performance (#2244)
+	
+
+.eslintrc.json
+	
+chore: Update travis check node 12 LTS (#847)
+	
+
+.gitignore
+	
+chore: update moment.js to 2.29.2 (#1856)
+	
+
+.npmignore
+	
+chore: update .npmignore
+	
+
+.releaserc
+	
+chore: update action (#2315)
+	
+
+CHANGELOG.md
+	
+chore(release): 1.11.20 [skip ci]
+	
+
+CONTRIBUTING.md
+	
+docs: Updated CONTRIBUTING.md (#479)
+	
+
+LICENSE
+	
+Update LICENSE (#439)
+	
+
+README.md
+	
+chore: update doc
+	
+
+babel.config.js
+	
+chore(docs/test): fix code style, remove commented code and replace `…
+	
+
+karma.sauce.conf.js
+	
+chore(docs/test): fix code style, remove commented code and replace `…
+	
+
+package-lock.json
+	
+chore: update workflow debug @semantic-release/github
+	
+
+package.json
+	
+chore: update test coverage check
+	
+
+prettier.config.js
+	
+chore: update prettier setting
+	
+
+iamkun.txt: lines 155-155:
+English | 简体中文 | 日本語 | Português Brasileiro | 한국어 | Español (España) | Русский | Türkçe | සිංහල | עברית
+
+iamkun.txt: lines 157-260:
+Fast 2kB alternative to Moment.js with the same modern API
+
+    
+
+Day.js is a minimalist JavaScript library that parses, validates, manipulates, and displays dates and times for modern browsers with a largely Moment.js-compatible API. If you use Moment.js, you already know how to use Day.js.
+
+dayjs().startOf('month').add(1, 'day').set('year', 2018).format('YYYY-MM-DD HH:mm:ss');
+🕒 Familiar Moment.js API & patterns
+💪 Immutable
+🔥 Chainable
+🌐 I18n support
+📦 2kb mini library
+👫 All browsers supported
+Getting Started
+Documentation
+
+You can find more details, API, and other docs on day.js.org website.
+
+Installation
+npm install dayjs --save
+
+📚Installation Guide
+
+API
+
+It's easy to use Day.js APIs to parse, validate, manipulate, and display dates and times.
+
+dayjs('2018-08-08') // parse
+
+dayjs().format('{YYYY} MM-DDTHH:mm:ss SSS [Z] A') // display
+
+dayjs().set('month', 3).month() // get & set
+
+dayjs().add(1, 'year') // manipulate
+
+dayjs().isBefore(dayjs()) // query
+
+📚API Reference
+
+I18n
+
+Day.js has great support for internationalization.
+
+But none of them will be included in your build unless you use it.
+
+import 'dayjs/locale/es' // load on demand
+
+dayjs.locale('es') // use Spanish locale globally
+
+dayjs('2018-05-05').locale('zh-cn').format() // use Chinese Simplified locale in a specific instance
+
+📚Internationalization
+
+Plugin
+
+A plugin is an independent module that can be added to Day.js to extend functionality or add new features.
+
+import advancedFormat from 'dayjs/plugin/advancedFormat' // load on demand
+
+dayjs.extend(advancedFormat) // use plugin
+
+dayjs().format('Q Do k kk X x') // more available formats
+
+📚Plugin List
+
+Sponsors
+
+Support this project by becoming a sponsor. Your logo will show up here with a link to your website.
+
+[Become a sponsor via Github] [Become a sponsor via OpenCollective]
+
+                                                                                                                                            
+Contributors
+
+This project exists thanks to all the people who contribute.
+
+Please give us a 💖 star 💖 to support us. Thank you.
+
+And thank you to all our backers! 🙏
+
+License
+
+Day.js is licensed under a MIT License.
+
+About
+
+⏰ Day.js 2kB immutable date-time library alternative to Moment.js with the same modern API
+
+day.js.org
+Topics
+time datetime date moment date-formatting dayjs
+Resources
+ Readme
+License
+ MIT license
+Contributing
+ Contributing
+ Activity
+Stars
+ 48.6k stars
+Watchers
+ 272 watching
+Forks
+ 2.4k forks
+
+iamkun.txt: lines 263-282:
+Releases 126
+v1.11.20
+Latest
++ 125 releases
+
+Sponsor this project
+iamkun
+opencollective.com/dayjs
+Learn more about GitHub Sponsors
+
+Packages
+No packages published
+
+Contributors
+341
++ 327 contributors
+
+Languages
+JavaScript
+100.0%
+

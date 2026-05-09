@@ -1,0 +1,252 @@
+antonov.txt: lines 1-1:
+begin https://github.com/petkaantonov/bluebird
+
+antonov.txt: lines 13-16:
+petkaantonov
+/
+bluebird
+Public
+
+antonov.txt: lines 18-168:
+Fork 2.3k
+ Star 20.5k
+Code
+Issues
+79
+Pull requests
+49
+Actions
+Projects
+Wiki
+Security and quality
+Insights
+petkaantonov/bluebird
+ master
+30 Branches
+269 Tags
+Code
+Folders and files
+Name	Last commit message	Last commit date
+
+Latest commit
+benjamingr
+Even more direct, I don't believe I have to say this..
+c220cfe
+ · 
+History
+2,114 Commits
+
+benchmark
+	
+Add a co generator benchmark for Madeup parallel (#1577)
+	
+
+docs
+	
+Fix typo in docs (#1688)
+	
+
+src
+	
+Fix toFastProperties (#1636)
+	
+
+test
+	
+docs: Fix simple typo, standart -> standard (#1648)
+	
+
+tools
+	
+Fixes #1468, stabilize unhandled rejection tests
+	
+
+.editorconfig
+	
+add spion benchmark suite
+	
+
+.gitignore
+	
+gitignore
+	
+
+.istanbul.yml
+	
+Add istanbul code coverage tooling
+	
+
+.jshintignore
+	
+New build system
+	
+
+.jshintrc
+	
+Fixes #1326
+	
+
+.travis.yml
+	
+package lock
+	
+
+API.md
+	
+3.0docs
+	
+
+CONTRIBUTING.md
+	
+Update CONTRIBUTING.md
+	
+
+LICENSE
+	
+Update LICENSE to 2018 (#1490)
+	
+
+README.md
+	
+Even more direct, I don't believe I have to say this..
+	
+
+bench
+	
+Fixes #1400
+	
+
+bower.json
+	
+Release v3.7.2
+	
+
+build
+	
+Make files executable
+	
+
+changelog.md
+	
+3.0docs
+	
+
+deprecated_apis.md
+	
+3.0docs
+	
+
+issue_template.md
+	
+Update issue_template.md
+	
+
+package-lock.json
+	
+Bump debug and mocha (#1701)
+	
+
+package.json
+	
+Bump debug and mocha (#1701)
+	
+
+tests
+	
+Make files executable
+	
+Repository files navigation
+README
+Contributing
+MIT license
+
+antonov.txt: lines 172-230:
+Got a question? Join us on stackoverflow, the mailing list or chat on IRC
+
+Introduction
+
+Bluebird is a fully featured promise library with focus on innovative features and performance
+
+See the bluebird website for further documentation, references and instructions. See the API reference here.
+
+For bluebird 2.x documentation and files, see the 2.x tree.
+
+⚠️Note⚠️
+
+Please use native promises instead if at all possible. Native Promises have been stable in Node.js and browsers for around 10 years now and they have been fast for around 7. Any utility bluebird has like .map has native equivalents (like Node streams' .map).
+
+This is a good thing, the people working on Bluebird and promises have been able to help incorporate most of the useful things from Bluebird into JavaScript itself and platforms/engines.
+
+If there is a feature that keeps you using bluebird. Please let us know so we can try and upstream it :)
+
+Currently - it is only recommended to use Bluebird if you need to support really old browsers or EoL Node.js or as an intermediate step to use warnings/monitoring to find bugs.
+
+Questions and issues
+
+The github issue tracker is only for bug reports and feature requests. Anything else, such as questions for help in using the library, should be posted in StackOverflow under tags promise and bluebird.
+
+Thanks
+
+Thanks to BrowserStack for providing us with a free account which lets us support old browsers like IE8.
+
+License
+
+The MIT License (MIT)
+
+Copyright (c) 2013-2021 Petka Antonov
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+About
+
+🐦 ⚡ Bluebird is a full featured promise library with unmatched performance.
+
+bluebirdjs.com
+Resources
+ Readme
+License
+ MIT license
+Contributing
+ Contributing
+ Activity
+Stars
+ 20.5k stars
+Watchers
+ 329 watching
+Forks
+ 2.3k forks
+Report repository
+
+antonov.txt: lines 232-235:
+Releases 123
+v3.7.2
+Latest
++ 122 releases
+
+antonov.txt: lines 237-249:
+Packages
+No packages published
+
+Contributors
+235
++ 221 contributors
+
+Languages
+JavaScript
+99.6%
+ 
+Other
+0.4%
+
+antonov.txt: lines 251-251:
+© 2026 GitHub, Inc.
+
+antonov.txt: lines 471-473:
+end https://github.com/petkaantonov/bluebird
+
+FULL TEXT FOR URL https://github.com/petkaantonov/bluebird SAVED TO ./https-github-com-petkaantonov-bluebird-dcc9a00.txt
+

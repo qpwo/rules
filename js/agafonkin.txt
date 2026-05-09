@@ -1,0 +1,47 @@
+agafonkin.txt: lines 1-24:
+begin https://agafonkin.com/
+Hi! I'm Volodymyr Agafonkin.
+
+I'm a software engineer. I created Leaflet, the number one library for interactive web maps, and maintain 40+ other open source projects with a focus on algorithms, computational geometry and performance. I'm building the future of maps at Mapbox.
+
+I'm a musician. I write songs, play guitar and sing in Obiymy Doschu. If you like beautiful, evocative, multilayered rock music with live strings, check out our new album.
+
+I'm a father to beautiful 12-year-old twin girls, I'm happily married and live in Kyiv, Ukraine. I love baking, photography, strength training, martial arts, reading, and exploring quiet parks. You can find tidbits of my life on X (Twitter), Instagram and Facebook.
+
+Here are a few of my best articles:
+
+Reimagining projections for the interactive maps era
+How I built a wind map with WebGL
+A dive into spatial search algorithms
+MARTINI: Real-Time Terrain Mesh Generator
+Rendering big geodata on the fly with GeoJSON-VT
+Fast geodesic approximations with Cheap Ruler
+Clustering millions of points on a map with Supercluster
+A web map from scratch
+Kinematics of reverse-angle parking
+Introducing heatmaps in Mapbox GL
+A new algorithm for finding a visual center of a polygon
+Were Kyiv winters as snowy as I remember as a kid?
+How to give awesome public talks
+
+agafonkin.txt: lines 28-31:
+LINKS
+https://leafletjs.com/
+https://github.com/mourner/projects
+https://mapbox.com/
+
+agafonkin.txt: lines 38-50:
+https://www.mapbox.com/blog/adaptive-projections
+https://blog.mapbox.com/how-i-built-a-wind-map-with-webgl-b63022b5537f
+https://blog.mapbox.com/a-dive-into-spatial-search-algorithms-ebd0c5e39d2a
+https://observablehq.com/@mourner/martin-real-time-rtin-terrain-mesh
+https://blog.mapbox.com/rendering-big-geodata-on-the-fly-with-geojson-vt-4e4d2a5dd1f2
+https://blog.mapbox.com/fast-geodesic-approximations-with-cheap-ruler-106f229ad016
+https://blog.mapbox.com/clustering-millions-of-points-on-a-map-with-supercluster-272046ec5c97
+https://observablehq.com/@mourner/simple-web-map
+https://observablehq.com/@mourner/kinematics-of-reverse-angle-parking
+https://blog.mapbox.com/introducing-heatmaps-in-mapbox-gl-js-71355ada9e6c
+https://blog.mapbox.com/a-new-algorithm-for-finding-a-visual-center-of-a-polygon-7c77e6492fbc
+https://observablehq.com/@mourner/were-kyiv-winters-as-snowy-as-i-remember-as-a-kid
+https://medium.com/@agafonkin/how-to-give-awesome-public-talks-a2b727f4bc24
+

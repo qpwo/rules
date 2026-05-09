@@ -1,0 +1,157 @@
+bostock.txt: lines 7-9:
+Mike Bostock
+Visualization toolmaker. Founder @observablehq. Creator @d3. Former @nytgraphics. Pronounced BOSS-tock.
+https://bost.ocks.org/mike/
+
+bostock.txt: lines 17-46:
+AoC 2025 Day 8, Part 2 
+Mike Bostock
+Dec 21
+AoC 2025 Day 8, Part 1
+Mike Bostock
+Dec 21
+AoC 2025 Day 8, Part 1
+Mike Bostock
+Dec 8
+AoC 2025 Day 7, Part 2 
+Mike Bostock
+Dec 7
+AoC 2025 Day 7, Part 1
+Mike Bostock
+Dec 7
+AoC 2025 Day 6, Part 2 
+Mike Bostock
+Dec 7
+AoC 2025 Day 6, Part 1
+Mike Bostock
+Dec 7
+AoC 2025 Day 5, Part 2 
+Mike Bostock
+Dec 7
+AoC 2025 Day 5, Part 1
+Mike Bostock
+Dec 7
+AoC 2025 Day 4, Part 2 
+Mike Bostock
+Dec 7
+
+bostock.txt: lines 49-69:
+AoC 2025 Day 4, Part 1
+Mike Bostock
+Dec 7
+AoC 2025 Day 3, Part 2 
+Mike Bostock
+Dec 7
+AoC 2025 Day 3, Part 1
+Mike Bostock
+Dec 7
+AoC 2025 Day 2, Part 2 
+Mike Bostock
+Dec 7
+AoC 2025 Day 2, Part 1
+Mike Bostock
+Dec 7
+AoC 2025 Day 1, Part 2 
+Mike Bostock
+Dec 7
+AoC 2025 Day 1, Part 1
+Mike Bostock
+Dec 7
+
+bostock.txt: lines 72-74:
+Beesandbombs - June 26, 2023
+Mike Bostock
+Jun 26, 2023
+
+bostock.txt: lines 77-79:
+Hypnocontours
+Mike Bostock
+Jun 6, 2023
+
+bostock.txt: lines 82-84:
+GitHub stars history
+Mike Bostock
+Mar 27, 2023
+
+bostock.txt: lines 87-89:
+Bank failures
+Mike Bostock
+Mar 11, 2023
+
+bostock.txt: lines 92-94:
+🎄 Advent of Code 2022: Day 15
+Mike Bostock
+Dec 14, 2022
+
+bostock.txt: lines 97-99:
+🎄 Advent of Code 2022: Day 14
+Mike Bostock
+Dec 13, 2022
+
+bostock.txt: lines 102-104:
+🎄 Advent of Code 2022: Day 13
+Mike Bostock
+Dec 12, 2022
+
+bostock.txt: lines 107-109:
+🎄 Advent of Code 2022: Day 12
+Mike Bostock
+Dec 12, 2022
+
+bostock.txt: lines 112-114:
+🎄 Advent of Code 2022: Day 11
+Mike Bostock
+Dec 10, 2022
+
+bostock.txt: lines 117-119:
+🎄 Advent of Code 2022: Day 10
+Mike Bostock
+Dec 10, 2022
+
+bostock.txt: lines 122-124:
+🎄 Advent of Code 2022: Day 9
+Mike Bostock
+Dec 8, 2022
+
+bostock.txt: lines 127-129:
+🎄 Advent of Code 2022: Day 8
+Mike Bostock
+Dec 8, 2022
+
+bostock.txt: lines 132-134:
+🎄 Advent of Code 2022: Day 7
+Mike Bostock
+Dec 6, 2022
+
+bostock.txt: lines 176-205:
+https://observablehq.com/d/8eaf29b4d0bc16db
+https://observablehq.com/d/c4367551842b496d
+https://observablehq.com/d/33769680740ea27b
+https://observablehq.com/d/8c11be1d83af9be4
+https://observablehq.com/d/af963c0d42eb8ab7
+https://observablehq.com/d/8e22a2ad57a3a61c
+https://observablehq.com/d/9e7a3419bd63cd82
+https://observablehq.com/d/fa7f622685e29b7e
+https://observablehq.com/d/4665af75f80e36aa
+https://observablehq.com/d/0a31cc54bbab1486
+https://observablehq.com/d/5ebeb6457a5491d4
+https://observablehq.com/d/ceb1945d22f6ac2f
+https://observablehq.com/d/84fb8a2c5e762e9d
+https://observablehq.com/d/b5f2110577a7d17c
+https://observablehq.com/d/f492ee38731645e7
+https://observablehq.com/d/f90fcf2e39d81ab1
+https://observablehq.com/d/725c9032c2cf1faf
+https://observablehq.com/d/a741f9a27e8c0e73
+https://observablehq.com/@mbostock/hypnocontours
+https://observablehq.com/@mbostock/github-stars-history
+https://observablehq.com/@mbostock/bank-failures
+https://observablehq.com/@mbostock/advent-of-code-2022-day-15
+https://observablehq.com/@mbostock/advent-of-code-2022-day-14
+https://observablehq.com/@mbostock/advent-of-code-2022-day-13
+https://observablehq.com/@mbostock/advent-of-code-2022-day-12
+https://observablehq.com/@mbostock/advent-of-code-2022-day-11
+https://observablehq.com/@mbostock/advent-of-code-2022-day-10
+https://observablehq.com/@mbostock/advent-of-code-2022-day-9
+https://observablehq.com/@mbostock/advent-of-code-2022-day-8
+https://observablehq.com/@mbostock/advent-of-code-2022-day-7
+

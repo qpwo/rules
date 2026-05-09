@@ -1,0 +1,192 @@
+fuller.txt: lines 31-31:
+High performance Node.js image processing
+
+fuller.txt: lines 33-92:
+The typical use case for this high speed Node-API module is to convert large images in common formats to smaller, web-friendly JPEG, PNG, WebP, GIF and AVIF images of varying dimensions.
+
+It can be used with all JavaScript runtimes that provide support for Node-API v9, including Node.js >= 18.17.0, Deno and Bun.
+
+Resizing an image is typically 4x-5x faster than using the quickest ImageMagick and GraphicsMagick settings due to its use of libvips.
+
+Colour spaces, embedded ICC profiles and alpha transparency channels are all handled correctly. Lanczos resampling ensures quality is not sacrificed for speed.
+
+As well as image resizing, operations such as rotation, extraction, compositing and gamma correction are available.
+
+Most modern macOS, Windows and Linux systems do not require any additional install or runtime dependencies.
+
+npm install sharp
+Formats
+Section titled “Formats”
+
+This module supports reading JPEG, PNG, WebP, GIF, AVIF, TIFF and SVG images.
+
+Output images can be in JPEG, PNG, WebP, GIF, AVIF and TIFF formats as well as uncompressed raw pixel data.
+
+Streams, Buffer objects and the filesystem can be used for input and output.
+
+A single input Stream can be split into multiple processing pipelines and output Streams.
+
+Deep Zoom image pyramids can be generated, suitable for use with “slippy map” tile viewers like OpenSeadragon.
+
+Fast
+Section titled “Fast”
+
+This module is powered by the blazingly fast libvips image processing library, originally created in 1989 at Birkbeck College and currently maintained by a small team led by John Cupitt.
+
+Only small regions of uncompressed image data are held in memory and processed at a time, taking full advantage of multiple CPU cores and L1/L2/L3 cache.
+
+Everything remains non-blocking thanks to libuv, no child processes are spawned and Promises/async/await are supported.
+
+Optimal
+Section titled “Optimal”
+
+The features of mozjpeg and pngquant can be used to optimise the file size of JPEG and PNG images respectively, without having to invoke separate imagemin processes.
+
+Huffman tables are optimised when generating JPEG output images without having to use separate command line tools like jpegoptim and jpegtran.
+
+PNG filtering is disabled by default, which for diagrams and line art often produces the same result as pngcrush.
+
+The file size of animated GIF output is optimised without having to use separate command line tools such as gifsicle.
+
+Contributing
+Section titled “Contributing”
+
+A guide for contributors covers reporting bugs, requesting features and submitting code changes.
+
+Licensing
+Section titled “Licensing”
+
+Copyright 2013 Lovell Fuller and others.
+
+Licensed under the Apache License, Version 2.0 (the “License”); you may not use this file except in compliance with the License. You may obtain a copy of the License at https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an “AS IS” BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+
+
+fuller.txt: lines 100-100:
+https://github.com/lovell/sharp
+
+fuller.txt: lines 112-214:
+https://sharp.pixelplumbing.com/changelog/v0.34.5/
+https://sharp.pixelplumbing.com/changelog/v0.34.4/
+https://sharp.pixelplumbing.com/changelog/v0.34.3/
+https://sharp.pixelplumbing.com/changelog/v0.34.2/
+https://sharp.pixelplumbing.com/changelog/v0.34.1/
+https://sharp.pixelplumbing.com/changelog/v0.34.0/
+https://sharp.pixelplumbing.com/changelog/v0.33.5/
+https://sharp.pixelplumbing.com/changelog/v0.33.4/
+https://sharp.pixelplumbing.com/changelog/v0.33.3/
+https://sharp.pixelplumbing.com/changelog/v0.33.2/
+https://sharp.pixelplumbing.com/changelog/v0.33.1/
+https://sharp.pixelplumbing.com/changelog/v0.33.0/
+https://sharp.pixelplumbing.com/changelog/v0.32.6/
+https://sharp.pixelplumbing.com/changelog/v0.32.5/
+https://sharp.pixelplumbing.com/changelog/v0.32.4/
+https://sharp.pixelplumbing.com/changelog/v0.32.3/
+https://sharp.pixelplumbing.com/changelog/v0.32.2/
+https://sharp.pixelplumbing.com/changelog/v0.32.1/
+https://sharp.pixelplumbing.com/changelog/v0.32.0/
+https://sharp.pixelplumbing.com/changelog/v0.31.3/
+https://sharp.pixelplumbing.com/changelog/v0.31.2/
+https://sharp.pixelplumbing.com/changelog/v0.31.1/
+https://sharp.pixelplumbing.com/changelog/v0.31.0/
+https://sharp.pixelplumbing.com/changelog/v0.30.7/
+https://sharp.pixelplumbing.com/changelog/v0.30.6/
+https://sharp.pixelplumbing.com/changelog/v0.30.5/
+https://sharp.pixelplumbing.com/changelog/v0.30.4/
+https://sharp.pixelplumbing.com/changelog/v0.30.3/
+https://sharp.pixelplumbing.com/changelog/v0.30.2/
+https://sharp.pixelplumbing.com/changelog/v0.30.1/
+https://sharp.pixelplumbing.com/changelog/v0.30.0/
+https://sharp.pixelplumbing.com/changelog/v0.29.3/
+https://sharp.pixelplumbing.com/changelog/v0.29.2/
+https://sharp.pixelplumbing.com/changelog/v0.29.1/
+https://sharp.pixelplumbing.com/changelog/v0.29.0/
+https://sharp.pixelplumbing.com/changelog/v0.28.3/
+https://sharp.pixelplumbing.com/changelog/v0.28.2/
+https://sharp.pixelplumbing.com/changelog/v0.28.1/
+https://sharp.pixelplumbing.com/changelog/v0.28.0/
+https://sharp.pixelplumbing.com/changelog/v0.27.2/
+https://sharp.pixelplumbing.com/changelog/v0.27.1/
+https://sharp.pixelplumbing.com/changelog/v0.27.0/
+https://sharp.pixelplumbing.com/changelog/v0.26.3/
+https://sharp.pixelplumbing.com/changelog/v0.26.2/
+https://sharp.pixelplumbing.com/changelog/v0.26.1/
+https://sharp.pixelplumbing.com/changelog/v0.26.0/
+https://sharp.pixelplumbing.com/changelog/v0.25.4/
+https://sharp.pixelplumbing.com/changelog/v0.25.3/
+https://sharp.pixelplumbing.com/changelog/v0.25.2/
+https://sharp.pixelplumbing.com/changelog/v0.25.1/
+https://sharp.pixelplumbing.com/changelog/v0.25.0/
+https://sharp.pixelplumbing.com/changelog/v0.24.1/
+https://sharp.pixelplumbing.com/changelog/v0.24.0/
+https://sharp.pixelplumbing.com/changelog/v0.23.4/
+https://sharp.pixelplumbing.com/changelog/v0.23.3/
+https://sharp.pixelplumbing.com/changelog/v0.23.2/
+https://sharp.pixelplumbing.com/changelog/v0.23.1/
+https://sharp.pixelplumbing.com/changelog/v0.23.0/
+https://sharp.pixelplumbing.com/changelog/v0.22.1/
+https://sharp.pixelplumbing.com/changelog/v0.22.0/
+https://sharp.pixelplumbing.com/changelog/v0.21.3/
+https://sharp.pixelplumbing.com/changelog/v0.21.2/
+https://sharp.pixelplumbing.com/changelog/v0.21.1/
+https://sharp.pixelplumbing.com/changelog/v0.21.0/
+https://sharp.pixelplumbing.com/changelog/v0.20.8/
+https://sharp.pixelplumbing.com/changelog/v0.20.7/
+https://sharp.pixelplumbing.com/changelog/v0.20.6/
+https://sharp.pixelplumbing.com/changelog/v0.20.5/
+https://sharp.pixelplumbing.com/changelog/v0.20.4/
+https://sharp.pixelplumbing.com/changelog/v0.20.3/
+https://sharp.pixelplumbing.com/changelog/v0.20.2/
+https://sharp.pixelplumbing.com/changelog/v0.20.1/
+https://sharp.pixelplumbing.com/changelog/v0.20.0/
+https://sharp.pixelplumbing.com/changelog/v0.19.1/
+https://sharp.pixelplumbing.com/changelog/v0.19.0/
+https://sharp.pixelplumbing.com/changelog/v0.18.4/
+https://sharp.pixelplumbing.com/changelog/v0.18.3/
+https://sharp.pixelplumbing.com/changelog/v0.18.2/
+https://sharp.pixelplumbing.com/changelog/v0.18.1/
+https://sharp.pixelplumbing.com/changelog/v0.18.0/
+https://sharp.pixelplumbing.com/changelog/v0.17.3/
+https://sharp.pixelplumbing.com/changelog/v0.17.2/
+https://sharp.pixelplumbing.com/changelog/v0.17.1/
+https://sharp.pixelplumbing.com/changelog/v0.17.0/
+https://sharp.pixelplumbing.com/changelog/v0.16.2/
+https://sharp.pixelplumbing.com/changelog/v0.16.1/
+https://sharp.pixelplumbing.com/changelog/v0.16.0/
+https://sharp.pixelplumbing.com/changelog/v0.15.1/
+https://sharp.pixelplumbing.com/changelog/v0.15.0/
+https://sharp.pixelplumbing.com/changelog/v0.14.1/
+https://sharp.pixelplumbing.com/changelog/v0.14.0/
+https://sharp.pixelplumbing.com/changelog/v0.13.1/
+https://sharp.pixelplumbing.com/changelog/v0.13.0/
+https://sharp.pixelplumbing.com/changelog/v0.12.2/
+https://sharp.pixelplumbing.com/changelog/v0.12.1/
+https://sharp.pixelplumbing.com/changelog/v0.12.0/
+https://sharp.pixelplumbing.com/changelog/v0.11.4/
+https://sharp.pixelplumbing.com/changelog/v0.11.3/
+https://sharp.pixelplumbing.com/changelog/v0.11.2/
+https://sharp.pixelplumbing.com/changelog/v0.11.1/
+https://sharp.pixelplumbing.com/changelog/v0.11.0/
+https://sharp.pixelplumbing.com/changelog/v0.10.1/
+https://sharp.pixelplumbing.com/changelog/v0.10.0/
+
+fuller.txt: lines 220-228:
+https://github.com/libvips/libvips
+https://github.com/openseadragon/openseadragon
+https://github.com/jcupitt
+https://github.com/tjko/jpegoptim
+http://jpegclub.org/jpegtran/
+https://pmt.sourceforge.io/pngcrush/
+https://www.lcdf.org/gifsicle/
+https://github.com/lovell/sharp/blob/main/.github/CONTRIBUTING.md
+https://www.apache.org/licenses/LICENSE-2.0
+
+fuller.txt: lines 231-233:
+https://sharp.pixelplumbing.com/_astro/sharp-logo.CiVIswaO.svg
+https://sharp.pixelplumbing.com/sharp-logo.svg
+end https://sharp.pixelplumbing.com/
+
+fuller.txt: lines 235-235:
+FULL TEXT FOR URL https://sharp.pixelplumbing.com/ SAVED TO ./https-sharp-pixelplumbing-com-a1468d7.txt
+
