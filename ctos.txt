@@ -1,0 +1,10 @@
+1. Werner Vogels -- CTO (Amazon/AWS) -- All Things Distributed -- English -- Netherlands/US -- cloud/platform infra -- techy>businessy
+2. + David Heinemeier Hansson (DHH) -- CTO (Basecamp/HEY) -- long-running Basecamp/HEY essays (Signal v. Noise era onward) -- English -- Denmark/US -- B2B SaaS/product/engineering culture -- businessy>techy
+3. John Carmack -- CTO (Oculus, historically) + serial technical founder -- long-form personal posts (.plan/blog-style essays) -- English -- US -- VR/systems/gaming -- techy>businessy
+4. + Joel Spolsky -- serial technical businessman (Fog Creek/Stack Overflow cofounder) -- Joel on Software -- English -- US -- developer tools + software business building -- businessy>techy
+5. Charity Majors -- CTO (Honeycomb) -- charity.wtf -- English -- US -- devtools/observability (B2B) -- techy>businessy
+6. + Camille Fournier -- CTO (Rent the Runway, historically) -- Elided Branches -- English -- US -- consumer tech + engineering org/ops -- businessy>techy
+7. Oren Eini ("Ayende Rahien") -- technical founder/CEO/CTO-type (RavenDB ecosystem) -- ayende.com -- English -- Israel -- databases/distributed systems (B2B) -- techy>businessy
+8. Theo Schlossnagle -- CTO/founder type (ops/monitoring companies incl. Circonus/OmniTI era) -- long-running personal writing -- English -- US -- monitoring/SRE -- techy>businessy
+9. Udi Dahan -- technical founder/CEO (Particular Software) -- long-running blog posts/talk writeups -- English -- Israel -- enterprise messaging/service bus (B2B) -- techybusinessy
+10. Yegor Bugayenko -- serial technical businessman (software founder) -- yegor256-style essays -- English + some Russian (as I remember) -- Russia/Europe -- software engineering + running small tech businesses -- businessytechy
