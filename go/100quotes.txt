@@ -1,0 +1,109 @@
+Rob Pike's 5 Rules of Programming
+Rule 1. You can't tell where a program is going to spend its time.
+Rule 2. Measure.
+Rule 3. Fancy algorithms are slow when n is small, and n is usually small.
+Rule 4. Fancy algorithms are buggier than simple ones, and they're much harder to implement.
+Rule 5. Data dominates.
+Data structures, not algorithms, are central to programming.
+Rules 3 and 4 are instances of the design philosophy KISS.
+The Zen of Go
+Each package fulfils a single purpose
+Handle errors explicitly
+Return early rather than nesting deeply
+Leave concurrency to the caller
+Before you launch a goroutine, know when it will stop
+Avoid package level state
+Simplicity matters
+Maintainability counts
+Go code is organized into packages.
+Good package names are short and clear.
+They are lower case, with no under_scores or mixedCaps.
+They are often simple nouns, such as:
+Abbreviate judiciously.
+Avoid repetition.
+Simplify function names.
+Avoid meaningless package names.
+Package names are central to good naming in Go programs.
+For decades, discussion of software reuse was far more common than actual software reuse.
+Today, the situation is reversed: developers reuse software written by others every day, in the form of software dependencies, and the situation goes mostly unexamined.
+Software dependencies carry with them serious risks that are too often overlooked.
+My purpose in writing this article is to raise awareness of the risks and encourage more investigation of solutions.
+A dependency manager (sometimes called a package manager) automates the downloading and installation of dependency packages.
+Dependency managers now exist for essentially every programming language.
+A package, for this discussion, is code you download from the internet.
+Inspect the dependency
+Does the code have tests? Can you run them? Do they pass?
+Abstract the dependency
+Isolate the dependency
+Watch your dependencies
+Today I'm releasing WireGuard, an encrypted and authenticated tunneling virtual interface for the kernel.
+It uses next-generation cryptography and is designed to be both easy to use and simple to implement (only ~4000 LoC, which compared to xfrm or openvpn is spectacular), avoiding the enormous complexities of all other secure tunneling tools.
+WireGuard acts as a virtual interface, doing layer 3 IP tunneling, addable with "ip link add dev wg0 type wireguard".
+The WireGuard-specific elements are in a new tool called `wg`, which will at some point be merged into the usual ip tools.
+This is the "cryptokey routing table", and many more details and explanations are found on the site and paper above.
+If a packet comes from a WireGuard interface, it can be trusted as authentic and confidential.
+If you want outgoing packets to be tunneled, point your routing table at the WireGuard interface.
+There is no x509, no ASN.1, no huge complexity; the user configures the public keys, and then the rest is taken care of.
+WireGuard doesn't use the kernel's crypto API.
+The overhead of memory allocation and abstraction/indirection behind each encryption/hashing/ec-multiplication operation not only adds unfortunate performance overhead, but also bloats the code, impacting ease of auditing and verification.
+In Go any data races has undefined behavior.
+And for such protocol you need to use atomic.Store/Load.
+You reason about Go in abstract terms like happens-before, data-race and visible side-effect.
+I'm not opposed to updating the memory model.
+Use channels and mutexes.
+Don't try to be too clever.
+The behaviour of sync.Once is specified in the memory model.
+Experience has shown us again and again that very very few people are capable of writing correct code that uses atomic operations.
+We generally don't want sync/atomic to be used at all.
+And rule 2 is that if you think you might want to use it, see rule 1.
+This repository contains a small and self-contained Go program called build.go.
+This enables end-users to compile the program without having to setup a GOPATH.
+For it to function correctly, all dependencies need to be vendored, e.g. with dep or go mod vendor.
+Then, your build does not depend on any third-party resources on the Internet.
+For Go >= 1.11, modules are used for building and GOPROXY is set to off so that no Internet is needed when building.
+Instruct your users to call go run build.go and it will produce a binary from either a checkout of the repository or from an extracted release tar file.
+**Open an issue to propose your change first.**
+**Keep pull requests small.**
+**Write tests.**
+**Benchmarks should be included for optimizations.**
+**Use comments properly.**
+**Don't accept new dependencies lightly.**
+_Caddy must not export any types defined by those dependencies_.
+Ultimately, you (the contributor) are responsible for the code you're submitting.
+It appears that all those tickers got leaked and the code is spending all the CPU keeping them up to date.
+This is easy to fix of course (with NewTicker and Stop()), but is it expected that the tickers aren't garbage collected?
+I don't like your example which uses a global variable DefaultThrottler
+I think you should get rid of that and get the user to make their own.
+Your Stop() methods are leaking go routines - from the docs
+IMHO locks look nicer when anonymous
+The Go cryptography libraries goal is to help developers build secure applications.
+Thus, they aim to be secure, safe, practical and modern, in roughly that order.
+Secure. We aim to provide a secure implementation free of security vulnerabilities.
+This is achieved through reduced complexity, testing, code review, and a focus on readability.
+Note that this is an ordered list, from highest to lowest priority.
+For example, an insecure implementation or unsafe API will not be considered, even if it enables more use cases or is more performant.
+Ebiten is adding a breaking change to 1.12 (the current master branch).
+Shift the texels a little bit.
+Check the source region in the shader.
+We decided to remove these hacks.
+ECS is a design pattern commonly used in video games (although not very often used in the rest of the software industry) which consists of having a base Entity (a container object) and Components that can be added upon it.
+Godot uses more traditional OOP by providing Nodes, that contain both data and logic.
+The main difference can be summed up as:
+Godot does composition at a higher level than in a traditional ECS.
+Community consensus is not always possible.
+We have a defined process for changes to go, large and small.
+Basically, write a proposal.
+There was never a Dep proposal.
+Naively, we can triangulate all six faces of every voxel cube.
+The best way to do this is to work in 2D.
+This can be done using a dynamic programming algorithm.
+One issue is that the mesh now contains T-junctions which can be problematic.
+The NewServer constructor is responsible for all the top-level HTTP stuff that applies to all endpoints, like CORS, auth middleware, and logging.
+I try not to overload these functions, but in the past I was quite pleased with a simple validation interface that fit nicely into the decode function.
+Every service will need to decode the request bodies and encode response bodies. This is a sensible abstraction that stands the test of time.
+If an endpoint has its own request and response types, usually they're only useful for that particular handler.
+If that's the case, you can define them inside the function.
+This keeps your global space clear and also prevents other handlers from relying on data you may not consider stable.
+In the immediate mode model, library owned state is minimized, and the program is responsible for drawing, layout and event handling, supported by the facilities offered by the UI library.
+Drawing. If a user interface is a form of I/O system, drawing is the output part. Mixing custom drawing and animation with higher level widgets is where the retained model typically struggles.
+The examples so far demonstrate some advantages of immediate mode layouts such as centering, aligning and listing interface elements: operations are stateless, and they're specified and controlled with regular programming constructs such as functions, loops and conditions.

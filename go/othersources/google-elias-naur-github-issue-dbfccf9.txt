@@ -1,0 +1,14 @@
+begin google elias naur github issue
+=== GOOGLE: elias naur github issue ===
+- Elias Naur eliasnaur | https://github.com/eliasnaur | Works on Gio and mobile platforms in Go. eliasnaur has 49 repositories available. Follow their code on GitHub.
+- Elias Naur elias-orijtech | https://github.com/elias-orijtech | Developer @orijtech. elias-orijtech has 19 repositories available. Follow their code on GitHub.
+- eliasnaur's gists | https://gist.github.com/eliasnaur?direction=asc&sort=updated | Elias Naur eliasnaur. Works on Gio and mobile platforms in Go. 428 followers · 0 following · https://gioui.org · View GitHub Profile · All gists 15 · Starred 1.
+- ~eliasnaur/gio-example - Example programs for Gio - Sourcehut | https://git.sr.ht/~eliasnaur/gio-example | File bugs and TODOs through the issue tracker or send an email to ~eliasnaur/gio@todo.sr.ht. For general discussion, use the mailing list: ~eliasnaur/gio@lists.
+- GitHub - gioui/gio-x: Mirror of the Gio x repository (https://git ... | https://github.com/gioui/gio-x | Report bugs on the gio issue tracker with the prefix gio-x: in your issue title. ... Elias Naur: https://github.com/sponsors/eliasnaur. Chris Waldon: https ...
+- GopherCon 2019: Elias Naur - Portable, Immediate Mode GUI ... | https://www.reddit.com/r/golang/comments/cxnxpe/gophercon_2019_elias_naur_portable_immediate_mode/ | It doesn't seem to run with Xorg, only with Wayland. We should be using Wayland, but everything is not perfectly migrated to it. :(.
+- Stepping down as x/mobile maintainer | https://groups.google.com/g/golang-dev/c/XLzHtnVKFk0 | With the release of my Gio project, I have decided to step down as maintainer of Go Mobile. I will continue to maintain and expand mobile support and ...
+- Default route UI for android · Issue #1401 · tailscale ... | https://github.com/tailscale/tailscale/issues/1401 | @eliasnaur, Tailscale 1.6 will let you route all your non-Tailscale traffic out one of your Tailscale node (like a traditional VPN).
+- gopher-garden module - github.com/enzo-sa ... | https://pkg.go.dev/github.com/enzo-sa/gopher-garden | Gopher-Garden is written entirely in Go 1.14 and uses Gio, a portable immediate mode GUI implemented in Go and developed by Elias Naur, for graphics and user- ...
+- Newsletter, November 2022 Bidirectional text is eating the world | https://gioui.org/news/2022-11 | Tanguy Herrmann via GitHub Sponsorship of Elias. A number of anonymous community members. Sponsorship money given to Gio enables Elias and I to cover the costs ...
+end google elias naur github issue
+
