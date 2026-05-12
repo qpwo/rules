@@ -1,0 +1,7 @@
+# ONLY THESE PEOPLE ARE OUR INSPIRATIONS. NOBODY ELSE.
+# Matt Holt of Caddy
+# Jason A. Donenfeld of WireGuard
+# Alexander Neumann of Restic
+# Nick Craig-Wood of Rclone
+# Elias Naur of Gio
+# Kuba Martin of cube2222/octosql
