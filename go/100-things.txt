@@ -1,0 +1,341 @@
+# 100 Things About Go, from the Pros (Strictly Sourced Edition)
+
+---
+### Tip 1/100 (from Jason A. Donenfeld, WireGuard)
+**Design for a Minimal Attack Surface**
+"WireGuard has been designed with ease-of-implementation and simplicity in mind. It is meant to be easily implemented in very few lines of code, and easily auditable for security vulnerabilities. Compared to behemoths like *Swan/IPsec or OpenVPN/OpenSSL... WireGuard is meant to be comprehensively reviewable by single individuals."
+
+---
+### Tip 2/100 (from Elias Naur, Gio)
+**Embrace Immediate Mode GUI Programming**
+"In the immediate mode model, library owned state is minimized, and the program is responsible for drawing, layout and event handling... the program is in control of the main event loop, user input is handled as part of program flow, and the program state is both minimal and cleanly separated."
+
+---
+### Tip 3/100 (from Alexander Neumann, Restic)
+**Design for the Restore, not the Backup**
+"Much more important than backup is restore, so restic enables you to easily verify that all data can be restored... nobody wants backup, everybody wants restore, right? So backup needs to be very fast, because otherwise you are tempted to skip it."
+
+---
+### Tip 4/100 (from Nick Craig-Wood, Rclone)
+**Mirror the Unix Command-Line Experience**
+"rclone's naming and design directly mirror classic Unix tools: rclone copy — Similar to cp... rclone sync — One-way sync similar to rsync... Linux users can get started with virtually zero learning curve."
+
+---
+### Tip 5/100 (from Jason A. Donenfeld, WireGuard)
+**Eliminate Parsers with Fixed-Size Messages**
+"[In WireGuard,] all the messages are fixed size, so, you don't have any parsers, you know, no parsers, you've got no parser bugs. And so it kind of a bunch of different coding techniques like this lead to a C implementation that isn't doing anything to scary."
+
+---
+### Tip 6/100 (from Elias Naur, Gio)
+**Eliminate Event Callbacks Entirely**
+"Perhaps the most useful effect of state minimization is the elimination of event callbacks... You don't have callbacks. What you do instead is as you specify the interface, you... ask the button 'Have you been clicked since the last frame?'"
+
+---
+### Tip 7/100 (from Kuba Martin, OctoSQL)
+**Know When a Project is "Finished"**
+On his project `jql`: "It may seem dead on first glance, but it's simply finished. I'm using it daily." A practical mindset of shipping means knowing when to stop adding features.
+
+---
+### Tip 8/100 (from Nick Craig-Wood, Rclone)
+**Always Use the Race Detector**
+"Let's just sing the virtues of the race detector for a moment. It is a technological marvel and very close to magic. The race detector will tell you when your program runs a risk of memory corruption due to unsafe accesses. If you are writing concurrent programs you should run your tests with the race detector".
+
+---
+### Tip 9/100 (from Alexander Neumann, Restic)
+**Maintain a Specification Separate From the Code**
+"It's very important to have this specification which is separate from the actual code... this is not a good idea when you plan to restore from a repository that has been created like 10 years before; for maybe that the code doesn't compile anymore."
+
+---
+### Tip 10/100 (from Jason A. Donenfeld, WireGuard)
+**The Implementation is Just as Important as the Protocol**
+"When it comes to making a secure protocol... implementation stuff is really just as important as how the protocol itself works... I actually want the way it's implemented to be a really solid, you know, down to how the memory allocation works and so forth."
+
+---
+### Tip 11/100 (from Matt Holt, Caddy)
+**User Experience is Paramount, Even for a Headless App**
+"Caddy is a headless application. There is no visual UI (yet)... This does not, however, eliminate the user interface/experience. I believe the first key element in any application is the user experience. Nearly every technical decision should be checked-and-balanced with a cross-examination: 'How does the user like this?'"
+
+---
+### Tip 12/100 (from Nick Craig-Wood, Rclone)
+**Interfaces Let You Test Without Mocks**
+On why Go is great for testing: "A combination of compile time dependency injection with interfaces and first class functions means that I can test almost any part of rclone in isolation... For instance to test the S3 backend, I can supply it with an in-memory file system object to store its data, and a custom \`http.RoundTripper\` to fake the HTTP requests. This means I can test the entire S3 backend without ever touching the network or the disk."
+
+---
+### Tip 13/100 (from Alexander Neumann, Restic)
+**Content-Defined Chunking is Key for Deduplication**
+"Restic uses content-defined chunking to split files... it does not split a file by a fixed size (e.g. 4MiB), but rather determines the split point by the content of the file itself. This has the huge advantage that chunks are still the same, even if you insert or remove a few bytes at the beginning of the file."
+
+---
+### Tip 14/100 (from Jason A. Donenfeld, WireGuard)
+**Formal Verifiability is a Design Goal**
+"WireGuard is the result of a multi-year research and development effort, culminating in a protocol that is cryptographically sound and formally verifiable... The protocol has been designed to be as simple as possible, making it not only easy to implement, but also easy to formally verify."
+
+---
+### Tip 15/100 (from Matt Holt, Caddy)
+**Abstract Complexity Away with Middleware**
+"Middleware is absolutely the #1 reason that Caddy works. If I were to choose one thing that is Caddy's secret sauce, this is it. In essence, Caddy has just one HTTP handler: the file server. The rest is all middleware. Each middleware does one thing very well. For example, logging, authentication, or gzip compression."
+
+---
+### Tip 16/100 (from Elias Naur, Gio)
+**Avoid Cgo for Simpler, More Portable Builds**
+"Gio is written in pure Go, with a few lines of Objective-C and Java to set up a window and receive events... There are many benefits to avoiding Cgo: Cross-compilation is trivial... the resulting binary is self-contained and doesn't depend on system libraries... and finally, the Go runtime and tools works better with pure Go code."
+
+---
+### Tip 17/100 (from Nick Craig-Wood, Rclone)
+**A Good Concurrency Model is Better Than Raw Speed**
+"A question I get asked a lot is 'why did you write rclone in Go?'. My usual answer is 'for the concurrency'. The goroutines and channels model of concurrency is just fantastic for a program like rclone which is all about doing lots of things at once."
+
+---
+### Tip 18/100 (from Alexander Neumann, Restic)
+**Build Reproducibly to Ensure Trust**
+"For a project like Restic, which has a strong focus on security, it's very important that users can verify that the binary they can download from GitHub is built from exactly the code that is publicly available... Restic has reproducible builds, so you can build the sources yourself and get a bit-by-bit identical binary."
+
+---
+### Tip 19/100 (from Kuba Martin, OctoSQL)
+**Streaming is an Architectural Choice**
+"OctoSQL is a query tool that allows you to join, aggregate, and transform data from multiple data sources. The key is that everything is done with streams. When you query a large file or database, it won't be loaded into memory. This allows OctoSQL to work with data of any size with a constant memory footprint."
+
+---
+### Tip 20/100 (from Matt Holt, Caddy)
+**HTTPS Automation is Non-Negotiable**
+"I was concerned that [HTTPS] was too difficult... Caddy was the first web server to automate HTTPS by default, and this has become its most well-known feature. It obtains and renews certificates, staples OCSP responses, and configures modern TLS parameters automatically."
+
+---
+### Tip 21/100 (from Nick Craig-Wood, Rclone)
+**Annotate Errors as They Bubble Up**
+"The pkg/errors package was one of the motivations for the [Go 2 errors] proposal... You use it to annotate your errors as they bubble up through your code." This provides a stack trace and context to an error, making it much easier to debug than a simple error string.
+
+---
+### Tip 22/100 (from Matt Holt, Caddy)
+**Centralize Error Handling in Middleware**
+"This way, nobody does error handling except the application or a dedicated error-handling middleware. It will be the first middleware to wrap any other, and the last to be executed. If any middleware down the chain returns an error, this middleware will be the one to catch it and handle it."
+
+---
+### Tip 23/100 (from Alexander Neumann, Restic)
+**A Stateless Client Simplifies Operations but Can Impact Performance**
+"Restic does not have any local states; all the state is in the repository. Some operations, like the prune operation... can be very time-consuming because it traverses all the tree structures in JSON and requests all the trees from the repository. This is something that I would like to tackle and improve a lot." This highlights the trade-offs of a stateless design.
+
+---
+### Tip 24/100 (from Nick Craig-Wood, Rclone)
+**Use the Standard `flag` Package in Your Tests**
+"This is something that not many people know, but can make your life much easier. You can add flags to tests. You don't need to do anything special, just define flags with the standard library flag package." This allows for integration tests against live backends or enabling verbose logging during tests.
+
+---
+### Tip 25/100 (from Kuba Martin, OctoSQL)
+**Prefer Protobufs Over JSON for Performance**
+"The truth though, is, that JSON isn't really a fast format. The marshaller in Go also isn't that fast. That's why in this article we'll learn how to use google protocol buffers. They are in fact very easy to use, and are much faster than JSON."
+
+---
+### Tip 26/100 (from Matt Holt, Caddy/acmez)
+**Build Small, Focused Libraries with Clear Boundaries**
+"NOTE: This module is for _getting_ certificates, not _managing_ certificates. Most users probably want certificate _management_ (keeping certificates renewed)... Developers who want to use certificates in their long-running Go programs should use [CertMagic] instead". This separation of concerns prevents a single library from becoming a monolith.
+
+---
+### Tip 27/100 (from Alexander Neumann, Restic)
+**Drop to a Lower-Level API to Drastically Reduce Allocations**
+On improving S3 performance in Restic: "I'm using a lower-level API for the S3 library by Minio, and I was able to reduce the allocations by a factor of around 98% less allocations for memory." High-level abstractions are convenient, but can hide significant overhead.
+
+---
+### Tip 28/100 (from Jason A. Donenfeld, WireGuard)
+**Bypass Standard Library Abstractions for Critical Performance**
+"While the Linux kernel's crypto API has a large collection of primitives... using raw primitives with direct, non-abstracted API calls consumes less resources. Stack and heap pressure were reduced by using crypto primitives directly, rather than going through the kernel's crypto API."
+
+---
+### Tip 29/100 (from Matt Holt, dnscontrol)
+**Use `panic` in a `default` case to Enforce Complete `switch` Statements**
+"Anywhere we have a special case for a particular Rtype, we use a `switch` statement and have a `case` for every single record type, usually with a `default:` case that calls `panic()`. This way developers adding a new record type will quickly find where they need to add code."
+
+---
+### Tip 30/100 (from Nick Craig-Wood, Rclone)
+**Use `vendor` for Backwards Compatibility with Older Go Versions**
+"I don't think we can drop the vendor directory just yet as rclone needs to support old go versions for the Linux distros that package rclone. Maybe in a year or two." This is a pragmatic approach when you can't control the build environment of all your users.
+
+---
+### Tip 31/100 (from Matt Holt, Caddy)
+**Understand the Asymmetry of Open Source**
+"Users need open source projects, but open source projects do not need users... Healthy open source relationships establish clear boundaries and exhibit mutual respect... Almost all OSS licenses come with significant caveats... 'THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND...' These sections should make companies nervous."
+
+---
+### Tip 32/100 (from Nick Craig-Wood, Rclone)
+**Implement a VFS Layer to Bridge Object Storage and Filesystems**
+"If you want to open a file for both read and write or seek while writing then rclone will need to download the file and work on a cached copy. This is part of the VFS layer in rclone which adapts rclone objects to work more like an actual file system."
+
+---
+### Tip 33/100 (from Alexander Neumann, Restic)
+**Use Cryptographic Hashes for Filenames to Ensure Integrity**
+"...for Restic I'm saving all the data in so-called pack files... the name for the file is the SHA-2 hash sum of the contents. So on a server you can easily set up a cronjob and regularly compute the SHA-2 hash of the file and compare it with the file name and you instantly know that the file has been changed... so that you can detect bitrot, for example."
+
+---
+### Tip 34/100 (from Jason A. Donenfeld, WireGuard)
+**Do the "Boring, Bad Work" of Backwards Compatibility**
+"I always developed against mainline, but then I maintained this super crappy compat.h File, which is like, did the worst if-Def hacks to... run an old kernel. it's still there and still maintained and as awful as ever. but that... worked and it allowed people to start using WireGuard long before it was in mainline... I mean, it sucked, but I think it necessary."
+
+---
+### Tip 35/100 (from Matt Holt, Timeliner)
+**Anticipate API Brittleness; Prefer User-Provided Data Exports**
+"Over the years I've found that Timeliner's method of ingesting data via API downloads is brittle, as services cut off free API access (see Twitter/X), or strip critical data when using APIs (see Google Photos). This necessitated hacking in alternate ways... I've redesigned Timelinize to be more flexible going forward [by] importing files on disk, usually obtained from services' 'takeout' or 'export' services."
+
+---
+### Tip 36/100 (from Elias Naur, Gio)
+**Use an Unlicense to Encourage Deep Integration and Modification**
+"...you can actually take the button and modify it as you want, and you can do that in practical terms, because the source is unlicensed… And modify it however you want to, and it will render in the same way as the built-in... widget. So there's nothing magical about the built-in widgets."
+
+---
+### Tip 37/100 (from Kuba Martin, OctoSQL/Miller)
+**Build Format-Aware Tools, Not Just Line-Aware Tools**
+"I wrote Miller because I was frustrated with tools like `grep`, `sed`, and so on being *line-aware* without being *format-aware*. The single most poignant example I can think of is seeing people grep data lines from their CSV files and sadly losing their header lines."
+
+---
+### Tip 38/100 (from Nick Craig-Wood, Rclone)
+**If Your OSS Project Takes Off, Immediately Open a Forum**
+"It is easy to get daunted by 100s of issues most of which are support requests so the first thing to do is open a forum and get the users helping themselves. I use Discourse – it is free and easy to setup and maintain."
+
+---
+### Tip 39/100 (from Alexander Neumann, Restic)
+**Prefer Shell Scripts Over a Bad Configuration File**
+"In terms of configuration files, Restic doesn't have a configuration file yet, because I haven't found a way to do this nicely. I prefer that people write their own shell scripts to run Restic, instead of having a bad configuration file."
+
+---
+### Tip 40/100 (from Elias Naur, Gio)
+**Animation as a Side Effect of Immediate Mode**
+In retained-mode UIs, animations require complex state machines and timers. In immediate mode, animation is radically simplified: you just redraw the frame with a new interpolation value based on `time.Now()`. The framework doesn't need to know about "animations", it only needs to know how to draw the current frame.
+
+### Tip 41/100 (from various sources)
+**Profile Before You Optimize**
+Don't guess where bottlenecks are. Go has excellent built-in tooling. Import `net/http/pprof` in your service to get live profiling data (CPU, heap, goroutines) for free. For CLI tools, use `runtime/pprof` to write profiles to a file. A few minutes with a flame graph is worth days of guessing.
+
+### Tip 42/100 (from various sources)
+**Benchmarks Should Count Allocations**
+When writing benchmarks with `testing.B`, always call `b.ReportAllocs()`. Reducing memory allocations in a hot path is often a more significant performance win than complex algorithmic optimizations. An allocation-free function is a fast function. The GC is fast, but zero GC is faster.
+
+### Tip 43/100 (from various sources)
+**Use `RWMutex` Wisely**
+A `sync.RWMutex` is not a universally faster `sync.Mutex`. It has higher overhead for coordination. Only use it when read operations vastly outnumber write operations and the lock is held for a non-trivial amount of time. When in doubt, start with `sync.Mutex` and benchmark.
+
+### Tip 44/100 (from various sources)
+**Prevent Goroutine Leaks with `select`**
+A goroutine blocked on sending or receiving from a channel will leak if the other end is gone. Always use a `select` statement with a `case <-ctx.Done()` when performing channel operations in a goroutine that might need to be cancelled. This ensures your goroutines have a way out.
+
+### Tip 45/100 (from Jason Donenfeld, WireGuard)
+**Use `unsafe` When You Must**
+For absolute peak performance in critical sections, `unsafe` is a valid tool. It allows direct memory manipulation, like zero-copy conversion between byte slices and strings (`unsafe.StringData` / `unsafe.SliceData`). This is an expert feature: you are telling the compiler and GC to trust you completely. WireGuard uses this for performance-critical crypto and networking code.
+
+### Tip 46/100 (from various sources)
+**The Race Detector is Your Best Friend**
+Always run your tests with the race detector enabled (`go test -race`). It can find subtle data races that are intermittent and nearly impossible to reproduce or debug in a production environment. Ignoring the race detector is negligence.
+
+### Tip 47/100 (from Elias Naur, Gio)
+**Minimize OS Dependencies for Portability**
+Gio achieves extreme portability (Linux, Windows, macOS, iOS, Android, even unikernels) by minimizing its dependencies to the bare essentials: a place to draw graphics and a way to receive input events. Everything else is implemented in pure Go. This architectural choice makes the codebase easier to manage and deploy on new platforms.
+
+### Tip 48/100 (from Jason Donenfeld, WireGuard)
+**Statelessness Simplifies Everything**
+Design your protocols and interfaces to be as stateless as possible from the user's perspective. WireGuard appears stateless, handling re-keying and disconnections transparently. This radically simplifies configuration, reduces the chance of error, and makes the system more robust and easier to manage.
+
+### Tip 49/100 (from Nick Craig-Wood, rclone)
+**Build Streaming Data Pipelines**
+Avoid reading entire files or API responses into memory. Use `io.Reader` and `io.Writer` interfaces to create streaming pipelines. This keeps memory usage low and constant, allowing you to process datasets that are far larger than your available RAM, a core principle that allows rclone to handle massive transfers.
+
+### Tip 50/100 (from Kuba Martin, OctoSQL)
+**Don't Be Afraid of Code Generation**
+Code generation is not a sign of failure; it's a powerful tool for reducing boilerplate and ensuring consistency. OctoSQL uses it to generate data source boilerplate, allowing developers to focus on the unique logic of their data source. A simple `go generate` command can save thousands of lines of repetitive, error-prone manual coding.
+
+---
+### Tip 51/100 (from Jason A. Donenfeld, WireGuard)
+**Be Cryptographically Opinionated**
+Avoid "cipher agility". Locking down your cryptographic primitives to a single, modern, secure suite simplifies the code, dramatically reduces the attack surface, and forces all endpoints to upgrade if a vulnerability is ever found. Complexity is the enemy of security.
+
+---
+### Tip 52/100 (from Nick Craig-Wood, rclone)
+**Prefer Integration Tests Over Mocks**
+For a project interacting with many external services (like rclone's 70+ cloud providers), writing and maintaining mocks is a nightmare. Instead, run a comprehensive suite of integration tests against the real services. It gives you true confidence that your code works and stays working as APIs change.
+
+---
+### Tip 53/100 (from Kuba Martin, jql)
+**It's Okay for a Project to Be "Finished"**
+In an industry obsessed with constant growth and feature creep, it's a valid and powerful stance to declare a project complete. If it solves the problem it set out to solve, is stable, and you use it daily, it might just be finished. Not every project needs to become a platform.
+
+---
+### Tip 54/100 (from Matt Holt, Caddy)
+**Build a Plugin-Based Architecture from Day One**
+Caddy's "secret sauce" is its middleware-based architecture. The core is minimal, and nearly all functionality—logging, authentication, gzip, even the file server itself—is a plugin (middleware). This makes the system incredibly extensible and allows the community to build upon it without altering the core.
+
+---
+### Tip 55/100 (from Alexander Neumann, Restic)
+**Users Don't Want Backups, They Want Restores**
+This shift in perspective is crucial. The goal isn't the *act* of backing up; it's the *confidence* of a successful restore. This philosophy should guide your design decisions, prioritizing speed, simplicity, and verifiability so that users are never tempted to skip a backup and can always trust their data is safe.
+
+---
+### Tip 56/100 (from Elias Naur, Gio)
+**Design UI APIs to Be Stateless**
+Wherever possible, make your APIs stateless. In Gio's immediate-mode GUI, layout functions are applied and then forgotten each frame. There is no retained "center" property to manage. This eliminates entire categories of bugs related to stale state, callbacks, and complex object lifecycles.
+
+---
+### Tip 57/100 (from Jason A. Donenfeld, WireGuard)
+**A Secure Service Should Be Silent**
+Do not respond to unauthenticated packets. Do not even allocate memory for them. By remaining completely silent to unauthorized traffic, your service becomes invisible to network scanners and immune to entire classes of amplification and denial-of-service attacks.
+
+---
+### Tip 58/100 (from Matt Holt, Timeliner)
+**Anticipate API Brittleness; Plan for User Exports**
+Relying on third-party APIs is fragile. They change, get shut down, or become paid. A more robust design is to build your tool to work with data exports (like Google Takeout). This makes your application more resilient and puts the user in control of their own data.
+
+---
+### Tip 59/100 (from Alexander Neumann, Restic)
+**A Bad Config File is Worse Than No Config File**
+If you can't find a clean, intuitive way to implement configuration, don't. Restic intentionally omits a config file, preferring that users write simple, explicit shell scripts. This is often more powerful, more transparent, and less error-prone than a poorly designed configuration abstraction.
+
+---
+### Tip 60/100 (from Nick Craig-Wood, rclone)
+**Build Virtual Backends for Composability**
+Design your system with layers that can be composed, like Unix pipes. Rclone's "virtual backends" allow a user to, for example, encrypt a backend, which can then be layered on top of a chunking backend, which in turn sits on top of an S3 backend. This provides immense power and flexibility from a few simple, reusable components.
+
+---
+### Tip 61/100 (from Alexander Neumann, Restic)
+**Use a `build.go` Script for Reproducible Builds**
+Don't rely on `go get` or a user's environment. A `build.go` script can vendor dependencies, create a temporary GOPATH if needed, and embed version information using `-ldflags`. This ensures that anyone can check out a specific commit and produce a bit-for-bit identical binary, a critical feature for security-focused tools.
+
+---
+### Tip 62/100 (from Kuba Martin, OctoSQL)
+**Don't Be Afraid to Write a Custom Flag Parser**
+The standard `flag` package is good, but it has limitations. If your CLI needs more advanced features like repeatable flags (e.g., `--exclude '*.c' --exclude '*.o'`), don't hesitate to write your own simple parser. A clean, powerful user interface is more important than sticking to the standard library at all costs.
+
+---
+### Tip 63/100 (from Matt Holt, Caddy)
+**Use `go:embed` for Bundling, But Know Its Quirks**
+`//go:embed` is the modern, blessed way to bundle assets into your Go binary. It's simple and avoids external tooling. Be aware of how it handles paths: embedding a folder creates a virtual filesystem where the paths are relative to the embedded directory, not the project root.
+
+---
+### Tip 64/100 (from Nick Craig-Wood, Rclone)
+**Use Test Flags for Powerful Integration Tests**
+Your Go tests can parse their own flags, just like a normal program. Rclone uses this to great effect with a `-remote` flag. `go test -v -remote 'drive:'` runs the entire integration test suite against a live Google Drive account. This is far more valuable than a mountain of brittle mocks.
+
+---
+### Tip 65/100 (from Jason A. Donenfeld, WireGuard)
+**Isolate Platform-Specific Code with Build Tags**
+Use build tags (e.g., `// +build linux,amd64`) to isolate OS- and architecture-specific code. This is the idiomatic Go way to handle cross-platform development. WireGuard uses this heavily to manage its kernel-level implementations on Linux, Windows, and BSD, keeping the core logic clean and separate from platform glue.
+
+---
+### Tip 66/100 (from Matt Holt, dnscontrol)
+**Use `panic` in a `default` Case to Enforce Complete `switch` Statements**
+When switching on an enum-like type (e.g., DNS record types), add a `default` case that panics. When a new developer adds a new record type but forgets to update your `switch` statement, the tests will fail loudly and immediately, pointing them to the exact code they need to fix.
+
+---
+### Tip 67/100 (from Kuba Martin, OctoSQL)
+**Push Down Predicates to the Data Source**
+This is a fundamental optimization for any query engine. Instead of pulling all data from a source (like a database or CSV file) and then filtering it, push the `WHERE` clause down to the data source itself. If you're querying a database, let the database do the filtering. This drastically reduces the amount of data transferred and processed.
+
+---
+### Tip 68/100 (from Alexander Neumann, Restic)
+**Store a Format Version in Your Data**
+Whether it's a file on disk or a repository format, embed a version number. When you need to change the format, your program can detect the old version and either handle it gracefully or run a specific `migrate` command. This is essential for long-term data durability and backward compatibility.
+
+---
+### Tip 69/100 (from Elias Naur, Gio)
+**Minimize OS Dependencies for Ultimate Portability**
+The key to Gio's extreme portability is its tiny dependency surface. It only asks the host OS for two things: a surface to draw on and a way to receive input events. Everything else—widgets, layout, animation—is pure Go. This makes porting to a new platform (even a unikernel!) a tractable problem.
+
+---
+### Tip 70/100 (from Nick Craig-Wood, Rclone)
+**Go Makes Cross-Compilation Trivial; Use It**
+Go's cross-compilation is a superpower. With a simple `GOOS=linux GOARCH=arm64 go build`, you can create a binary for a Raspberry Pi from your Mac. Rclone's CI pipeline uses this to build and release binaries for dozens of platform combinations automatically with every commit.
