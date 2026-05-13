@@ -339,3 +339,53 @@ The key to Gio's extreme portability is its tiny dependency surface. It only ask
 ### Tip 70/100 (from Nick Craig-Wood, Rclone)
 **Go Makes Cross-Compilation Trivial; Use It**
 Go's cross-compilation is a superpower. With a simple `GOOS=linux GOARCH=arm64 go build`, you can create a binary for a Raspberry Pi from your Mac. Rclone's CI pipeline uses this to build and release binaries for dozens of platform combinations automatically with every commit.
+
+---
+### Tip 91/100 (from Jason A. Donenfeld, WireGuard)
+**The Implementation *Is* The Specification**
+An RFC can be misleading if it implies any wire-compatible implementation is "good enough". True security comes from high-quality implementation techniques: careful memory management, avoiding dynamic allocations for unauthenticated packets, and using fixed-size messages to eliminate entire classes of parser bugs. The code itself is the ultimate promise of security.
+
+---
+### Tip 92/100 (from Elias Naur, Gio)
+**Embrace Runtime Code Generation (JIT) for Extreme Performance**
+Instead of writing generic functions that handle all cases, dynamically generate specialized routines at runtime based on the specific context (graphics state, data types, etc.). This eliminates branches and optimizes register usage, yielding massive speedups that are impossible with static compilation alone, as demonstrated by SwiftShader's Reactor library used in Gio.
+
+---
+### Tip 93/100 (from Alexander Neumann, Restic)
+**For Longevity, Maintain a Spec Separate From the Code**
+For a project intended to last for decades, like a backup tool, a formal specification of the data format is non-negotiable. In ten years, the original code may not compile or even be available, but a clear specification ensures that the data can still be read and restored. It is the ultimate contract with your users.
+
+---
+### Tip 94/100 (from Jason A. Donenfeld, WireGuard)
+**Bypass Abstractions for Kernel-Level Performance**
+For WireGuard's kernel implementation, using crypto primitives directly instead of going through the kernel's generic crypto API drastically reduced stack and heap pressure. Likewise, all packet transformations are done in-place to avoid needless memory copies. High-level abstractions are for applications; systems programming requires direct control.
+
+---
+### Tip 95/100 (from Nick Craig-Wood, Rclone)
+**Backwards Compatibility is the Highest Priority**
+You can add features, flags, and providers, but you must never break existing user scripts and configurations. This discipline builds user trust, which is the most valuable asset a long-running project has. Every change must be weighed against its potential to disrupt users who rely on the tool's stability.
+
+---
+### Tip 96/100 (from Elias Naur, Gio)
+**Radical Dependency Minimization is the Path to True Portability**
+By only depending on the host OS for a drawing surface and input events, Gio can run on everything from desktops and mobile phones to WebAssembly and even unikernels. This is a more maintainable long-term strategy than wrapping native widgets, which locks you into the limitations and maintenance cycle of each platform's toolkit.
+
+---
+### Tip 97/100 (from Kuba Martin, OctoSQL)
+**Design for Streaming from Day One**
+Assume your data will not fit in memory. By building your architecture around `io.Reader`-like interfaces and record-by-record processing, your tool can handle gigabytes of data with a constant, tiny memory footprint. This isn't an "optimization" to be added later; it is a core architectural decision that defines what your tool is capable of.
+
+---
+### Tip 98/100 (from Jason A. Donenfeld, WireGuard)
+**Use Formal Verification and Disassembly as Development Tools**
+Augment your process with advanced tooling. Use formal verification (like Tamarin) to prove protocol correctness. Use disassemblers (like IDAPro) to inspect compiler output and confirm your code is doing exactly what you intend. These tools provide a level of assurance that testing and code review alone cannot.
+
+---
+### Tip 99/100 (from Matt Holt, Caddy)
+**Sustainable Open Source is a Technical Requirement**
+To ensure a project's long-term health, you must secure its funding. Price sponsorships and commercial licenses at a level that signals seriousness to enterprise users; tiny price points are often ignored as hobbyist-tier. Don't be afraid to say "no" to feature requests that add complexity without aligning with the core vision. A starved project cannot be a secure or reliable one.
+
+---
+### Tip 100/100 (from Alexander Neumann, Restic)
+**A Good Error Message is a Critical Part of the UI**
+An error shouldn't just state what failed, but why, and suggest a fix. When a user's restore failed due to a typo in an S3 bucket name, the initial "wrong password" error was technically correct but unhelpful. Improving the error to suggest checking the repository path saved the user's data and their trust in the project.
