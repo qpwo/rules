@@ -1159,6 +1159,32 @@ static const void *memmem_pivot(const void *haystack, size_t hay_len, const void
     return memmem_pivot_scan_avx2(hay, hay_len, need, needle_len, pivot);
 }
 
+static void radix_sort_u64(uint64_t *a, size_t n) {
+    if (!n) return;
+    uint64_t *b = mmap(NULL, n * 8, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (b == MAP_FAILED) return;
+    for (int shift = 0; shift < 64; shift += 8) {
+        size_t cnt[256] = {0};
+        for (size_t i = 0; i < n; i++) cnt[(a[i] >> shift) & 255]++;
+        size_t pos[256], p = 0;
+        for (int i = 0; i < 256; i++) { pos[i] = p; p += cnt[i]; }
+        for (size_t i = 0; i < n; i++) b[pos[(a[i] >> shift) & 255]++] = a[i];
+        uint64_t *tmp = a; a = b; b = tmp;
+    }
+    munmap(b, n * 8);
+}
+
+static uint64_t *get_sorted_offs(uint64_t start_idx, uint64_t count) {
+    if (!count) return NULL;
+    uint64_t *offs = mmap(NULL, count * 8, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (offs != MAP_FAILED) {
+        for (uint64_t i = 0; i < count; i++) offs[i] = ht[start_idx + i].off1 - 1;
+        radix_sort_u64(offs, count);
+        return offs;
+    }
+    return NULL;
+}
+
 static int rec_has_terms(Record *r, int num_words, char **words, size_t *lens, uint64_t *term_bfs, double now)
 {
     int is_decay_val = 0;
@@ -1225,9 +1251,11 @@ static int do_search(const char *t, int num_words, char **words)
     double now = (double)time(NULL);
     uint64_t start_idx, end_idx;
     ht_tenant_range(t, tl, &start_idx, &end_idx);
+    uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
+    uint64_t *offs = get_sorted_offs(start_idx, count);
     #pragma omp parallel for schedule(static, 4096) num_threads(worker_threads())
-    for (uint64_t i = start_idx; i < end_idx; i++) {
-        Record *r = rec_at(ht[i].off1 - 1);
+    for (uint64_t i = 0; i < count; i++) {
+        Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
         if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), t, tl)) continue;
         if (!rec_has_terms(r, num_words, words, lens, term_bfs, now)) continue;
         #pragma omp critical
@@ -1235,6 +1263,7 @@ static int do_search(const char *t, int num_words, char **words)
             write_weighted_record(r, now);
         }
     }
+    if (offs) munmap(offs, count * 8);
     return 0;
 }
 
@@ -1291,8 +1320,10 @@ static int do_scan(const char *t, const char *prefix)
     double now = (double)time(NULL);
     uint64_t start_idx, end_idx;
     ht_tenant_range(t, tl, &start_idx, &end_idx);
-    for (uint64_t i = start_idx; i < end_idx; i++) {
-        Record *r = rec_at(ht[i].off1 - 1);
+    uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
+    uint64_t *offs = get_sorted_offs(start_idx, count);
+    for (uint64_t i = 0; i < count; i++) {
+        Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
         if (r->op == OP_DEL || r->t_len != tl) {
             continue;
         }
@@ -1304,6 +1335,7 @@ static int do_scan(const char *t, const char *prefix)
         }
         write_weighted_record(r, now);
     }
+    if (offs) munmap(offs, count * 8);
     return 0;
 }
 
@@ -1749,6 +1781,9 @@ static int do_closest(const char *path, const char *type, const char *t, const c
     uint64_t start_idx, end_idx;
     ht_tenant_range(t, r->t_len, &start_idx, &end_idx);
 
+    uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
+    uint64_t *offs = get_sorted_offs(start_idx, count);
+
     #pragma omp parallel num_threads(worker_threads())
     {
         float local_best = -1e30f;
@@ -1756,10 +1791,11 @@ static int do_closest(const char *path, const char *type, const char *t, const c
         uint16_t local_k_len = 0;
 
         #pragma omp for schedule(static, 4096)
-        for (uint64_t i = start_idx; i < end_idx; i++) {
-            Record *c = rec_at(ht[i].off1 - 1);
+        for (uint64_t i = 0; i < count; i++) {
+            uint64_t koff = offs ? offs[i] : ht[start_idx + i].off1 - 1;
+            Record *c = rec_at(koff);
             if (c->op == OP_DEL || c->t_len != r->t_len || c->v_len != r->v_len) continue;
-            if (ht[i].off1 == n->off1) continue; // skip self
+            if (koff + 1 == n->off1) continue; // skip self
             if (memcmp(rec_t(c), t, r->t_len) != 0) continue;
 
             size_t p1 = r->v_len > 256 ? 256 : r->v_len;
@@ -1792,6 +1828,8 @@ static int do_closest(const char *path, const char *type, const char *t, const c
             }
         }
     }
+
+    if (offs) munmap(offs, count * 8);
 
     if (best_k) {
         fwrite(best_k, 1, best_k_len, stdout);
@@ -2320,13 +2358,16 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     { SRV_WRITE_LOCK(db_path);
                                         uint64_t start_idx, end_idx;
                                         ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
-                                        for (uint64_t i = start_idx; i < end_idx; i++) {
-                                            Record *r = rec_at(ht[i].off1 - 1);
+                                        uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
+                                        uint64_t *offs = get_sorted_offs(start_idx, count);
+                                        for (uint64_t i = 0; i < count; i++) {
+                                            Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
                                             if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
                                             if (kl && (r->k_len < kl || memcmp(rec_k(r), k, kl))) continue;
                                             if (!append_raw(srv_db_fd, full_tenant, ft_len, rec_k(r), r->k_len, NULL, 0, OP_DEL)) { shed = 1; break; }
                                             wrote++;
                                         }
+                                        if (offs) munmap(offs, count * 8);
                                         if (wrote && !shed) load_db(db_path);
                                     }
                                     char res[64];
@@ -2381,10 +2422,11 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 { SRV_READ_LOCK(db_path);
                                 uint64_t start_idx, end_idx;
                                 ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
-                                uint64_t count = end_idx - start_idx;
+                                uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
+                                uint64_t *offs = get_sorted_offs(start_idx, count);
                                 #pragma omp parallel for reduction(+:count_est,raw_count,sum) schedule(static, 4096) num_threads(worker_threads())
                                 for (uint64_t i = 0; i < count; i++) {
-                                    Record *r = rec_at(ht[start_idx + i].off1 - 1);
+                                    Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
                                     if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
                                     if (pref_len > 0 && (r->k_len < pref_len || memcmp(rec_k(r), pref, pref_len))) continue;
                                     if (r->weight_log > max_w) continue;
@@ -2483,6 +2525,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         }
                                     }
                                 }
+                                if (offs) munmap(offs, count * 8);
                                 }
                                 if (op == 4 || op == 5) {
                                     send_response(fd, cipherkey, out_len > OUT_CAP ? 4 : 0, out, out_len > OUT_CAP ? OUT_CAP : out_len);
@@ -2677,18 +2720,20 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     uint64_t start_idx, end_idx;
                                     ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
                                     if (end_idx > start_idx) {
-                                        uint64_t count = end_idx - start_idx;
+                                        uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
+                                        uint64_t *offs = get_sorted_offs(start_idx, count);
                                         static _Atomic uint64_t seed = 0x12345678;
                                         uint64_t s = __atomic_fetch_add(&seed, 6364136223846793005ULL, __ATOMIC_RELAXED);
                                         uint64_t start_offset = s % count;
                                         for (uint64_t i = 0; i < count; i++) {
-                                            uint64_t idx = start_idx + ((start_offset + i) % count);
-                                            Record *r = rec_at(ht[idx].off1 - 1);
+                                            uint64_t idx = (start_offset + i) % count;
+                                            Record *r = rec_at(offs ? offs[idx] : (ht[start_idx + idx].off1 - 1));
                                             if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len) || r->weight_log > 0) continue;
                                             if (kl && (r->k_len < kl || memcmp(rec_k(r), k, kl))) continue;
-                                            found_off1 = ht[idx].off1;
+                                            found_off1 = (offs ? offs[idx] : ht[start_idx + idx].off1 - 1) + 1;
                                             break;
                                         }
+                                        if (offs) munmap(offs, count * 8);
                                     }
                                 }
                                 if (found_off1) {
@@ -2890,9 +2935,11 @@ int main(int argc, char **argv)
                 if (threshold > 1.0) { max_w = threshold; threshold = 1.0; }
                 double now = (double)time(NULL);
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
+            uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
+            uint64_t *offs = get_sorted_offs(start_idx, count);
             #pragma omp parallel for reduction(+:count_est,raw_c) schedule(static, 4096) num_threads(worker_threads())
-            for (uint64_t i = start_idx; i < end_idx; i++) {
-                Record *r = rec_at(ht[i].off1 - 1);
+            for (uint64_t i = 0; i < count; i++) {
+                Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
                 if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
                     if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
                 if (r->weight_log > max_w) continue;
@@ -2912,6 +2959,7 @@ int main(int argc, char **argv)
             count_est += w;
             raw_c++;
                 }
+                if (offs) munmap(offs, count * 8);
                 printf("%.0f\t%llu\n", count_est, (unsigned long long)raw_c);
             }
             else if (!strcmp(args[0], "sum") && n >= 2) {
@@ -2924,9 +2972,11 @@ int main(int argc, char **argv)
                 if (threshold > 1.0) { max_w = threshold; threshold = 1.0; }
                 double sum_now = n >= 5 ? strtod(args[4], NULL) : (double)time(NULL);
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
+            uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
+            uint64_t *offs = get_sorted_offs(start_idx, count);
             #pragma omp parallel for reduction(+:s,raw_s) schedule(static, 4096) num_threads(worker_threads())
-            for (uint64_t i = start_idx; i < end_idx; i++) {
-                Record *r = rec_at(ht[i].off1 - 1);
+            for (uint64_t i = 0; i < count; i++) {
+                Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
                 if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
                     if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
                 if (r->weight_log > max_w) continue;
@@ -2962,6 +3012,7 @@ int main(int argc, char **argv)
                 }
                     }
                 }
+                if (offs) munmap(offs, count * 8);
                 printf("%.17g\t%llu\n", s, (unsigned long long)raw_s);
             }
             else printf("ERR\n");
