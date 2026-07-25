@@ -2574,6 +2574,7 @@ w2_sum += eff_w * eff_w;
                                 if (max_wl < 0) max_wl = 0;
 double ess = count_est > 0 && w2_sum > 0 ? count_est * count_est / w2_sum : (count_est > 0 ? count_est : 0);
 double confidence = ess >= 1000 ? 1.0 : ess / 1000.0;
+if (max_wl > 8) confidence *= 8.0 / (double)max_wl;
 if (max_w < 20.0 && max_w > 0) confidence *= max_w / 20.0;
                                 if (count_est < 0.5) count_est = 0;
                                 if (__builtin_fabs(sum) < 5e-15) sum = 0;
