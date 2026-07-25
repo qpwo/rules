@@ -742,16 +742,13 @@ static int do_scan(const char *t, const char *prefix)
 
     size_t tl = strlen(t);
     size_t pl = prefix ? strlen(prefix) : 0;
-    if (tl > UINT16_MAX) {
+    if (tl > UINT16_MAX || pl > UINT16_MAX) {
         return 0;
     }
 
-    ScanRow *rows = malloc(ht_len * sizeof(*rows));
-    if (!rows) {
-        die("malloc");
-    }
-
+    ScanRow *rows = NULL;
     uint64_t n = 0;
+    uint64_t cap = 0;
     for (uint64_t i = 0; i < ht_cap; i++) {
         if (!ht[i].off1) {
             continue;
@@ -766,6 +763,14 @@ static int do_scan(const char *t, const char *prefix)
         }
         if (pl && (r->k_len < pl || memcmp(rec_k(r), prefix, pl))) {
             continue;
+        }
+        if (n == cap) {
+            cap = cap ? cap * 2 : 1024;
+            ScanRow *p = realloc(rows, cap * sizeof(*rows));
+            if (!p) {
+                die("realloc");
+            }
+            rows = p;
         }
         rows[n++] = (ScanRow){ht[i].off1 - 1, rec_k(r), r->k_len};
     }
