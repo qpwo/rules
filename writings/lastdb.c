@@ -478,8 +478,7 @@ static void load_db(const char *path)
     if (close(fd)) {
         die("close");
     }
-    (void)posix_madvise(map_base, map_size, POSIX_MADV_RANDOM);
-    (void)posix_madvise(map_base, map_size, POSIX_MADV_NOREUSE);
+    (void)posix_madvise(map_base, map_size, POSIX_MADV_NORMAL);
     uint64_t off = valid_size;
     uint64_t start_len = ht_len;
     uint64_t added = 0;
@@ -2414,7 +2413,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 if (op == 2) {
                                     { SRV_WRITE_LOCK(db_path);
                                         wrote = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, v, vl, OP_PUT);
-                                        if (wrote) load_db(db_path);
+                                        (void)wrote;
                                     }
                                     if (wrote) send_response(fd, cipherkey, 0, v, vl);
                                     else send_response(fd, cipherkey, 3, "shed", 4);
@@ -2441,7 +2440,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 } else {
                                     { SRV_WRITE_LOCK(db_path);
                                         wrote = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, NULL, 0, OP_DEL);
-                                        if (wrote) load_db(db_path);
+                                        (void)wrote;
                                     }
                                     send_response(fd, cipherkey, wrote ? 0 : 3, wrote ? "ok" : "shed", wrote ? 2 : 4);
                                 }
@@ -2550,7 +2549,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
                                         w_iter += wl + 1;
                                     }
                                     if (match) {
-                                        double db_w = (double)(1U << r->weight_log);
+                                        double db_w = (double)(1U << (r->weight_log > 20 ? 20 : r->weight_log));
                                         double qw = (threshold < 1.0 && r->weight_log < max_w) ? 1.0 / threshold : 1.0;
                                         double w_weight = db_w * qw;
                                         double eff_w = is_decay ? w_weight * cur : w_weight;
@@ -2612,10 +2611,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
                                     long long next = cur + d;
                                     vl_out = snprintf(val, sizeof(val), "%lld", next);
                                     wrote = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, val, vl_out, OP_PUT);
-                                    if (wrote) {
-                                        (void)0;
-                                        load_db(db_path);
-                                    }
+(void)wrote;
                                 }
                                 if (wrote) send_response(fd, cipherkey, 0, val, vl_out);
                                 else send_response(fd, cipherkey, 3, "shed", 4);
@@ -2639,10 +2635,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
                                 int wrote = 0;
                                 { SRV_WRITE_LOCK(db_path);
                                     wrote = append_raw(srv_db_fd, "0:users", 7, user_key, user_key_len, user_val, user_val_len, OP_PUT);
-                                    if (wrote) {
-                                        (void)0;
-                                        load_db(db_path);
-                                    }
+(void)wrote;
                                 }
                                 if (wrote) send_response(fd, cipherkey, 0, "ok", 2);
                                 else send_response(fd, cipherkey, 3, "shed", 4);
@@ -2675,10 +2668,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
                                     if (n) { Record *r = rec_at(n->off1 - 1); if (r->op != OP_DEL) exists = 1; }
                                     if (!exists) {
                                         wrote = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, v, vl, OP_PUT);
-                                        if (wrote) {
-                                            (void)0;
-                                            load_db(db_path);
-                                        }
+(void)wrote;
                                     }
                                 }
                                 if (wrote) send_response(fd, cipherkey, 0, v, vl);
@@ -2700,10 +2690,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
                                     }
                                     if (match) {
                                         wrote = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, new_val, new_len, OP_PUT);
-                                        if (wrote) {
-                                            (void)0;
-                                            load_db(db_path);
-                                        }
+(void)wrote;
                                     }
                                 }
                                 if (wrote) send_response(fd, cipherkey, 0, new_val, new_len);
@@ -2818,10 +2805,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
                                                 } else {
                                                     wrote = append_raw(srv_db_fd, full_tenant, ft_len, rec_k(r), r->k_len, NULL, 0, OP_DEL);
                                                 }
-                                                if (wrote) {
-                                                    (void)0;
-                                                    load_db(db_path);
-                                                }
+(void)wrote;
                                             } else {
                                                 chunk_push(out_c);
                                                 ret_k = NULL;
@@ -3099,7 +3083,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
             if (threshold < 1.0) {
                 if ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
             }
-            double db_w = (double)(1U << r->weight_log);
+            double db_w = (double)(1U << (r->weight_log > 20 ? 20 : r->weight_log));
             
             double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
             double w = db_w * qw;
@@ -3137,7 +3121,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
             if (threshold < 1.0) {
                 if ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
             }
-            double db_w = (double)(1U << r->weight_log);
+            double db_w = (double)(1U << (r->weight_log > 20 ? 20 : r->weight_log));
             
             double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
             double w = db_w * qw;
