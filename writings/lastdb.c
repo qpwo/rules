@@ -2577,7 +2577,7 @@ if (match) {
                                         } else {
 double ac = is_decay ? __builtin_fabs(cur) : 1.0;
 if (ac > 1.0) ac = 1.0;
-double eff_w = db_w * ac;
+double eff_w = db_w;
 count_est += eff_w;
                                     w2_sum += eff_w * eff_w;
                                     ac_sum += ac;
