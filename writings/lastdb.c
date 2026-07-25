@@ -1522,7 +1522,7 @@ static int do_compact(const char *path)
                 uint8_t twl = r->weight_log > ewl ? r->weight_log : ewl;
                 double gate = (double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32;
                 if (gate > 1.0 / (1U << (twl - r->weight_log))) keep = 0;
-                new_wl = twl;
+                new_wl = r->weight_log;
             }
             if (keep) {
                 double cur = 0;
@@ -2549,7 +2549,7 @@ if (match) {
                                                 out[my_off++] = '\n';
                                             }
                                         } else {
-                                    count_est += disp_w;
+                                    count_est += db_w;
                                     raw_count++;
                                             if (op == 9 && r->v_len > 0) {
                                                 if (is_decay) {
