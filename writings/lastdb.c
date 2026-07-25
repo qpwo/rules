@@ -1261,6 +1261,13 @@ static int do_closest(const char *path, const char *type, const char *t, const c
 
 enum { BATCH_WRITE_BYTES = 32 * 1024 * 1024 };
 
+typedef struct {
+    uint8_t data[64 * 1024 * 1024];
+} Chunk;
+
+static inline void chunk_push(Chunk *chunk);
+static inline Chunk *chunk_pop(void);
+
 static void batch_flush(int fd, char *buf, size_t *used)
 {
     if (!*used) {
@@ -1439,10 +1446,6 @@ static void send_response(int fd, int32_t cipherkey, int32_t status, const void 
     write_full(fd, buf, 4 + len);
     if (resp_c) chunk_push(resp_c);
 }
-
-typedef struct {
-    uint8_t data[64 * 1024 * 1024];
-} Chunk;
 
 typedef struct {
     Chunk *chunk;
