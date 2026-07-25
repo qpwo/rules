@@ -462,7 +462,7 @@ static int append_raw(int fd, const char *t, size_t tl, const char *k, size_t kl
     if (pos >= 0) {
         off_t end = pos + (off_t)r.len;
         if ((pos & 33554431) == 0 || ((pos ^ end) >> 25)) {
-            (void)fallocate(fd, 0, 0, (end + 33554431) & ~(off_t)33554431);
+            (void)fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, (end + 33554431) & ~(off_t)33554431);
         }
     }
 
