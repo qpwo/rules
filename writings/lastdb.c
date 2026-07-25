@@ -1495,7 +1495,14 @@ static int do_closest(const char *path, const char *type, const char *t, const c
                 local_best = score;
                 local_k = rec_k(c);
                 local_k_len = c->k_len;
+                if (score > *(volatile float *)&best_score) {
+                    #pragma omp critical
+                    {
+                        if (score > best_score) { best_score = score; best_k = local_k; best_k_len = local_k_len; }
+                    }
+                }
             }
+            if (*(volatile float *)&best_score > local_best) local_best = *(volatile float *)&best_score;
         }
 
         #pragma omp critical
@@ -2042,11 +2049,17 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                                 char buf2[192] = {0}; memcpy(buf2, out_val, out_vl);
                                                 char *t1 = strchr(buf2, '\t'); char *t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
                                                 if (t1 && t2) {
+                                                    char *e1, *e2, *e3;
                                                     *t1 = 0; *t2 = 0;
-                                                    double cur = decay_live_value(strtod(buf2, NULL), strtod(t1 + 1, NULL), strtod(t2 + 1, NULL), eval_now);
-                                                    if (cur == 0) continue;
-                                                    out_vl = snprintf(eval_buf, sizeof(eval_buf), "%.17g", cur);
-                                                    out_val = eval_buf;
+                                                    double hl = strtod(buf2, &e1);
+                                                    double last = strtod(t1 + 1, &e2);
+                                                    double val = strtod(t2 + 1, &e3);
+                                                    if (e1 == t1 && e2 == t2 && hl > 0) {
+                                                        double cur = decay_live_value(hl, last, val, eval_now);
+                                                        if (cur == 0) continue;
+                                                        out_vl = snprintf(eval_buf, sizeof(eval_buf), "%.17g", cur);
+                                                        out_val = eval_buf;
+                                                    }
                                                 }
                                             }
                                             char weight[32];
@@ -2170,7 +2183,16 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                                 float s2 = p1 < p2 ? s1 + dot_fn(q_vec + p1, rec_v(c_rec) + p1, p2 - p1) : s1;
                                                 if (p2 < q_len && s2 * ((float)q_len / p2) < local_best - 0.3f) continue;
                                                 float score = p2 < q_len ? s2 + dot_fn(q_vec + p2, rec_v(c_rec) + p2, q_len - p2) : s2;
-                                                if (score > local_best) { local_best = score; local_k = rec_k(c_rec); local_k_len = c_rec->k_len; }
+                                                if (score > local_best) {
+                                                    local_best = score; local_k = rec_k(c_rec); local_k_len = c_rec->k_len;
+                                                    if (score > *(volatile float *)&best_score) {
+                                                        #pragma omp critical (best)
+                                                        {
+                                                            if (score > best_score) { best_score = score; best_k = local_k; best_k_len = local_k_len; }
+                                                        }
+                                                    }
+                                                }
+                                                if (*(volatile float *)&best_score > local_best) local_best = *(volatile float *)&best_score;
                                             }
                                             #pragma omp critical (best)
                                             {
@@ -2213,14 +2235,16 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     char buf2[192] = {0}; memcpy(buf2, rec_v(r), r->v_len);
                                     char *t1 = strchr(buf2, '\t'); char *t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
                                     if (t1 && t2) {
-                                        if (has_now) {
-                                            *t1 = 0; *t2 = 0;
-                                            double hl = strtod(buf2, NULL);
-                                            double last = strtod(t1 + 1, NULL);
-                                            double val = strtod(t2 + 1, NULL);
-                                            sum += decay_live_value(hl, last, val, sum_now) * w;
+                                        char *e1, *e2, *e3;
+                                        *t1 = 0; *t2 = 0;
+                                        double hl = strtod(buf2, &e1);
+                                        double last = strtod(t1 + 1, &e2);
+                                        double val = strtod(t2 + 1, &e3);
+                                        if (e1 == t1 && e2 == t2 && hl > 0) {
+                                            if (has_now) sum += decay_live_value(hl, last, val, sum_now) * w;
+                                            else sum += val * w;
                                         } else {
-                                            sum += strtod(t2 + 1, NULL) * w;
+                                            sum += val * w;
                                         }
                                     } else {
                                         char *p_str = buf2;
@@ -2635,14 +2659,16 @@ int main(int argc, char **argv)
                 memcpy(buf, rec_v(r), r->v_len);
                 char *t1 = strchr(buf, '\t'); char *t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
                 if (t1 && t2) {
-                    if (has_now) {
-                        *t1 = 0; *t2 = 0;
-                        double hl = strtod(buf, NULL);
-                        double last = strtod(t1 + 1, NULL);
-                        double val = strtod(t2 + 1, NULL);
-                        s += decay_live_value(hl, last, val, sum_now) * w;
+                    char *e1, *e2, *e3;
+                    *t1 = 0; *t2 = 0;
+                    double hl = strtod(buf, &e1);
+                    double last = strtod(t1 + 1, &e2);
+                    double val = strtod(t2 + 1, &e3);
+                    if (e1 == t1 && e2 == t2 && hl > 0) {
+                        if (has_now) s += decay_live_value(hl, last, val, sum_now) * w;
+                        else s += val * w;
                     } else {
-                        s += strtod(t2 + 1, NULL) * w;
+                        s += val * w;
                     }
                 } else {
                     char *p_str = buf;
