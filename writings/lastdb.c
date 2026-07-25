@@ -2606,7 +2606,7 @@ double ess = count_est > 0 && w2_sum > 0 ? count_est * count_est / w2_sum : (cou
 double ess_conf = ess >= 1000 ? 1.0 : ess / 1000.0;
 double decay_conf = raw_count > 0 ? ac_sum / (double)raw_count : 1.0;
 if (max_wl > 0) decay_conf *= __builtin_exp2(-(double)max_wl * 0.0625);
-double confidence = ess_conf < decay_conf ? ess_conf : decay_conf;
+double confidence = ess_conf * decay_conf;
                                 if (count_est < 0.5) count_est = 0;
                                 if (__builtin_fabs(sum) < 5e-15) sum = 0;
                                 if (raw_count < 5) confidence *= (double)raw_count / 5.0;
