@@ -1320,7 +1320,7 @@ static void write_weighted_record(Record *r, double now)
         vl = (size_t)n;
     }
 
-    double print_w = (double)(1U << r->weight_log);
+    double print_w = (double)(1U << (r->weight_log > 20 ? 20 : r->weight_log));
     if (cur > 0) print_w *= cur;
     if (print_w < 0.5) return;
     char wbuf[32];
