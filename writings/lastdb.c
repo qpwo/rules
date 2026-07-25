@@ -1750,7 +1750,8 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 else send_response(fd, cipherkey, 2, "not found", 9);
                             } else if (op == 8 || op == 9) {
                                 if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
-                                uint64_t count = 0; double sum = 0;
+                                uint64_t count = 0; double sum = 0; double threshold = 1.0;
+                                if (vl > 0 && vl < 64) { char th_buf[64] = {0}; memcpy(th_buf, v, vl); threshold = strtod(th_buf, NULL); if (threshold <= 0 || threshold > 1.0) threshold = 1.0; }
                                 #pragma omp critical (db)
                                 {
                                     load_db(db_path);
@@ -1761,6 +1762,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         Record *r = rec_at(ht[i].off1 - 1);
                                         if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
                                         if (kl && (r->k_len < kl || memcmp(rec_k(r), k, kl))) continue;
+                                        if (threshold < 1.0 && (double)(r->check >> 11) * 0x1.0p-53 > threshold) continue;
                                         count++;
                                         if (op == 9 && r->v_len > 0 && r->v_len < 64) {
                                             char buf2[64] = {0}; memcpy(buf2, rec_v(r), r->v_len);
@@ -1769,7 +1771,9 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         }
                                     }
                                 }
-                                char val[64]; int vl_out = op == 8 ? snprintf(val, sizeof(val), "%llu", (unsigned long long)count) : snprintf(val, sizeof(val), "%.17g", sum);
+                                char val[64]; int vl_out = 0;
+                                if (op == 8) vl_out = threshold < 1.0 ? snprintf(val, sizeof(val), "%.0f", count / threshold) : snprintf(val, sizeof(val), "%llu", (unsigned long long)count);
+                                else vl_out = threshold < 1.0 ? snprintf(val, sizeof(val), "%.17g", sum / threshold) : snprintf(val, sizeof(val), "%.17g", sum);
                                 send_response(fd, cipherkey, 0, val, vl_out);
                             } else if (op == 10) {
                                 if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
@@ -1884,27 +1888,32 @@ int main(int argc, char **argv)
             else if (!strcmp(args[0], "count") && n >= 2) {
                 uint64_t c = 0;
                 size_t tl = strlen(args[1]);
-                size_t pl = n == 3 ? strlen(args[2]) : 0;
+                size_t pl = n >= 3 ? strlen(args[2]) : 0;
+                double threshold = n >= 4 ? strtod(args[3], NULL) : 1.0;
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
             #pragma omp parallel for reduction(+:c) schedule(static, 4096) num_threads(worker_threads())
             for (uint64_t i = start_idx; i < end_idx; i++) {
                 Record *r = rec_at(ht[i].off1 - 1);
                 if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
                     if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
+                    if (threshold < 1.0 && (double)(r->check >> 11) * 0x1.0p-53 > threshold) continue;
                     c++;
                 }
-                printf("%llu\n", (unsigned long long)c);
+                if (threshold < 1.0 && threshold > 0) printf("%.0f\n", c / threshold);
+                else printf("%llu\n", (unsigned long long)c);
             }
             else if (!strcmp(args[0], "sum") && n >= 2) {
                 double s = 0;
                 size_t tl = strlen(args[1]);
-                size_t pl = n == 3 ? strlen(args[2]) : 0;
+                size_t pl = n >= 3 ? strlen(args[2]) : 0;
+                double threshold = n >= 4 ? strtod(args[3], NULL) : 1.0;
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
             #pragma omp parallel for reduction(+:s) schedule(static, 4096) num_threads(worker_threads())
             for (uint64_t i = start_idx; i < end_idx; i++) {
                 Record *r = rec_at(ht[i].off1 - 1);
                 if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
                     if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
+                    if (threshold < 1.0 && (double)(r->check >> 11) * 0x1.0p-53 > threshold) continue;
                     if (r->v_len > 0 && r->v_len < 64) {
                         char buf[64] = {0};
                         memcpy(buf, rec_v(r), r->v_len);
@@ -1912,7 +1921,8 @@ int main(int argc, char **argv)
                         s += strtod(p, NULL);
                     }
                 }
-                printf("%.17g\n", s);
+                if (threshold < 1.0 && threshold > 0) printf("%.17g\n", s / threshold);
+                else printf("%.17g\n", s);
             }
             else printf("ERR\n");
             fflush(stdout);
