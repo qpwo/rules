@@ -1381,7 +1381,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             else if (op == 4 || op == 5) {
                                 if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); free(buf); continue; }
                                 uint8_t *out = NULL; size_t out_len = 0, out_cap = 0;
-                                #define APP(ptr, lll) do { while (out_len + (lll) > out_cap) { out_cap = out_cap ? out_cap * 2 : 4096; out = realloc(out, out_cap); } memcpy(out + out_len, ptr, lll); out_len += (lll); } while(0)
+                                #define APP(ptr, lll) do { size_t app_n = (lll); if (out_len < 60u * 1024u * 1024u) { if (app_n > 60u * 1024u * 1024u - out_len) app_n = 60u * 1024u * 1024u - out_len; while (out_len + app_n > out_cap) { size_t next_cap = out_cap ? out_cap * 2 : 4096; out_cap = next_cap > 60u * 1024u * 1024u ? 60u * 1024u * 1024u : next_cap; void *next_out = realloc(out, out_cap); if (!next_out) die("realloc response"); out = next_out; } memcpy(out + out_len, ptr, app_n); out_len += app_n; } } while(0)
                                 #pragma omp critical (db)
                                 {
                                     load_db(db_path);
