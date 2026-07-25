@@ -1631,6 +1631,26 @@ typedef struct {
 static inline void chunk_push(Chunk *chunk);
 static inline Chunk *chunk_pop(void);
 
+struct rseq_cs_struct {
+    uint32_t version;
+    uint32_t flags;
+    uint64_t start_ip;
+    uint64_t post_commit_offset;
+    uint64_t abort_ip;
+} __attribute__((aligned(32)));
+
+extern __thread volatile struct {
+    uint32_t cpu_id_start;
+    uint32_t cpu_id;
+    uint64_t rseq_cs;
+    uint32_t flags;
+} __rseq_abi __attribute__((tls_model("initial-exec"), weak));
+
+static inline int fast_getcpu(void) {
+    if (&__rseq_abi) return __rseq_abi.cpu_id;
+    return sched_getcpu();
+}
+
 static int batch_flush(int fd, char *buf, size_t *used)
 {
     if (!*used) {
@@ -1898,28 +1918,111 @@ typedef struct {
 static CacheLine cpu_chunks[1024];
 
 static inline void chunk_push(Chunk *chunk) {
-    int cpu = sched_getcpu();
-    if (cpu >= 0 && cpu < 1024) {
-        Chunk *old = __atomic_exchange_n(&cpu_chunks[cpu].chunk, chunk, __ATOMIC_RELAXED);
-        if (!old) return;
-        chunk = old;
+    if (!&__rseq_abi) {
+        int cpu = fast_getcpu();
+        if (cpu >= 0 && cpu < 1024) {
+            Chunk *old = __atomic_exchange_n(&cpu_chunks[cpu].chunk, chunk, __ATOMIC_RELAXED);
+            if (!old) return;
+            chunk = old;
+        }
+        munmap(chunk, sizeof(*chunk));
+        return;
     }
-    munmap(chunk, sizeof(*chunk));
+    Chunk *old = (Chunk *)-1;
+    int ok = 0;
+    while (!ok) {
+        ok = 1;
+        struct rseq_cs_struct cs __attribute__((aligned(32)));
+        __asm__ __volatile__ (
+            "movq $0, %[cs]\n\t"
+            "leaq 1f(%%rip), %%rax\n\t"
+            "movq %%rax, 8+%[cs]\n\t"
+            "negq %%rax\n\t"
+            "leaq 2f(%%rip), %%rcx\n\t"
+            "addq %%rcx, %%rax\n\t"
+            "movq %%rax, 16+%[cs]\n\t"
+            "leaq 3f(%%rip), %%rax\n\t"
+            "movq %%rax, 24+%[cs]\n\t"
+            "leaq %[cs], %%rax\n\t"
+            "movq %%rax, 8+%[rseq]\n\t"
+            "1:\n\t"
+            "movl 4+%[rseq], %%eax\n\t"
+            "cmpl $1024, %%eax\n\t"
+            "jae 2f\n\t"
+            "shlq $6, %%rax\n\t"
+            "addq %[chunks], %%rax\n\t"
+            "movq (%%rax), %[old]\n\t"
+            "movq %[replacement], (%%rax)\n\t"
+            "2:\n\t"
+            "jmp 4f\n\t"
+            ".int 0x53053053\n\t"
+            "3:\n\t"
+            "xorl %[ok], %[ok]\n\t"
+            "4:\n\t"
+            "movq $0, 8+%[rseq]\n\t"
+            : [ok] "+r" (ok), [old] "=&r" (old), [cs] "=m" (cs), [rseq] "+m" (__rseq_abi)
+            : [chunks] "r" (cpu_chunks), [replacement] "r" (chunk)
+            : "rax", "rcx", "memory", "cc"
+        );
+    }
+    if (old == (Chunk *)-1) munmap(chunk, sizeof(*chunk));
+    else if (old) munmap(old, sizeof(*old));
 }
 
 static inline Chunk *chunk_pop(void) {
-    int cpu = sched_getcpu();
-    if (cpu >= 0 && cpu < 1024) {
-        Chunk *chunk = __atomic_exchange_n(&cpu_chunks[cpu].chunk, NULL, __ATOMIC_RELAXED);
-        if (chunk) return chunk;
+    if (!&__rseq_abi) {
+        int cpu = fast_getcpu();
+        if (cpu >= 0 && cpu < 1024) {
+            Chunk *chunk = __atomic_exchange_n(&cpu_chunks[cpu].chunk, NULL, __ATOMIC_RELAXED);
+            if (chunk) return chunk;
+        }
+    } else {
+        Chunk *old = (Chunk *)-1;
+        int ok = 0;
+        while (!ok) {
+            ok = 1;
+            struct rseq_cs_struct cs __attribute__((aligned(32)));
+            __asm__ __volatile__ (
+                "movq $0, %[cs]\n\t"
+                "leaq 1f(%%rip), %%rax\n\t"
+                "movq %%rax, 8+%[cs]\n\t"
+                "negq %%rax\n\t"
+                "leaq 2f(%%rip), %%rcx\n\t"
+                "addq %%rcx, %%rax\n\t"
+                "movq %%rax, 16+%[cs]\n\t"
+                "leaq 3f(%%rip), %%rax\n\t"
+                "movq %%rax, 24+%[cs]\n\t"
+                "leaq %[cs], %%rax\n\t"
+                "movq %%rax, 8+%[rseq]\n\t"
+                "1:\n\t"
+                "movl 4+%[rseq], %%eax\n\t"
+                "cmpl $1024, %%eax\n\t"
+                "jae 2f\n\t"
+                "shlq $6, %%rax\n\t"
+                "addq %[chunks], %%rax\n\t"
+                "movq (%%rax), %[old]\n\t"
+                "movq $0, (%%rax)\n\t"
+                "2:\n\t"
+                "jmp 4f\n\t"
+                ".int 0x53053053\n\t"
+                "3:\n\t"
+                "xorl %[ok], %[ok]\n\t"
+                "4:\n\t"
+                "movq $0, 8+%[rseq]\n\t"
+                : [ok] "+r" (ok), [old] "=&r" (old), [cs] "=m" (cs), [rseq] "+m" (__rseq_abi)
+                : [chunks] "r" (cpu_chunks)
+                : "rax", "rcx", "memory", "cc"
+            );
+        }
+        if (old != (Chunk *)-1 && old) return old;
     }
 
     uint64_t total = 0;
     uint64_t freeish = get_mem_avail(&total);
-    if (total && freeish < total / 10 + sizeof(*chunk)) return NULL;
+    if (total && freeish < total / 10 + sizeof(Chunk)) return NULL;
     double load[1];
     if (getloadavg(load, 1) == 1 && load[0] > omp_get_num_procs() * 0.9) return NULL;
-    chunk = mmap(NULL, sizeof(*chunk), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
+    Chunk *chunk = mmap(NULL, sizeof(*chunk), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
     if (chunk == MAP_FAILED) return NULL;
     madvise(chunk, sizeof(*chunk), MADV_HUGEPAGE);
     return chunk;
@@ -1938,7 +2041,7 @@ static inline int srv_read_lock_func(const char *db_path) {
             __atomic_store_n(&srv_rwlocks_init, 1, __ATOMIC_RELEASE);
         }
     }
-    int cpu = sched_getcpu();
+    int cpu = fast_getcpu();
     if (cpu < 0 || cpu >= 256) cpu = 0;
     pthread_rwlock_rdlock(&srv_rwlocks[cpu].rw);
     struct stat st, fd_st;
