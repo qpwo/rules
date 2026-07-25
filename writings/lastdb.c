@@ -1836,8 +1836,11 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     if (wrote) sync_fd(srv_db_fd);
                                     load_db(db_path);
                                 }
-                                if (wrote) send_response(fd, cipherkey, 0, "ok", 2);
-                                else send_response(fd, cipherkey, 3, "shed", 4);
+                                if (wrote) {
+                                    char receipt[64];
+                                    int receipt_len = snprintf(receipt, sizeof(receipt), "%llu", (unsigned long long)valid_size);
+                                    send_response(fd, cipherkey, 0, receipt, receipt_len);
+                                } else send_response(fd, cipherkey, 3, "shed", 4);
                             }
                             else if (op == 6) {
                                 if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
