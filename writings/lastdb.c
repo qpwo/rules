@@ -2780,7 +2780,7 @@ if (max_wl < 0) max_wl = 0;
                                         for (uint64_t i = 0; i < count; i++) {
                                             uint64_t idx = (start_offset + i) % count;
                                             Record *r = rec_at(offs ? offs[idx] : (ht[start_idx + idx].off1 - 1));
-                                            if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len) || r->weight_log > 0) continue;
+                                            if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
                                             if (kl && (r->k_len < kl || memcmp(rec_k(r), k, kl))) continue;
                                             found_off1 = (offs ? offs[idx] : ht[start_idx + idx].off1 - 1) + 1;
                                             break;
