@@ -1518,7 +1518,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                                 char *tab = memchr(w, '\t', end - w);
                                                 size_t wl = tab ? tab - w : end - w;
                                                 if (wl > 0) {
-                                                    if (!memmem(rec_v(r), r->v_len, w, wl) && !memmem(rec_k(r), r->k_len, w, wl)) { match = 0; break; }
+                                                    if (!memmem_pivot(rec_v(r), r->v_len, w, wl) && !memmem_pivot(rec_k(r), r->k_len, w, wl)) { match = 0; break; }
                                                 }
                                                 w += wl + 1;
                                             }
