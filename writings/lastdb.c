@@ -1166,6 +1166,21 @@ static const void *memmem_pivot(const void *haystack, size_t hay_len, const void
 static int rec_has_terms(Record *r, int argc, char **argv, size_t *lens, uint64_t *term_bfs)
 {
     for (int j = 4; j < argc; j++) {
+        if (lens[j] > 1 && (argv[j][0] == '>' || argv[j][0] == '<')) {
+            char *endp;
+            double term_val = strtod(argv[j] + 1, &endp);
+            if (endp == argv[j] + lens[j]) {
+                double v_val = 0;
+                if (r->v_len > 0 && r->v_len < 192 && decay_value_at(rec_v(r), r->v_len, (double)time(NULL), &v_val)) {}
+                else {
+                    char vbuf[192] = {0}; memcpy(vbuf, rec_v(r), r->v_len < 191 ? r->v_len : 191);
+                    v_val = strtod(vbuf, NULL);
+                }
+                if (argv[j][0] == '>' && !(v_val > term_val)) return 0;
+                if (argv[j][0] == '<' && !(v_val < term_val)) return 0;
+                continue;
+            }
+        }
         if ((r->bf & term_bfs[j]) != term_bfs[j]) {
             return 0;
         }
@@ -1189,7 +1204,7 @@ static int do_search(const char *t, int argc, char **argv)
     size_t lens[argc];
     term_lens(argc, argv, lens);
     for (int i = 4; i < argc; i++) {
-        if (lens[i] < 3) {
+        if (lens[i] < 3 && argv[i][0] != '>' && argv[i][0] != '<') {
             diex("search terms need at least 3 bytes");
         }
     }
@@ -2223,6 +2238,23 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                             char *tab = memchr(w, '\t', end - w);
                                             size_t wl = tab ? tab - w : end - w;
                                             if (wl > 0) {
+                                                if (wl > 1 && (w[0] == '>' || w[0] == '<')) {
+                                                    char *endp;
+                                                    double term_val = strtod(w + 1, &endp);
+                                                    if (endp == w + wl) {
+                                                        double v_val = 0;
+                                                        if (r->v_len > 0 && r->v_len < 192 && decay_value_at(rec_v(r), r->v_len, eval_now, &v_val)) {}
+                                                        else {
+                                                            char vbuf[192] = {0}; memcpy(vbuf, rec_v(r), r->v_len < 191 ? r->v_len : 191);
+                                                            v_val = strtod(vbuf, NULL);
+                                                        }
+                                                        if (w[0] == '>' && !(v_val > term_val)) { match = 0; break; }
+                                                        if (w[0] == '<' && !(v_val < term_val)) { match = 0; break; }
+                                                        word_idx++;
+                                                        w += wl + 1;
+                                                        continue;
+                                                    }
+                                                }
                                                 int exclude = (w[0] == '-');
                                                 const char *term = exclude ? w + 1 : w;
                                                 size_t term_len = exclude ? wl - 1 : wl;
