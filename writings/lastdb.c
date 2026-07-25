@@ -2215,15 +2215,26 @@ static int srv_db_fd = -1;
 #include <pthread.h>
 static pthread_rwlock_t srv_rw = PTHREAD_RWLOCK_INITIALIZER;
 static inline int srv_read_lock_func(const char *db_path) {
+    static _Atomic time_t _stat_ts = 0;
+    static _Atomic int _stat_cached = 1;
     pthread_rwlock_rdlock(&srv_rw);
-    struct stat st, fd_st;
-    int needs_reopen = (srv_db_fd < 0) || (!stat(db_path, &st) && (!fstat(srv_db_fd, &fd_st) && st.st_ino != fd_st.st_ino || st.st_size > (off_t)map_size));
+    time_t _now = time(NULL);
+    int needs_reopen;
+    if (_now == __atomic_load_n(&_stat_ts, __ATOMIC_RELAXED)) {
+        needs_reopen = __atomic_load_n(&_stat_cached, __ATOMIC_RELAXED);
+    } else {
+        struct stat st, fd_st;
+        needs_reopen = (srv_db_fd < 0) || (!stat(db_path, &st) && (!fstat(srv_db_fd, &fd_st) ? 1 : (st.st_ino != fd_st.st_ino || st.st_size > (off_t)map_size)));
+        __atomic_store_n(&_stat_ts, _now, __ATOMIC_RELAXED);
+        __atomic_store_n(&_stat_cached, needs_reopen, __ATOMIC_RELAXED);
+    }
     if (needs_reopen || ht_len > ht_sorted_len + 65536 || (ht_sorted_len && ht_len > ht_sorted_len * 17 / 16)) {
         pthread_rwlock_unlock(&srv_rw);
         pthread_rwlock_wrlock(&srv_rw);
-        needs_reopen = (srv_db_fd < 0) || (!stat(db_path, &st) && (!fstat(srv_db_fd, &fd_st) && st.st_ino != fd_st.st_ino || st.st_size > (off_t)map_size));
+        struct stat st2, fd2;
+        needs_reopen = (srv_db_fd < 0) || (!stat(db_path, &st2) && (!fstat(srv_db_fd, &fd2) ? 1 : (st2.st_ino != fd2.st_ino || st2.st_size > (off_t)map_size)));
         if (needs_reopen) {
-            if (srv_db_fd >= 0 && (!fstat(srv_db_fd, &fd_st) && st.st_ino != fd_st.st_ino)) { close(srv_db_fd); srv_db_fd = -1; }
+            if (srv_db_fd >= 0 && !fstat(srv_db_fd, &fd2) && st2.st_ino != fd2.st_ino) { close(srv_db_fd); srv_db_fd = -1; }
             load_db(db_path);
             if (srv_db_fd < 0) srv_db_fd = open_append(db_path);
         }
