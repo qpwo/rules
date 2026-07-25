@@ -1,4 +1,4 @@
-//bin/sh -c 'o=${0%.c}; [ "$o" -nt "$0" ] || { if [ "$(uname -s)" = Darwin ]; then p="$(brew --prefix libomp)"; ${CC:-clang} -O3 -march=native -DNDEBUG -Xpreprocessor -fopenmp -I"$p/include" -L"$p/lib" -Wl,-rpath,"$p/lib" "$0" -lomp -o "$o"; else ${CC:-gcc} -O3 -march=native -DNDEBUG -fopenmp "$0" -o "$o" -lm; fi; } || exit; exec "$o" "$@"' "$0" "$@"; exit
+//bin/sh -c 'o=${0%.c}; [ "$o" -nt "$0" ] || ${CC:-gcc} -O3 -march=native -DNDEBUG -fopenmp "$0" -o "$o" -lm || exit; exec "$o" "$@"' "$0" "$@"; exit
 /** lastdb: one-file durable append-only tenant key/value store, no sqlite, no deps. */
 #define _GNU_SOURCE
 #include <errno.h>
@@ -13,14 +13,10 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
-#ifdef __linux__
 #include <sys/sysinfo.h>
-#endif
 #include <sys/uio.h>
 #include <unistd.h>
-#ifdef __x86_64__
 #include <immintrin.h>
-#endif
 #include <omp.h>
 
 #ifndef O_CLOEXEC
@@ -204,7 +200,6 @@ static int key_eq(uint64_t off, const char *t, uint16_t tl, const char *k, uint1
 
 static void reserve_ram(size_t bytes)
 {
-#ifdef __linux__
     struct sysinfo si;
     if (sysinfo(&si)) {
         die("sysinfo");
@@ -215,9 +210,6 @@ static void reserve_ram(size_t bytes)
     if (freeish < total / 10 + bytes) {
         diex("ram reserve below 10 percent");
     }
-#else
-    (void)bytes;
-#endif
 }
 
 static int worker_threads(void)
@@ -1046,7 +1038,6 @@ static int do_compact(const char *path)
 typedef float unaligned_f32 __attribute__((aligned(1)));
 typedef _Float16 unaligned_f16 __attribute__((aligned(1)));
 
-#ifdef __x86_64__
 __attribute__((target("avx512f,avx512vl")))
 static float vec_dot_f32(const void *a, const void *b, size_t bytes) {
     size_t n = bytes / 4;
@@ -1074,7 +1065,6 @@ static float vec_dot_f16(const void *a, const void *b, size_t bytes) {
     }
     return (float)_mm512_reduce_add_ph(s);
 }
-#endif
 
 static float vec_dot_i8(const void *a, const void *b, size_t bytes) {
     int32_t sum = 0;
@@ -1093,15 +1083,10 @@ static int do_closest(const char *path, const char *type, const char *t, const c
     if (r->op == OP_DEL || !r->v_len) return 1;
 
     float (*dot_fn)(const void *, const void *, size_t) = NULL;
-#ifdef __x86_64__
     if (!strcmp(type, "f32") && r->v_len % 4 == 0) dot_fn = vec_dot_f32;
     else if (!strcmp(type, "f16") && r->v_len % 2 == 0) dot_fn = vec_dot_f16;
     else if (!strcmp(type, "i8")) dot_fn = vec_dot_i8;
     else diex("invalid type or length");
-#else
-    if (!strcmp(type, "i8")) dot_fn = vec_dot_i8;
-    else diex("invalid type or length");
-#endif
 
     float best_score = -1e30f;
     const char *best_k = NULL;
@@ -1226,12 +1211,7 @@ int main(int argc, char **argv)
             if (!stat(db, &st) && st.st_size > (off_t)map_size) {
                 int fd = open(db, O_RDONLY | O_CLOEXEC);
                 if (fd >= 0) {
-#ifdef __linux__
                     void *nm = map_size ? mremap(map_base, map_size, st.st_size, MREMAP_MAYMOVE) : mmap(NULL, st.st_size, PROT_READ, MAP_SHARED, fd, 0);
-#else
-                    if (map_size) munmap(map_base, map_size);
-                    void *nm = mmap(NULL, st.st_size, PROT_READ, MAP_SHARED, fd, 0);
-#endif
                     if (nm != MAP_FAILED) {
                         map_base = nm;
                         map_size = st.st_size;
