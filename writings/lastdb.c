@@ -1907,103 +1907,20 @@ typedef struct {
 static CacheLine cpu_chunks[1024];
 
 static inline void chunk_push(Chunk *chunk) {
-    if (!&__rseq_abi) {
-        int cpu = fast_getcpu();
-        if (cpu >= 0 && cpu < 1024) {
-            Chunk *old = __atomic_exchange_n(&cpu_chunks[cpu].chunk, chunk, __ATOMIC_RELAXED);
-            if (!old) return;
-            chunk = old;
-        }
-        munmap(chunk, sizeof(*chunk));
-        return;
+    int cpu = fast_getcpu();
+    if (cpu >= 0 && cpu < 1024) {
+        Chunk *old = __atomic_exchange_n(&cpu_chunks[cpu].chunk, chunk, __ATOMIC_RELAXED);
+        if (!old) return;
+        chunk = old;
     }
-    Chunk *old = (Chunk *)-1;
-    int ok = 0;
-    while (!ok) {
-        ok = 1;
-        struct rseq_cs_struct cs __attribute__((aligned(32)));
-        __asm__ __volatile__ (
-            "movq $0, %[cs]\n\t"
-            "leaq 1f(%%rip), %%rax\n\t"
-            "movq %%rax, 8+%[cs]\n\t"
-            "negq %%rax\n\t"
-            "leaq 2f(%%rip), %%rcx\n\t"
-            "addq %%rcx, %%rax\n\t"
-            "movq %%rax, 16+%[cs]\n\t"
-            "leaq 3f(%%rip), %%rax\n\t"
-            "movq %%rax, 24+%[cs]\n\t"
-            "leaq %[cs], %%rax\n\t"
-            "movq %%rax, 8+%[rseq]\n\t"
-            "1:\n\t"
-            "movl 4+%[rseq], %%eax\n\t"
-            "cmpl $1024, %%eax\n\t"
-            "jae 2f\n\t"
-            "shlq $6, %%rax\n\t"
-            "addq %[chunks], %%rax\n\t"
-            "movq (%%rax), %[old]\n\t"
-            "movq %[replacement], (%%rax)\n\t"
-            "2:\n\t"
-            "jmp 4f\n\t"
-            ".int 0x53053053\n\t"
-            "3:\n\t"
-            "xorl %[ok], %[ok]\n\t"
-            "4:\n\t"
-            "movq $0, 8+%[rseq]\n\t"
-            : [ok] "+r" (ok), [old] "=&r" (old), [cs] "=m" (cs), [rseq] "+m" (__rseq_abi)
-            : [chunks] "r" (cpu_chunks), [replacement] "r" (chunk)
-            : "rax", "rcx", "memory", "cc"
-        );
-    }
-    if (old == (Chunk *)-1) munmap(chunk, sizeof(*chunk));
-    else if (old) munmap(old, sizeof(*old));
+    munmap(chunk, sizeof(*chunk));
 }
 
 static inline Chunk *chunk_pop(void) {
-    if (!&__rseq_abi) {
-        int cpu = fast_getcpu();
-        if (cpu >= 0 && cpu < 1024) {
-            Chunk *chunk = __atomic_exchange_n(&cpu_chunks[cpu].chunk, NULL, __ATOMIC_RELAXED);
-            if (chunk) return chunk;
-        }
-    } else {
-        Chunk *old = (Chunk *)-1;
-        int ok = 0;
-        while (!ok) {
-            ok = 1;
-            struct rseq_cs_struct cs __attribute__((aligned(32)));
-            __asm__ __volatile__ (
-                "movq $0, %[cs]\n\t"
-                "leaq 1f(%%rip), %%rax\n\t"
-                "movq %%rax, 8+%[cs]\n\t"
-                "negq %%rax\n\t"
-                "leaq 2f(%%rip), %%rcx\n\t"
-                "addq %%rcx, %%rax\n\t"
-                "movq %%rax, 16+%[cs]\n\t"
-                "leaq 3f(%%rip), %%rax\n\t"
-                "movq %%rax, 24+%[cs]\n\t"
-                "leaq %[cs], %%rax\n\t"
-                "movq %%rax, 8+%[rseq]\n\t"
-                "1:\n\t"
-                "movl 4+%[rseq], %%eax\n\t"
-                "cmpl $1024, %%eax\n\t"
-                "jae 2f\n\t"
-                "shlq $6, %%rax\n\t"
-                "addq %[chunks], %%rax\n\t"
-                "movq (%%rax), %[old]\n\t"
-                "movq $0, (%%rax)\n\t"
-                "2:\n\t"
-                "jmp 4f\n\t"
-                ".int 0x53053053\n\t"
-                "3:\n\t"
-                "xorl %[ok], %[ok]\n\t"
-                "4:\n\t"
-                "movq $0, 8+%[rseq]\n\t"
-                : [ok] "+r" (ok), [old] "=&r" (old), [cs] "=m" (cs), [rseq] "+m" (__rseq_abi)
-                : [chunks] "r" (cpu_chunks)
-                : "rax", "rcx", "memory", "cc"
-            );
-        }
-        if (old != (Chunk *)-1 && old) return old;
+    int cpu = fast_getcpu();
+    if (cpu >= 0 && cpu < 1024) {
+        Chunk *chunk = __atomic_exchange_n(&cpu_chunks[cpu].chunk, NULL, __ATOMIC_RELAXED);
+        if (chunk) return chunk;
     }
 
     uint64_t total = 0;
@@ -2232,6 +2149,19 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     if (sep) gh = key_hash(rec_t(r), r->t_len, rec_k(r), sep - rec_k(r));
                                     if ((double)(gh & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
                                 }
+                                    const char *out_val = rec_v(r);
+                                    size_t out_vl = r->v_len;
+                                    char eval_buf[64];
+                                    double cur = 0;
+                                    int is_decay = 0;
+                                    if (evaluate_decay && out_vl > 0 && out_vl < 192) {
+                                        if (decay_value_at(out_val, out_vl, eval_now, &cur)) {
+                                            if (cur == 0) continue;
+                                            out_vl = snprintf(eval_buf, sizeof(eval_buf), "%.17g", cur);
+                                            out_val = eval_buf;
+                                            is_decay = 1;
+                                        }
+                                    }
                                     int match = 0;
                                     if (op == 4) {
                                         match = (kl == 0 || (r->k_len >= kl && !memcmp(rec_k(r), k, kl)));
@@ -2248,9 +2178,9 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                                     double term_val = strtod(w + 1, &endp);
                                                     if (endp == w + wl) {
                                                         double v_val = 0;
-                                                        if (r->v_len > 0 && r->v_len < 192 && decay_value_at(rec_v(r), r->v_len, eval_now, &v_val)) {}
+                                                        if (is_decay) v_val = cur;
                                                         else {
-                                                            char vbuf[192] = {0}; memcpy(vbuf, rec_v(r), r->v_len < 191 ? r->v_len : 191);
+                                                            char vbuf[192] = {0}; memcpy(vbuf, out_val, out_vl < 191 ? out_vl : 191);
                                                             v_val = strtod(vbuf, NULL);
                                                         }
                                                         if (w[0] == '>' && !(v_val > term_val)) { match = 0; break; }
@@ -2265,8 +2195,8 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                                 size_t term_len = exclude ? wl - 1 : wl;
                                                 if (term_len > 0) {
                                                     int found = 1;
-                                                    if (!exclude && word_idx < 64 && (r->bf & query_bfs[word_idx]) != query_bfs[word_idx]) found = 0;
-                                                    if (found && !memmem_pivot(rec_v(r), r->v_len, term, term_len) && !memmem_pivot(rec_k(r), r->k_len, term, term_len)) found = 0;
+                                                    if (!exclude && word_idx < 64 && !is_decay && (r->bf & query_bfs[word_idx]) != query_bfs[word_idx]) found = 0;
+                                                    if (found && !memmem_pivot(out_val, out_vl, term, term_len) && !memmem_pivot(rec_k(r), r->k_len, term, term_len)) found = 0;
                                                     if (exclude ? found : !found) { match = 0; break; }
                                                     if (!exclude) word_idx++;
                                                 }
@@ -2278,17 +2208,6 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                             double db_w = (double)(1U << r->weight_log);
                                             double qw = 1.0 / threshold;
                                             double w = db_w > qw ? db_w : qw;
-                                            const char *out_val = rec_v(r);
-                                            size_t out_vl = r->v_len;
-                                            char eval_buf[64];
-                                            if (evaluate_decay && out_vl > 0 && out_vl < 192) {
-                                                double cur = 0;
-                                                if (decay_value_at(out_val, out_vl, eval_now, &cur)) {
-                                                    if (cur == 0) continue;
-                                                    out_vl = snprintf(eval_buf, sizeof(eval_buf), "%.17g", cur);
-                                                    out_val = eval_buf;
-                                                }
-                                            }
                                             char weight[32];
                                             int wlen = snprintf(weight, sizeof(weight), "%.0f\t", w);
                                             size_t rec_len = wlen + r->k_len + 1 + out_vl + 1;
