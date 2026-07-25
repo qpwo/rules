@@ -327,6 +327,7 @@ static void ht_put(uint64_t hash, uint64_t off)
 
     while (1) {
         if (elem.dist >= ht_max_probe) {
+            if (ht_cap > ht_len * 4) return;
             ht_reserve(ht_cap);
             elem.dist = 0;
             idx = elem.hash & (ht_cap - 1);
