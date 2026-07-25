@@ -857,31 +857,312 @@ amsalykov@gmail.com
 making AI inference run really fast.
 
 IMAGES
-https://salykova.github.io/assets/logo.svg
-https://salykova.github.io/assets/matmul_gpu/unlocked_perf.png
-https://salykova.github.io/assets/matmul_gpu/locked_perf.png
-https://salykova.github.io/assets/matmul_gpu/ak_post.png
-https://salykova.github.io/assets/matmul_gpu/row_major.png
-https://salykova.github.io/assets/matmul_gpu/mem_align.png
-https://salykova.github.io/assets/matmul_gpu/ptxas.png
-https://salykova.github.io/assets/matmul_gpu/standard_ld.png
-https://salykova.github.io/assets/matmul_gpu/matmul_design_tb.png
-https://salykova.github.io/assets/matmul_gpu/a_gmem_loads.png
-https://salykova.github.io/assets/matmul_gpu/bank_conflict.png
-https://salykova.github.io/assets/matmul_gpu/bank_conflict_padding.png
-https://salykova.github.io/assets/matmul_gpu/db.png
-https://salykova.github.io/assets/matmul_gpu/bit_repr.png
-https://salykova.github.io/assets/matmul_gpu/b_gmem_loads.png
-https://salykova.github.io/assets/matmul_gpu/warp_level_design.png
-https://salykova.github.io/assets/matmul_gpu/thread_level_design.png
-https://salykova.github.io/assets/matmul_gpu/cutlass_sgemm.png
-https://salykova.github.io/assets/matmul_gpu/acc_map.png
-https://salykova.github.io/assets/matmul_gpu/stgx.png
-https://salykova.github.io/assets/matmul_gpu/stg_final.png
-https://salykova.github.io/assets/matmul_gpu/128x128x8_lock.png
-https://salykova.github.io/assets/matmul_gpu/128x128x8.png
-https://salykova.github.io/assets/matmul_gpu/128x128x8_texld_lock.png
-https://salykova.github.io/assets/matmul_gpu/128x128x8_texld.png
-https://salykova.github.io/assets/matmul_gpu/cp_async.png
-https://salykova.github.io/assets/matmul_gpu/128x256x8_lock.png
-https://salykova.github.io/assets/matmul_gpu/128x256x8.png
+
+[IMAGE DESCRIPTION: Based on the visual content, here is a detailed description that would allow you to recreate the image exactly:
+
+**General Layout**
+The image consists of two lines of black, monospaced text on a white background. Below each line of text are horizontal dimension lines (double-headed arrows) indicating the bit-width of specific sections of the text.
+
+**Top Line**
+*   **Text:** The line reads `addr = ****...******00000000000000`.
+    *   It starts with the label `addr =`.
+    *   This is followed by four asterisks `****`.
+    *   Then an ellipsis `...`.
+    *   Then another four asterisks `****`.
+    *   Finally, a sequence of fourteen zeros `00000000000000`.
+*   **Annotations:** Below this text, there are two horizontal arrows with vertical ticks at the ends.
+    *   The first arrow spans the width of the asterisk sections (`****...******`). Centered below this arrow is the number `50`.
+    *   The second arrow spans the width of the zero section. Centered below this arrow is the number `14`.
+
+**Bottom Line**
+*   **Text:** The line reads `addr^8192= ****...******10000000000000`.
+    *   It starts with the label `addr^8192=` (using a caret symbol for the exponent or XOR operator).
+    *   The middle section `****...******` is identical to the top line.
+    *   The final section has changed from all zeros to `10000000000000` (a single `1` followed by thirteen `0`s).
+*   **Annotations:** Below this text, the arrows are identical in placement and labeling to the top line.
+    *   The first arrow spans the asterisk sections, labeled `50`.
+    *   The second arrow spans the binary digit section, labeled `14`.
+
+**Summary of Logic**
+The diagram illustrates a bitwise operation (likely XORing with 8192) on a 64-bit address. The top 50 bits (represented by asterisks) remain unchanged, while the lower 14 bits change from all zeros to a binary `1` followed by zeros (which corresponds to the decimal value 8192).]
+
+[IMAGE DESCRIPTION: This image is a technical diagram illustrating a matrix multiplication algorithm, likely optimized for GPU computing (using CUDA or similar architectures). It depicts the movement of data between different memory hierarchies: Global Memory, Shared Memory, and Registers.
+
+The diagram is split into two horizontal sections: **"Device Level"** (top) and **"Thread Block Level"** (bottom).
+
+### **1. Top Section: Device Level**
+This section shows the source data in global memory and the initial extraction of data tiles.
+
+*   **Legend:** Located at the top right.
+    *   **White Box:** Global Memory.
+    *   **Light Blue/Green Box:** Shared Memory.
+    *   **Pink Box:** Register File.
+
+*   **Matrix C (Left):**
+    *   A large square grid representing a matrix $C$.
+    *   Dimensions are labeled $m_s$ (height) and $n_s$ (width).
+    *   A specific sub-block (tile) in the top-left quadrant is highlighted in **pink**.
+    *   A thick pink arrow labeled **"Update C"** points into this pink tile, indicating data is being written or read here.
+
+*   **Matrix A (Center):**
+    *   A large square grid representing matrix $A$.
+    *   Dimensions are labeled $m_s$ (height) and $k_s$ (width).
+    *   A vertical strip (column) is highlighted in **light blue**.
+    *   A curved arrow labeled **"Pack A $\rightarrow$ A Tile"** originates from this blue strip and points downward.
+
+*   **Matrix B (Right):**
+    *   A large square grid representing matrix $B$.
+    *   Dimensions are labeled $k_s$ (height) and $n_s$ (width).
+    *   A horizontal strip (row) is highlighted in **light green**.
+    *   A curved arrow labeled **"Pack B $\rightarrow$ B Tile"** originates from this green strip and points downward.
+
+### **2. Bottom Section: Thread Block Level**
+This section shows how the data is processed within a specific thread block.
+
+*   **Legend:** Located below the "Thread Block Level" header.
+    *   **Light Blue/Green Box:** Shared Memory.
+    *   **Pink/Red/Blue/Green Box:** Register File.
+
+*   **C Accumulator (Left):**
+    *   A grid of 8 small rectangles arranged in 4 rows and 2 columns.
+    *   They are labeled **W1, W2, W3, W4, W5, W6, W7, W8**.
+    *   Most are light pink, but the bottom-right block (W8) is dark red.
+    *   The thick pink arrow from the "Update C" section above points directly to the top-left area of this grid (near W1/W3), indicating that the global memory tile is loaded into these registers.
+
+*   **A Tile (Center):**
+    *   A tall, narrow vertical rectangle.
+    *   Labeled **"A Tile"**.
+    *   Dimensions: Height $m_w$, Width $1$.
+    *   The box is outlined in light blue (indicating Shared Memory).
+    *   The curved arrow from Matrix A points into the top of this tile.
+
+*   **B Tile (Right):**
+    *   A wide, short horizontal rectangle.
+    *   Labeled **"B Tile"**.
+    *   Dimensions: Height $1$, Width $n_w$.
+    *   The box is outlined in light green (indicating Shared Memory).
+    *   The curved arrow from Matrix B points into the right side of this tile.
+
+*   **Operation:**
+    *   Between the "C Accumulator" and the "A Tile/B Tile" group, there is a large **`+=`** symbol. This signifies the accumulation operation: $C_{accumulator} += A_{tile} \times B_{tile}$.
+
+### **Summary of Data Flow**
+1.  **Global Memory:** The system identifies tiles in matrices A, B, and C.
+2.  **Packing:** A vertical slice of A and a horizontal slice of B are "packed" (moved) from global memory into the shared memory tiles ("A Tile" and "B Tile").
+3.  **Accumulation:** A tile of C is loaded from global memory into the "C Accumulator" (registers).
+4.  **Computation:** The "A Tile" and "B Tile" are multiplied, and the result is added (`+=`) to the "C Accumulator."]
+
+[IMAGE DESCRIPTION: To recreate this image exactly, you need to construct a **4-row by 8-column grid** (32 cells total) with specific text, coloring, and internal grid lines.
+
+Here are the precise specifications:
+
+### 1. Grid Structure & Borders
+*   **Main Grid:** Create a 4x8 grid.
+*   **Outer Border:** A thick, solid black border surrounds the entire image.
+*   **Cell Borders:** Thick, solid black lines separate each of the 32 main cells.
+*   **Internal Grid:** Inside *every* main cell, draw a faint, thin, light-gray 4x4 grid. This divides each large cell into 16 tiny squares.
+
+### 2. Text Formatting
+*   **Font:** A clean sans-serif font (like Arial or Helvetica).
+*   **Color:** Black.
+*   **Position:** Centered horizontally and vertically within each cell.
+*   **Content:** The text follows the format "t" followed by a number.
+
+### 3. Color & Content Layout
+The colors are organized by **columns** (hue) and **rows** (intensity/saturation).
+*   **Rows:** Row 1 is the lightest (pastel), Row 2 is medium, Row 3 is dark, and Row 4 is the darkest/deepest shade.
+*   **Columns:** Each column has a distinct color family.
+
+Here is the cell-by-cell breakdown (reading left to right, top to bottom):
+
+**Row 1 (Lightest/Pastel Shades)**
+*   **Cell 1:** Text: **t0** | Color: Light Pink / Salmon
+*   **Cell 2:** Text: **t1** | Color: Light Green / Mint
+*   **Cell 3:** Text: **t8** | Color: Light Blue
+*   **Cell 4:** Text: **t9** | Color: Pale Yellow
+*   **Cell 5:** Text: **t16** | Color: Lavender / Light Purple
+*   **Cell 6:** Text: **t17** | Color: Light Teal / Seafoam
+*   **Cell 7:** Text: **t24** | Color: Peach / Light Orange
+*   **Cell 8:** Text: **t25** | Color: Beige / Tan
+
+**Row 2 (Medium Shades)**
+*   **Cell 1:** Text: **t2** | Color: Red / Salmon Red
+*   **Cell 2:** Text: **t3** | Color: Medium Green
+*   **Cell 3:** Text: **t10** | Color: Medium Blue
+*   **Cell 4:** Text: **t11** | Color: Gold / Yellow-Orange
+*   **Cell 5:** Text: **t18** | Color: Medium Purple
+*   **Cell 6:** Text: **t19** | Color: Medium Teal
+*   **Cell 7:** Text: **t26** | Color: Medium Orange
+*   **Cell 8:** Text: **t27** | Color: Light Brown / Taupe
+
+**Row 3 (Dark Shades)**
+*   **Cell 1:** Text: **t4** | Color: Dark Red
+*   **Cell 2:** Text: **t5** | Color: Dark Green
+*   **Cell 3:** Text: **t12** | Color: Dark Blue
+*   **Cell 4:** Text: **t13** | Color: Dark Yellow / Amber
+*   **Cell 5:** Text: **t20** | Color: Dark Purple
+*   **Cell 6:** Text: **t21** | Color: Dark Teal
+*   **Cell 7:** Text: **t28** | Color: Dark Orange
+*   **Cell 8:** Text: **t29** | Color: Medium-Dark Brown
+
+**Row 4 (Darkest/Deep Shades)**
+*   **Cell 1:** Text: **t6** | Color: Deep Red / Crimson
+*   **Cell 2:** Text: **t7** | Color: Very Dark Green
+*   **Cell 3:** Text: **t14** | Color: Navy Blue
+*   **Cell 4:** Text: **t15** | Color: Deep Orange / Rust
+*   **Cell 5:** Text: **t22** | Color: Deep Violet
+*   **Cell 6:** Text: **t23** | Color: Deep Teal
+*   **Cell 7:** Text: **t30** | Color: Deep Orange / Burnt Orange
+*   **Cell 8:** Text: **t31** | Color: Dark Brown / Grey-Brown
+
+### Pattern Note for Recreation
+If you are generating this programmatically, notice the numbering pattern:
+*   The grid is divided into four pairs of columns (Cols 1-2, 3-4, 5-6, 7-8).
+*   Each pair covers a range of 8 numbers (0-7, 8-15, 16-23, 24-31).
+*   Within each pair, the **left column** contains the even numbers (0, 2, 4, 6...) and the **right column** contains the odd numbers (1, 3, 5, 7...).]
+[IMAGE DESCRIPTION: This image is a technical diagram illustrating the flattening of a 2D grid (likely an image feature map) into a 1D vector. It shows how a 16x32 grid is broken down and rearranged.
+
+**1. The Top Component (2D Grid)**
+*   **Dimensions:** A rectangle labeled **16** on the left (height) and **32** on the top (width).
+*   **Grid Structure:** It is divided into a fine grid of small squares.
+    *   **Vertical:** There are 4 distinct horizontal bands. Each band is 4 small squares high (Total height = 4 bands * 4 squares = 16).
+    *   **Horizontal:** There are 8 distinct vertical bands. Each band is 4 small squares wide (Total width = 8 bands * 4 squares = 32).
+*   **Coloring:** The grid features a vertical gradient within each of the 8 vertical bands.
+    *   **Bands (Left to Right):** Red/Pink, Green, Blue, Yellow, Purple, Teal, Orange, Grey/Brown.
+    *   **Gradient:** The top of each band is very light (pale pastel), fading down to a saturated, dark color at the bottom.
+*   **Grid Lines:** Thin black lines separate every individual small square. Thicker black lines separate the 4x4 blocks.
+
+**2. The Bottom Component (1D Vector)**
+*   **Shape:** A long, horizontal rectangular strip.
+*   **Content:** It is a sequence of small squares corresponding to the cells in the top grid.
+*   **Annotations:**
+    *   A bracket labeled **32** spans the first segment (representing one full row width of the original grid).
+    *   A bracket labeled **4 * 32** spans a larger section containing four of those segments.
+    *   A bracket labeled **4 * 4 * 32** spans the entire length of the strip (Total length = 512).
+
+**3. The Mapping (Colored Dashed Boxes & Arrows)**
+The diagram uses four colors (Purple, Red, Green, Pink, Black) to show how sections of the top grid map to sections of the bottom strip. Note: The colors in the diagram correspond to specific rows of the top grid being flattened.
+
+*   **Red Path:**
+    *   **Top:** A dashed red rounded rectangle encloses the **top row** of the 2D grid (the lightest row of colors).
+    *   **Bottom:** A dashed red rounded rectangle encloses the **first segment** of the 1D strip (labeled "32").
+    *   **Arrow:** A straight red arrow points from the top red box down to the bottom red box. This indicates the top row of the grid is flattened into the first 32 elements of the vector.
+
+*   **Green Path:**
+    *   **Top:** A dashed green rounded rectangle encloses the **second row** of blocks in the 2D grid (the second row of small cells down).
+    *   **Bottom:** A dashed green rounded rectangle encloses the **second segment** of the 1D strip.
+    *   **Arrow:** A curved green arrow points from the top green box down to the bottom green box.
+
+*   **Pink/Magenta Path:**
+    *   **Top:** A dashed pink rounded rectangle encloses the **third row** of blocks in the 2D grid.
+    *   **Bottom:** A dashed pink rounded rectangle encloses the **third segment** of the 1D strip.
+    *   **Arrow:** A curved pink arrow points from the top pink box down to the bottom pink box.
+
+*   **Black Path:**
+    *   **Top:** A dashed black rounded rectangle encloses the **fourth (bottom) row** of blocks in the 2D grid (the darkest row of colors).
+    *   **Bottom:** A dashed black rounded rectangle encloses the **fourth segment** of the 1D strip.
+    *   **Arrow:** A curved black arrow points from the top black box down to the bottom black box.
+
+*   **Purple Path (The Aggregate):**
+    *   **Top:** A large dashed purple rounded rectangle encloses the **entire top grid** (all 4 rows).
+    *   **Bottom:** A large dashed purple rounded rectangle encloses the section labeled **4 * 32** (which contains the Red, Green, Pink, and Black segments combined).
+    *   **Arrow:** A long dashed purple arrow points from the top left corner of the grid down to the left side of the bottom strip, indicating that the entire 4-row block (128 cells total) forms this section of the vector.
+
+**Summary of the Process:**
+The diagram visualizes taking a 16x32 grid, specifically focusing on the top 16 rows (which seem to be grouped into 4 logical rows of 4 pixels each), and flattening them row-by-row into a 1D vector of length 128 (labeled 4*32). The full vector length is noted as 4*4*32 = 512, implying there are 4 such 16-row blocks in the full data structure, though only the top one is detailed with arrows.]
+
+[IMAGE DESCRIPTION: To recreate this plot exactly, you are looking at a standard **Matplotlib** line chart (likely Python). It compares the performance (GFLOP/S) of two different matrix multiplication implementations (cuBLAS vs. a custom kernel) across varying matrix sizes.
+
+Here is the detailed breakdown of the visual elements and the code required to generate it.
+
+### Visual Description
+
+**1. Chart Layout & Style:**
+*   **Background:** White.
+*   **Frame:** A simple black rectangular box surrounds the plot area.
+*   **Grid:** Light gray horizontal grid lines are present at every major Y-axis tick mark. There are no vertical grid lines.
+*   **Font:** Standard sans-serif font (likely `DejaVu Sans`, the Matplotlib default).
+
+**2. Axes:**
+*   **X-Axis (Horizontal):**
+    *   **Label:** "m=n=k" (centered below the axis).
+    *   **Range:** Approximately 1,000 to 13,000.
+    *   **Ticks:** Major ticks are labeled at intervals of 2,000 (2000, 4000, 6000, 8000, 10000, 12000).
+*   **Y-Axis (Vertical):**
+    *   **Label:** "GFLOP/S" (rotated 90 degrees, centered on the left).
+    *   **Range:** 8,000 to 24,000.
+    *   **Ticks:** Major ticks are labeled at intervals of 2,000 (8000, 10000, ..., 24000).
+
+**3. The Data Lines:**
+*   **Blue Line ("cuBLAS"):**
+    *   Starts around 15,000 GFLOP/S at x=1000.
+    *   Rises rapidly and jaggedly until x=4000.
+    *   Stabilizes into a noisy plateau between 20,000 and 22,000 GFLOP/S for the remainder of the chart.
+*   **Orange Line ("kernel_128x256x8"):**
+    *   Starts very low (around 8,500 GFLOP/S) at x=1000.
+    *   Rises extremely sharply, crossing the blue line around x=2200.
+    *   Exhibits a distinct "sawtooth" or high-frequency oscillation pattern throughout the entire chart.
+    *   Stabilizes slightly higher than the blue line, hovering around 23,000 GFLOP/S at the end.
+
+**4. Title & Legend:**
+*   **Title:** "CUDA 12.6, SGEMM NN, RTX 3090 @ 1395MHz locked @ 350W". It is centered at the very top, outside the plot box.
+*   **Legend:** Located in the bottom-right corner. It has a white background, a thin gray border, and lists the two series with their corresponding line colors.
+
+---
+
+### Python Code to Recreate It
+
+You can run this Python code using `matplotlib` and `numpy` to generate a near-exact replica. I have simulated the data trends to match the visual "noise" and shape of your image.
+
+```python
+import matplotlib.pyplot as plt
+import numpy as np
+
+# 1. Generate Data (Simulating the trends in the image)
+x = np.linspace(1000, 13000, 200)
+
+# Simulate cuBLAS (Blue line)
+# Starts lower, rises, settles around 21k-22k with moderate noise
+y_blue = 15000 + (13000/10000) * x + 500 * np.sin(x/200) + 200 * np.random.normal(0, 1, len(x))
+# Adjust to fit the visual: starts ~15k, ends ~22k
+y_blue = 14000 + 0.65 * x + 400 * np.sin(x/300) 
+
+# Simulate kernel_128x256x8 (Orange line)
+# Starts very low, rises fast, settles higher (~23k) with high frequency noise
+y_orange = 8000 + 0.9 * x + 800 * np.sin(x/100) + 300 * np.random.normal(0, 1, len(x))
+
+# 2. Setup Plot
+plt.figure(figsize=(10, 6)) # Approximate aspect ratio
+
+# 3. Plot Lines
+# Standard Matplotlib blue and orange colors
+plt.plot(x, y_blue, label='cuBLAS', color='#1f77b4', linewidth=1.5)
+plt.plot(x, y_orange, label='kernel_128x256x8', color='#ff7f0e', linewidth=1.5)
+
+# 4. Configure Axes
+plt.xlabel('m=n=k', fontsize=12)
+plt.ylabel('GFLOP/S', fontsize=12)
+
+# Set limits to match image exactly
+plt.xlim(500, 13500)
+plt.ylim(8000, 24500)
+
+# Set ticks to match image
+plt.xticks(np.arange(2000, 13001, 2000))
+plt.yticks(np.arange(8000, 25001, 2000))
+
+# 5. Grid & Styling
+plt.grid(axis='y', color='gray', linestyle='-', linewidth=0.5, alpha=0.5)
+# Remove top and right spines to match the "open" look, or keep box if preferred. 
+# The image has a full box, so we keep default spines.
+
+# 6. Title
+plt.title('CUDA 12.6, SGEMM NN, RTX 3090 @ 1395MHz locked @ 350W', fontsize=14)
+
+# 7. Legend
+plt.legend(loc='lower right', framealpha=1.0, edgecolor='gray')
+
+plt.tight_layout()
+plt.show()
+```]
+

@@ -844,10 +844,172 @@ https://alexarmbr.github.io/images/table6.png
 https://alexarmbr.github.io/images/simple_computer.png
 https://alexarmbr.github.io/images/roofline.png
 https://alexarmbr.github.io/images/t4_roofline.png
-https://alexarmbr.github.io/images/t4_memory_hierarchy.png
+[IMAGE DESCRIPTION: This is a technical schematic diagram illustrating a computer memory hierarchy. To recreate it exactly, follow these structural, textual, and stylistic guidelines.
+
+### 1. Layout and General Style
+*   **Canvas:** Landscape orientation with a white background.
+*   **Line Style:** Hand-drawn aesthetic (slight imperfections in lines, not perfectly straight).
+*   **Color Palette:**
+    *   **Black:** Outlines and main text.
+    *   **Green:** Used for memory capacity values.
+    *   **Blue:** Used for bandwidth values and arrows.
+    *   **Light Red/Pink:** Diagonal hatching fill.
+    *   **Light Yellow:** Diagonal hatching fill.
+
+### 2. Top Section (Header)
+*   **Title:** Centered at the top: *"A slightly more realistic computer"*
+*   **Directional Arrow:** A long black arrow pointing from left to right.
+*   **Arrow Label:** Written just above the arrow: *"smaller/higher bandwidth memory"*
+*   **Legend (Top Right):**
+    *   A green oval labeled *"capacity"*
+    *   A blue oval labeled *"bandwidth"*
+
+### 3. Central Partition
+*   **Divider:** A vertical dashed black line separates the left half from the right half.
+*   **Labels:** Above the dashed line, center-aligned: *"off chip"* (to the left of the line) and *"on chip"* (to the right of the line).
+
+### 4. Memory Components (Left to Right)
+**A. Global Memory (Far Left):**
+*   **Shape:** A large vertical rectangle with rounded corners.
+*   **Fill:** Filled with thin, light-red diagonal stripes (hatching).
+*   **Text:** Centered inside: *"global memory"* (black) and underneath it *"(16GB)"* (green).
+
+**B. L2 Cache (Top Center):**
+*   **Shape:** A smaller vertical rectangle with rounded corners.
+*   **Fill:** Light green background.
+*   **Text:** Centered inside: *"L2 cache"* (black) and underneath it *"(4MB)"* (green).
+
+**C. Shared Memory / L1 Cache (Bottom Center):**
+*   **Shape:** A vertical rectangle with rounded corners (similar size to L2).
+*   **Fill:** Light blue background.
+*   **Text:** Centered inside: *"Shared Memory/ L1 Cache"* (black) and underneath it *"(64KB) (per SM)"* (green).
+
+**D. Registers (Far Right):**
+*   **Shape:** A vertical rectangle with dashed black outlines and rounded corners.
+*   **Fill:** Filled with thin, light-yellow diagonal stripes (hatching).
+*   **Text:** Centered inside: *"registers"* (black).
+*   **Appendage:** On the right edge of the register box, draw a small, hand-drawn "ear" or loop (like a small semi-circle) extending outward.
+*   **Right Label:** To the right of the loop: *"perform $\tau$ FLOP/sec"* (black).
+
+### 5. Connections and Data Flow (Arrows)
+All arrows are blue and point toward the **Registers** box.
+
+1.  **Global Memory $\rightarrow$ Registers:** A straight black line starts at the Global Memory, passes under the L2 cache, and becomes a blue arrow pointing into the left side of the Registers.
+    *   **Label:** Above the line: $\beta_{\text{gmem}} = 220 \text{ GB/sec}$ (blue).
+2.  **L2 Cache $\rightarrow$ Registers:** A blue arrow pointing diagonally down from the L2 cache to the top-left of the Registers.
+    *   **Label:** Above the arrow: $\beta_{\text{L2}} = 1270 \text{ GB/sec}$ (blue).
+3.  **Shared Memory $\rightarrow$ Registers:** A blue arrow pointing diagonally up from the Shared Memory to the bottom-left of the Registers.
+    *   **Label:** To the right of the arrow: $\beta_{\text{shmem}} = 3662 \text{ GB/sec}$ (blue).]
 https://alexarmbr.github.io/images/t4_memory_roofline.png
-https://alexarmbr.github.io/images/multiplication_vs_addition.png
-https://alexarmbr.github.io/images/simple_computer_matmul_naive.png
+[IMAGE DESCRIPTION: This is a hand-drawn educational diagram comparing the computational complexity of **Matrix Multiplication** versus **Matrix Addition**. The image is split vertically down the middle by a thick black line.
+
+Here is a detailed breakdown of each section to help you recreate it:
+
+### **Left Panel: NxN Matrix Multiplication**
+
+**1. Title:**
+*   In the top left corner, write "NxN matrix multiplication" in a casual, handwritten font.
+
+**2. The Grids (Matrices):**
+*   There are three square grids, each containing a 4x4 arrangement of circles.
+*   **Top Right Grid:** Represents the second matrix.
+    *   Draw dimension lines labeled **"N"** for both the width (top) and height (left side).
+    *   Most circles are faint, light gray outlines.
+    *   Highlight the **3rd column** (from left to right) with **4 solid light-green circles**.
+*   **Bottom Left Grid:** Represents the first matrix.
+    *   Draw dimension lines labeled **"N"** for both width and height.
+    *   Highlight the **2nd row** (from top to bottom) with **4 solid light-blue circles**.
+*   **Bottom Right Grid:** Represents the result matrix.
+    *   Highlight the single circle where the highlighted row and column intersect (2nd row, 3rd column) with a **solid light-yellow circle**.
+    *   The rest of the circles are faint outlines.
+
+**3. Connecting Lines & Indices:**
+*   Draw a horizontal dotted line passing through the center of the blue row in the bottom-left grid and the yellow circle in the bottom-right grid. Label this line **"i"** on the far right.
+*   Draw a vertical dotted line passing through the center of the green column in the top-right grid and the yellow circle in the bottom-right grid. Label this line **"j"** at the bottom.
+
+**4. The Formula/Explanation (Bottom Left):**
+*   Draw a visual equation:
+    *   Top row: 4 blue circles.
+    *   Middle row: 4 asterisks (`*`) underneath the blue circles.
+    *   Bottom row: 4 green circles underneath the asterisks.
+    *   To the right: An equals sign (`=`) and a single yellow circle.
+*   Below that, draw a plus sign (`+`) and a long arrow pointing to the right, indicating summation.
+*   Write the text below: **"2N ops per element of output"** followed by **(N multiplications and N additions)** in parentheses.
+
+---
+
+### **Right Panel: NxN Matrix Addition**
+
+**1. Title:**
+*   In the top left of this section, write "NxN matrix addition".
+
+**2. The Grids (Matrices):**
+*   Similar to the left side, there are three 4x4 grids.
+*   **Top Right Grid:**
+    *   Dimension lines labeled **"N"** for width and height.
+    *   Highlight a single circle in the **2nd row, 3rd column** with a **solid light-green circle**.
+*   **Bottom Left Grid:**
+    *   Dimension lines labeled **"N"** for width and height.
+    *   Highlight a single circle in the **2nd row, 3rd column** with a **solid light-blue circle**.
+*   **Bottom Right Grid:**
+    *   Highlight the intersection circle (2nd row, 3rd column) with a **solid light-yellow circle**.
+
+**3. Connecting Lines & Indices:**
+*   Draw a horizontal dotted line labeled **"i"** connecting the blue and yellow circles.
+*   Draw a vertical dotted line labeled **"j"** connecting the green and yellow circles.
+
+**4. The Formula/Explanation (Bottom Right):**
+*   Draw a simple equation: A blue circle, a plus sign (`+`), a green circle, an equals sign (`=`), and a yellow circle.
+*   Write the text below: **"1 op per element of output"**.
+
+### **Visual Style Notes:**
+*   **Colors:** Use soft pastels for the filled circles (light blue, light green, light yellow). The outlines should be thin black lines. The "empty" circles in the grids should be very faint gray or light blue outlines with no fill.
+*   **Lines:** The main box borders are thick black lines. The dimension lines are thinner. The connecting lines (i and j) are dotted.
+*   **Font:** Use a handwritten, sans-serif style for all text.]
+[IMAGE DESCRIPTION: This is a hand-drawn style diagram illustrating the concept of "Naive Matrix Multiplication on a simple computer." It depicts data movement between "slow memory" (RAM/Storage) and "fast memory" (CPU Cache/Registers).
+
+Here are the specific details to recreate it:
+
+**1. Title**
+*   Located at the top right.
+*   Text: "Naive Matrix Multiplication on a simple computer"
+*   Font style: Handwritten, casual sans-serif.
+
+**2. The "Slow Memory" Box (Left Side)**
+*   **Container:** A large, roughly rectangular box with rounded corners and a thick black outline.
+*   **Label:** "slow memory" written above the top-left corner.
+*   **Axis Labels:**
+    *   An "i" is placed to the far left (indicating the vertical row index).
+    *   A "j" is placed above the top-right section (indicating the horizontal column index).
+*   **Internal Content (The Matrices):** Inside the box, there are three distinct 4x4 grids of circles, arranged in a 2x2 layout (with the top-left quadrant empty).
+    *   **Top-Right Grid (Matrix A - Green):**
+        *   Contains 16 small circles arranged in 4 rows and 4 columns.
+        *   The circles are a very pale, light green.
+        *   **Highlight:** The entire 3rd column is highlighted. The circles in this column are a darker, saturated green. A vertical dashed black line runs through the center of this column.
+    *   **Bottom-Left Grid (Matrix B - Blue):**
+        *   Contains 16 small circles arranged in 4 rows and 4 columns.
+        *   The circles are a very pale, light blue.
+        *   **Highlight:** The entire 3rd row is highlighted. The circles in this row are a darker, saturated blue. A horizontal dashed black line runs through the center of this row.
+    *   **Bottom-Right Grid (Matrix C - Yellow):**
+        *   Contains 16 small circles arranged in 4 rows and 4 columns.
+        *   The circles are a very pale yellow/cream color.
+        *   **Highlight:** The intersection of the 3rd row and 3rd column is highlighted. The single circle at this intersection is a darker, saturated yellow.
+        *   The dashed lines from the other grids (vertical green line, horizontal blue line) extend into this grid and cross at this specific yellow circle.
+
+**3. The "Fast Memory" Box (Right Side)**
+*   **Container:** A smaller, horizontal rounded rectangle with a thick black outline.
+*   **Label:** "fast memory" written above the box.
+*   **Internal Content:** An equation representing the arithmetic operation.
+    *   It reads: `[Green Circle] * [Blue Circle] += [Yellow Circle]`
+    *   The symbols are: A green circle, a multiplication sign (*), a blue circle, an addition-equals sign (+=), and a yellow circle.
+    *   The colors correspond to the highlighted elements in the slow memory box.
+
+**4. The Connection (Data Movement)**
+*   Two horizontal lines connect the "slow memory" box and the "fast memory" box.
+*   **Top Arrow:** Points from Left to Right (Slow -> Fast).
+    *   Above the arrow shaft are two small circles: one green, one blue. This represents loading the column and row into fast memory.
+*   **Bottom Arrow:** Points from Right to Left (Fast -> Slow).
+    *   Below the arrow shaft is one small yellow circle. This represents writing the calculated result back to slow memory.]
 https://alexarmbr.github.io/images/simple_computer_matmul_best_case.png
 https://alexarmbr.github.io/images/simple_computer_matmul_realistic_case.png
 https://alexarmbr.github.io/images/simple_gpu.png
@@ -857,7 +1019,46 @@ https://alexarmbr.github.io/images/my_tiles_2.png
 https://alexarmbr.github.io/images/intensity_tile_dims.png
 https://alexarmbr.github.io/images/compute_data_movement_overlap.png
 https://alexarmbr.github.io/images/mma_fragments.png
-https://alexarmbr.github.io/images/table1.png
+[IMAGE DESCRIPTION: This is a hand-drawn data table containing performance metrics for matrix multiplication kernels. To recreate it exactly, follow these layout, text, and styling specifications:
+
+### 1. General Layout
+*   **Format:** A table with 4 columns and 3 rows (including a header row and two data rows).
+*   **Styling:** The table uses hand-drawn black lines. The vertical lines are straight, but the horizontal lines are slightly skewed/slanted (not perfectly parallel to the top and bottom of the page).
+*   **Alignment:** Text is generally centered within the columns, though the first column is left-aligned.
+
+### 2. Header Row (Top)
+The headers are written in a clean, sans-serif print style.
+*   **Above the table (Left):** "for $M=N=K=8192$" (written in a smaller font than the headers).
+*   **Column 1:** (Blank)
+*   **Column 2:** "GFLOP/s"
+*   **Column 3:** "Improvement over Baseline"
+*   **Column 4:** "Step Improvement"
+*   **Column 5:** "% of cuBLAS HGEMM throughput"
+
+### 3. Row 1: Kernel 1
+*   **Column 1:** "Kernel 1" (Main text). Directly underneath "Kernel 1," write "Hierarchical Tiling" in a smaller, slightly italicized or cursive-leaning script.
+*   **Column 2:** "4210"
+*   **Column 3:** "1.0x"
+*   **Column 4:** "–" (a single dash/hyphen)
+*   **Column 5:** "8.6%"
+
+### 4. Row 2: Empty Space
+*   There is a blank row between "Kernel 1" and "cuBLAS" that serves as a visual separator. All cells in this row are empty.
+
+### 5. Row 3: cuBLAS
+*   **Column 1:** "cuBLAS"
+*   **Column 2:** "48768"
+*   **Column 3:** "11.6x"
+*   **Column 4:** "–" (a single dash/hyphen)
+*   **Column 5:** "100%"
+
+### 6. Visual Details for "Exact" Recreation
+*   **Line Weight:** Use a medium-tip black marker or pen.
+*   **Grid Structure:**
+    *   The vertical lines extend from the bottom of the headers down to the bottom of the last row.
+    *   The first horizontal line separates the headers from the data.
+    *   The second horizontal line separates the empty row from the cuBLAS row.
+    *   Note that the lines do not form a fully enclosed box (the top and sides are open).]
 https://alexarmbr.github.io/images/warp_state_kernel1.png
 https://alexarmbr.github.io/images/memory_latency.png
 https://alexarmbr.github.io/images/memory_latency_unrolled.png
@@ -874,7 +1075,48 @@ https://alexarmbr.github.io/images/simple_smem_swizzled.png
 https://alexarmbr.github.io/images/simple_smem_indices.png
 https://alexarmbr.github.io/images/swizzled_rows.png
 https://alexarmbr.github.io/images/2d-swizzle.png
-https://alexarmbr.github.io/images/mma_tile_zoom_in_blank.png
+[IMAGE DESCRIPTION: To recreate this image exactly, you would create a vertical diagram composed of three main sections: a large top matrix, a connecting zoom section, and a detailed bottom grid. The aesthetic is technical but uses handwritten-style fonts for labels.
+
+Here is the detailed breakdown:
+
+### 1. Top Section: The Full Matrix
+*   **Title:** At the very top center, write "Warp Tile of B" in a large, black, handwritten font.
+*   **The Grid:** Create a massive, dense grid of small numbers (floats). It should look like a standard spreadsheet or matrix output. The numbers are tightly packed.
+*   **Top Axis Labels (Banks):** Above the grid, label the columns with "Bank" numbers.
+    *   On the left: "Bank 0", "Bank 1", "Bank 2", "Bank 3", "Bank 4", followed by an ellipsis (...). These labels are tilted diagonally upwards to the right.
+    *   On the right: An ellipsis (...), followed by "Bank 30", "Bank 31". These are tilted diagonally upwards to the left.
+*   **Dimension Labels:**
+    *   **Horizontal:** In the top center, write "mma_n" with a right-pointing arrow underneath it.
+    *   **Vertical:** On the far left side, write "mma_k" with a down-pointing arrow next to it.
+
+### 2. Middle Section: The Connection
+*   **Dotted Lines:** Draw two black dotted lines originating from a specific rectangular block in the middle of the top grid. These lines should angle downwards and outwards, framing the bottom section.
+*   **Label:** Near the bottom of these lines, write "mma tile" in the handwritten font.
+
+### 3. Bottom Section: The Zoomed-in Tile
+This is an 8x8 grid of large, bold numbers. It is divided into four vertical color-coded sections corresponding to memory banks.
+
+*   **Column Headers:** Above the grid, label the four sections: "Bank 20", "Bank 21", "Bank 22", "Bank 23".
+*   **Row Headers:** To the left of the grid, label the rows "row 0" through "row 7".
+*   **Color Coding:**
+    *   **Bank 20 (First 2 columns):** Light Blue background.
+    *   **Bank 21 (Next 2 columns):** Purple/Lavender background.
+    *   **Bank 22 (Next 2 columns):** Orange background.
+    *   **Bank 23 (Last 2 columns):** Pink/Magenta background.
+
+**The Data (Row by Row):**
+*   **Row 0:** -4.74, 1.36 | -1.81, 4.18 | 3.18, -2.02 | -1.13, -6.99
+*   **Row 1:** -9.07, 0.66 | -1.64, 2.35 | 3.83, -5.87 | -5.6, 6.72
+*   **Row 2:** -1.09, 8.21 | 4.13, -0.74 | 0.3, 1.85 | 0.1, 1.89
+*   **Row 3:** -4.74, 2.27 | -10.8, 4.32 | 3.98, 6.7 | 2.75, -4.12
+*   **Row 4:** -1.36, 4.29 | -0.87, 0.74 | 1.8, -2.28 | -2.22, -5.76
+*   **Row 5:** -0.14, -0.56 | 4.8, -4.4 | 0.05, -3.04 | -4.06, -6.16
+*   **Row 6:** -0.72, -0.26 | 8.73, 6.9 | 3.22, -9.06 | 1.86, -1.11
+*   **Row 7:** 3.71, -0.24 | -0.61, -3.52 | 6.44, -4 | -5.72, -9.55
+
+### 4. Footer
+*   **Bracket:** Draw a horizontal bracket underneath the entire bottom grid.
+*   **Label:** Below the bracket, write "16 bytes". This indicates the memory width of the row (8 columns * 2 bytes per float = 16 bytes).]
 https://alexarmbr.github.io/images/mma_tile_zoom_in_swizzle.png
 https://alexarmbr.github.io/images/swizzle_index_groups.png
 https://alexarmbr.github.io/images/swizzled_vs_unswizzled.png
@@ -882,17 +1124,91 @@ https://alexarmbr.github.io/images/table3.png
 https://alexarmbr.github.io/images/long_scoreboard_stall_kernel3.png
 https://alexarmbr.github.io/images/concurrent_fetch_compute.png
 https://alexarmbr.github.io/images/prefetch.png
-https://alexarmbr.github.io/images/table4.png
+[IMAGE DESCRIPTION: To recreate this image exactly, you would create a hand-drawn style table with 5 columns and 6 rows. The aesthetic is a black-ink sketch on a white background.
+
+### General Layout & Styling
+*   **Style:** Hand-drawn, non-linear lines. The borders should be slightly shaky, not perfectly straight.
+*   **Ink:** Solid black lines and text.
+*   **Typography:** Handwritten print. Use a sans-serif style with inconsistent letter heights and spacing to mimic a human hand.
+*   **Grid:** The table consists of a outer border with internal vertical and horizontal dividers. Note that the bottom row is separated by two horizontal lines (one thin, one slightly thicker).
+
+### Column Headers
+From left to right, the headers are:
+1.  **(Blank/Implicit):** This column contains the Kernel names.
+2.  **GFLOP/s**
+3.  **Improvement over Baseline**
+4.  **Step Improvement**
+5.  **% of cuBLAS HGEMM throughput**
+
+### Row Content
+The table contains 5 data rows. The first column of each row contains a bolded title and a sub-description in smaller, non-bolded text.
+
+| Row | Column 1 (Name/Desc) | Col 2 (GFLOP/s) | Col 3 (Imp. over Baseline) | Col 4 (Step Imp.) | Col 5 (% of cuBLAS) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **1** | **Kernel 1** <br>Hierarchical Tiling | 4210 | 1.0x | - | 8.6% |
+| **2** | **Kernel 2** <br>Vectorized/Unrolled gmem $\rightarrow$ smem copy | 13156 | 3.1x | 3.1x | 27.0% |
+| **3** | **Kernel 3** <br>Shared memory swizzling | 27721 | 6.6x | 2.1x | 56.9% |
+| **4** | **Kernel 4** <br>Makeshift async copy | 33733 | 8.0x | 1.2x | 69.2% |
+| **5** | *(Blank Row)* | *(Empty)* | *(Empty)* | *(Empty)* | *(Empty)* |
+| **6** | **cuBLAS** | 48768 | 11.6x | - | 100% |
+
+### Specific Detail Notes for Accuracy:
+*   **The "Arrow":** In Kernel 2's description, use a small handwritten arrow ($\rightarrow$) between "gmem" and "smem".
+*   **Alignment:** Text in the first column is left-aligned. Text in columns 2 through 5 is center-aligned.
+*   **The Blank Row:** There is a completely empty row between Kernel 4 and the cuBLAS row.
+*   **Line Weight:** The horizontal lines separating the kernels are slightly thicker than the vertical column dividers.
+*   **The Final Row:** The word "cuBLAS" in the final row is bolded and aligned to the left.]
 https://alexarmbr.github.io/images/intensity_block_tile_dims.png
 https://alexarmbr.github.io/images/l2_cache_locality.png
 https://alexarmbr.github.io/images/tile_dims_adjustment.png
 https://alexarmbr.github.io/images/instruction_mix_comparison.png
 https://alexarmbr.github.io/images/index_calculation_inneficient.png
-https://github.githubassets.com/images/icons/emoji/unicode/1f608.png
+
 https://alexarmbr.github.io/images/swizzled_index_calculation_inneficient.png
 https://alexarmbr.github.io/images/swizzled_index_calculation_efficient.png
 https://alexarmbr.github.io/images/table5.png
 https://alexarmbr.github.io/images/two_syncthreads.png
 https://alexarmbr.github.io/images/one_syncthreads.png
 https://alexarmbr.github.io/images/double_buffering.png
-https://alexarmbr.github.io/images/hgemm_performance.png
+[IMAGE DESCRIPTION: To recreate this plot exactly, you should use **R** with the **ggplot2** library. The visual style (the grey grid background, the font, and the legend layout) is characteristic of the default `theme_grey()` in ggplot2.
+
+### 1. General Plot Specifications
+*   **Chart Type:** Multi-line chart.
+*   **Theme:** `theme_grey()` (Default ggplot2 theme).
+*   **Background:** Light grey with white major and minor grid lines.
+*   **Axes:**
+    *   **X-Axis Label:** "M,N,K Matrix Dimension"
+    *   **X-Axis Scale:** Linear scale with specific tick marks at `1024`, `2048`, `4096`, and `8192`.
+    *   **Y-Axis Label:** "GFLOP/s" (Note: The image says "GFIOP/s", which is likely a typo for GFLOP/s).
+    *   **Y-Axis Scale:** Linear, ranging from $0$ to $50,000$ with increments of $5,000$.
+*   **Title:** "HGEMM Performance" (Left-aligned, bold-style sans-serif font).
+*   **Legend:** Located on the right side. Title is "kernel".
+
+### 2. Data Series & Color Palette
+You will need to create a data frame with the following categories (Kernels) and approximate data points:
+
+| Kernel | Color (Hex Approx) | Trend/Points (approx. Y values) |
+| :--- | :--- | :--- |
+| **cuBLAS** | Salmon/Light Red (`#F8766D`) | $1024: 25k \rightarrow 2048: 39k \rightarrow 4096: 49k \rightarrow 8192: 49k$ |
+| **kernel_1** | Olive/Gold (`#B79F00`) | Flat line near $3k$ to $4k$ |
+| **kernel_2** | Green (`#00BA38`) | $1024: 10k \rightarrow 2048: 11k \rightarrow 4096: 14k \rightarrow 8192: 13k$ |
+| **kernel_3** | Teal (`#00BFC4`) | $1024: 18k \rightarrow 2048: 22k \rightarrow 4096: 28k \rightarrow 8192: 28k$ |
+| **kernel_4** | Light Blue (`#619CFF`) | $1024: 20k \rightarrow 2048: 26k \rightarrow 4096: 34k \rightarrow 8192: 34k$ |
+| **kernel_5** | Purple (`#C77CFF`) | $1024: 16k \rightarrow 2048: 33k \rightarrow 4096: 41k \rightarrow 8192: 42k$ |
+| **kernel_6** | Pink (`#FF61C3`) | $1024: 16k \rightarrow 2048: 33k \rightarrow 4096: 43k \rightarrow 8192: 47k$ |
+
+### 3. Implementation Logic (Pseudocode/R)
+To achieve the exact look, use the following logic:
+
+1.  **Data Setup:** Create a long-format data frame with columns `Dimension` (numeric), `Kernel` (factor), and `Performance` (numeric).
+2.  **Mapping:**
+    *   `aes(x = Dimension, y = Performance, color = Kernel)`
+3.  **Geometry:**
+    *   `geom_line(linewidth = 1)`: Use a medium line thickness.
+4.  **Scaling:**
+    *   `scale_x_continuous(breaks = c(1024, 2048, 4096, 8192))`
+    *   `scale_y_continuous(breaks = seq(5000, 50000, by = 5000), limits = c(0, 52000))`
+    *   `scale_color_discrete()`: The colors used are the default ggplot2 "Hues" palette for 7 levels.
+5.  **Formatting:**
+    *   Set `ggtitle("HGEMM Performance")`
+    *   Set `xlab("M,N,K Matrix Dimension")` and `ylab("GFIOP/s")`]

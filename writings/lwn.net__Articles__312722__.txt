@@ -166,8 +166,4 @@ Copyright © 2008, Eklektix, Inc.
 Comments and public postings are copyrighted by their creators.
 Linux is a registered trademark of Linus Torvalds
 
-IMAGES
-https://static.lwn.net/images/logo/barepenguin-70.webp
-https://static.lwn.net/images/lcorner-ss.png
-https://static.aqua-adserver.com/c44a8f41baf6a94c1b7b4da0d3865fcc.png
-https://servedby.aqua-adserver.com/lg.php?bannerid=134553&campaignid=42218&zoneid=12085&loc=https%3A%2F%2Flwn.net%2FArticles%2F312722%2F&cb=ea54cc8194
+

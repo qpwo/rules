@@ -220,5 +220,3 @@ Index Tags Feed About Tools Toys GitHub
 
 All information on this blog, unless otherwise noted, is hereby released into the public domain, with no rights reserved.
 
-IMAGES
-https://nullprogram.com/img/diagram/utf8-bits.svg

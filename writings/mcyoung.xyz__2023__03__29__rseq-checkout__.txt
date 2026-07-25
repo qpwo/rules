@@ -547,8 +547,31 @@ Soon™ / Thoughts on std::simd
 2026-03-31 / Breaking the Warranty with go:linkname
 
 IMAGES
-https://mcyoung.xyz/assets/images/avatar.png
-https://mcyoung.xyz/assets/images/github.svg
-https://mcyoung.xyz/assets/images/bsky.svg
-https://mcyoung.xyz/assets/images/rss.svg
-https://mcyoung.xyz/assets/images/golden-idol.gif
+
+[IMAGE DESCRIPTION: To recreate this image exactly, you need to focus on the specific lighting, wardrobe, and the "Indiana Jones" aesthetic. Here is a detailed breakdown:
+
+### 1. Setting and Atmosphere
+*   **Environment:** A dark, cavernous jungle temple or ruins. The background should be heavily shadowed and underexposed.
+*   **Background Details:** To the left and right, include organic, textured shapes suggesting stone walls covered in vines, moss, and hanging roots. The colors should be deep greens, murky browns, and blacks.
+*   **Lighting:** High-contrast, cinematic lighting (Chiaroscuro). The primary light source is a strong, warm directional light coming from the right side of the frame, hitting the character's face and the golden idol. The left side of the character's body is in deep shadow.
+
+### 2. The Character (Indiana Jones)
+*   **Pose:** The character is leaning forward from a crouched position, captured in a moment of intense concentration and tension. His torso is angled toward the center.
+*   **Expression:** A focused, determined, and slightly anxious look. Eyes narrowed, brow furrowed, staring intently at the idol.
+*   **Wardrobe:**
+    *   **Hat:** A classic brown felt Fedora with a wide brim and a dark brown ribbon band. It is tilted slightly forward.
+    *   **Jacket:** A worn, dark brown leather flight jacket with a visible collar. The leather should have a slight sheen where the light hits it.
+    *   **Shirt:** A tan or khaki button-down safari-style shirt visible beneath the jacket.
+*   **Action:** His right hand is gripping a burlap sandbag, positioning it directly over the idol. His left hand is hovered open to the right, acting as a counterbalance or preparing to grab the idol.
+
+### 3. The Props and Foreground
+*   **The Golden Idol:** A small, stylized gold statue of a deity (resembling a Mayan or Aztec figure) with a rounded head and simplified features. It has a high-metallic gold luster that reflects the warm light.
+*   **The Pedestal:** The idol sits on a circular, weathered stone plinth. The stone is dark grey/green, textured with age, and partially covered in patches of green moss.
+*   **The Sandbag:** A small, rough-textured burlap sack filled with sand. It is a light beige/tan color and is being held by a small drawstring.
+*   **Ground:** The area around the pedestal is covered in a layer of thick, yellowish-green moss and forest debris.
+
+### 4. Composition and Camera
+*   **Shot Type:** Medium close-up.
+*   **Angle:** Eye-level, slightly looking up at the character to emphasize the tension of the moment.
+*   **Color Palette:** A contrast between the cool, dark greens/blacks of the background and the warm golds, browns, and yellows of the character and the idol.
+*   **Depth of Field:** Shallow. The character and the idol are in sharp focus, while the background vines and cave walls are softly blurred.]

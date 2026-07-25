@@ -331,19 +331,237 @@ Reblog
 Subscribe
 
 IMAGES
-https://randomascii.wordpress.com/wp-content/uploads/2011/07/blog-header-from-p2090787.jpg
-https://randomascii.wordpress.com/wp-content/uploads/2019/04/image_thumb.png?w=580&h=608
-https://randomascii.wordpress.com/wp-content/uploads/2019/04/image_thumb-1.png?w=625&h=485
-https://randomascii.wordpress.com/wp-content/uploads/2019/04/image_thumb-2.png?w=631&h=452
-https://randomascii.wordpress.com/wp-content/uploads/2019/04/image_thumb-3.png?w=628&h=293
-https://0.gravatar.com/avatar/3a42ddfd2e617c6fa03c80889690163b8b57f6d253bfbc73cfa04a110c13f970?s=60&d=identicon&r=G
-https://1.gravatar.com/avatar/421a1e7fd02f690b04c88752b7b31dde4d1d830f0df93aa7d63bfe2c44e0eb2e?s=40&d=identicon&r=G
-https://0.gravatar.com/avatar/3a42ddfd2e617c6fa03c80889690163b8b57f6d253bfbc73cfa04a110c13f970?s=40&d=identicon&r=G
-https://1.gravatar.com/avatar/4315c3e7ec56cb00ec6124189caa9c90b0f600036bb8184c31b124bf609a15ca?s=40&d=identicon&r=G
-https://i0.wp.com/lh3.googleusercontent.com/-9u4pNEyNs1I/AAAAAAAAAAI/AAAAAAAAAAA/K-Bgt8QZpS8/photo.jpg?resize=40%2C40&ssl=1
-https://2.gravatar.com/avatar/29b854edb64b8b348024866365508028c62df34cace075110a7c3963891ed09d?s=40&d=identicon&r=G
-https://2.gravatar.com/avatar/b093cc68b53ae657890ef6ae0d493079e00d53de9f6fb58510612fd217f11de1?s=40&d=identicon&r=G
-https://2.gravatar.com/avatar/e7548ff89872c8c0db8141a9050dc756b8f6154cac6b3bf74240421d2c1a8756?s=40&d=identicon&r=G
-https://2.gravatar.com/avatar/262d96344020d1946485cc80d0db1175e77114b1fa073595806dc6897b75c383?s=40&d=identicon&r=G
-https://randomascii.wordpress.com/wp-content/uploads/2017/07/cropped-uiforetwicon2.png?w=50
-https://pixel.wp.com/g.gif?blog=18565082&v=wpcom&tz=-7&user_id=0&post=3162&subd=randomascii&host=randomascii.wordpress.com&ref=&rand=0.13467386602961007
+
+[IMAGE DESCRIPTION: To recreate this image exactly, you would need to build a **hierarchical data grid** (often called a "TreeGrid" or "Call Stack View") typically found in profiling software like Intel VTune, Windows Performance Analyzer, or Visual Studio Profiler.
+
+Here is the detailed specification for the recreation:
+
+### 1. Layout & Structure
+*   **Container:** A data table with a fixed-width header and a scrollable body.
+*   **Columns:** 
+    *   **Stack (Main Column):** A wide column containing a hierarchical tree of strings.
+    *   **Count (Right Column):** A narrow column containing numerical values.
+    *   **Sum (Far Right):** A narrow column (mostly cut off in the image).
+*   **Row Height:** Standard single-line text height.
+*   **Grid Lines:** Very thin, light gray horizontal and vertical borders.
+
+### 2. The "Stack" Column (Tree Logic)
+This column uses **indentation and piping symbols** to show a parent-child relationship (a call stack).
+*   **Indentation:** Each level of nesting is indented by a fixed number of characters (approx. 2-3 spaces).
+*   **Visual Guides:** 
+    *   Vertical lines (`|`) run down from a parent to its furthest descendant.
+    *   The "branch" is indicated by a combination of `|-` for the first child and empty spaces for subsequent siblings.
+*   **Interactive Elements:** Small downward-pointing grey triangles (disclosure triangles) are placed to the left of rows that have been expanded.
+*   **Text Content:** The text follows the pattern: `[Library/Executable]![FunctionName]`.
+    *   *Example:* `ntdll.dll!RtlUserThreadStart`
+
+### 3. The "Count" Column
+*   **Alignment:** Right-aligned text.
+*   **Formatting:** Numbers use a comma as a thousands separator.
+*   **Background:** The entire column has a **pale yellow background fill**, distinguishing it from the white background of the Stack column.
+
+### 4. Color Palette & Styling
+*   **Backgrounds:**
+    *   General rows: White (`#FFFFFF`).
+    *   Count column: Pale Yellow (approx. `#FFFFE0`).
+    *   Selected row: A medium-bright blue (approx. `#3399FF`).
+*   **Text:**
+    *   General text: Black, sans-serif font (Arial or Segoe UI), size approx. 11px.
+    *   Selected row text: White.
+*   **Borders:** Light gray (`#D3D3D3`).
+
+### 5. Specific Data Content (Top to Bottom)
+To recreate the exact data, populate the rows in this order:
+
+1.  `[Root]` $\rightarrow$ **55,128**
+2.  `|- ntdll.dll!RtlUserThreadStart` $\rightarrow$ **55,021**
+3.  `|  |- kernel32.dll!BaseThreadInitThunk` $\rightarrow$ **55,015**
+4.  `|  |  |- CreateProcessTiming.exe!<Missing ImageId event>` $\rightarrow$ **55,010**
+5.  `|  |  |  CreateProcessTiming.exe!<Missing ImageId event>` $\rightarrow$ **55,010**
+6.  `|  |  |- kernel32.dll!CreateProcessAStub` $\rightarrow$ **54,983**
+7.  `|  |  |  KernelBase.dll!CreateProcessA` $\rightarrow$ **54,983**
+8.  `|  |  |  KernelBase.dll!CreateProcessInternalA` $\rightarrow$ **54,983**
+9.  `|  |  |  KernelBase.dll!CreateProcessInternalW` $\rightarrow$ **54,983**
+10. `|  |  |  |- ntdll.dll!ZwCreateUserProcess` $\rightarrow$ **54,928**
+11. `|  |  |  |  ntoskrnl.exe!KiSystemServiceCopyEnd` $\rightarrow$ **54,928**
+12. `|  |  |  |  ntoskrnl.exe!NtCreateUserProcess` $\rightarrow$ **54,928**
+13. `|  |  |  |  |- ntoskrnl.exe!PspAllocateProcess` $\rightarrow$ **54,919**
+14. `|  |  |  |  |  |- ntoskrnl.exe!MmInitializeProcessAddressSpace` $\rightarrow$ **54,915**
+15. `|  |  |  |  |  |  |- ntoskrnl.exe!MiMapProcessExecutable` $\rightarrow$ **54,914**
+16. `|  |  |  |  |  |  |  |- ntoskrnl.exe!MiCfgInitializeProcess` $\rightarrow$ **54,913**
+17. `|  |  |  |  |  |  |  |  ntoskrnl.exe!MiCommitVadCfgBits` $\rightarrow$ **54,913**
+18. `|  |  |  |  |  |  |  |  ntoskrnl.exe!MiMarkProcessCfgBits` $\rightarrow$ **54,913**
+19. `|  |  |  |  |  |  |  |  ntoskrnl.exe!MiPrivateImageCfgBits` $\rightarrow$ **54,913**
+20. `|  |  |  |  |  |  |  |  ntoskrnl.exe!MiPopulateCfgBitMap` $\rightarrow$ **54,913**
+21. `|  |  |  |  |  |  |  |  ntoskrnl.exe!MiCopyToCfgBitMap` $\rightarrow$ **54,913**
+22. **(SELECTED ROW)** `|  |  |  |  |  |  |  |  |- ntoskrnl.exe!MiCopyToCfgBitMap <itself>` $\rightarrow$ **54,884**
+23. `|  |  |  |  |  |  |  |  |- ntoskrnl.exe!MiCopyToUserVa` $\rightarrow$ **12**]
+[IMAGE DESCRIPTION: To recreate this image exactly, you would need to build a **hierarchical data table (tree grid)** typical of a software profiling tool or a debugger (like Intel VTune or Windows Performance Analyzer).
+
+Here is the detailed specification for the layout, styling, and data:
+
+### 1. Overall Layout & Styling
+*   **Component:** A data grid with a white background and light-grey grid lines.
+*   **Columns:** Four columns with the following headers (left-aligned, except for the count/sum):
+    *   **Process Name**
+    *   **Function**
+    *   **Address**
+    *   **Count** (This column is highlighted with a thick yellow vertical border on its left edge).
+    *   **Sum** (Only partially visible on the far right).
+*   **Typography:** A sans-serif system font (like Segoe UI or Arial), small font size (approx. 9pt-10pt).
+*   **Selection:** The first row of the third-level hierarchy (the first address) is highlighted with a deep blue background and white text.
+
+### 2. Data Hierarchy (The Tree Structure)
+The table uses a nested "drill-down" structure indicated by small grey triangles (expand/collapse arrows).
+
+**Level 1: Process**
+*   **Process Name:** `CreateProcessTiming.exe` (Preceded by an expanded triangle $\blacktriangledown$).
+*   **Count:** `55,128`
+*   **Sum:** `54,884`
+
+**Level 2: Function (Nested under Level 1)**
+*   **Function:** `MiCopyToCfgBitMap` (Indented, preceded by an expanded triangle $\blacktriangledown$).
+*   **Count:** `10,784` (Note: The value is shifted to the 'Count' column).
+
+**Level 3: Addresses (Nested under Level 2)**
+*   These rows are further indented. The "Process Name" and "Function" columns are empty for these rows.
+*   Each entry in the **Address** column is preceded by a small right-pointing grey triangle ($\blacktriangleright$).
+*   **The Data List (Address $\rightarrow$ Count):**
+    1.  `0xFFFFF80260CA8195` $\rightarrow$ `10,784` (Highlighted Blue/White)
+    2.  `0xFFFFF80260CA8148` $\rightarrow$ `6,111`
+    3.  `0xFFFFF80260CA8155` $\rightarrow$ `4,128`
+    4.  `0xFFFFF80260CA8145` $\rightarrow$ `4,092`
+    5.  `0xFFFFF80260CA813F` $\rightarrow$ `3,657`
+    6.  `0xFFFFF80260CA814B` $\rightarrow$ `2,163`
+    7.  `0xFFFFF80260CA80FB` $\rightarrow$ `2,119`
+    8.  `0xFFFFF80260CA8191` $\rightarrow$ `2,104`
+    9.  `0xFFFFF80260CA8169` $\rightarrow$ `2,051`
+    10. `0xFFFFF80260CA80E8` $\rightarrow$ `2,033`
+    11. `0xFFFFF80260CA817E` $\rightarrow$ `2,026`
+    12. `0xFFFFF80260CA80D6` $\rightarrow$ `2,011`
+    13. `0xFFFFF80260CA819B` $\rightarrow$ `1,988`
+    14. `0xFFFFF80260CA81AD` $\rightarrow$ `1,973`
+    15. `0xFFFFF80260CA811E` $\rightarrow$ `1,839`
+    16. `0xFFFFF80260CA8109` $\rightarrow$ `1,831`
+    17. `0xFFFFF80260CA8135` $\rightarrow$ `1,771`
+
+### 3. Visual Details for Exact Recreation
+*   **Bordering:** The table is contained within a thin grey outer border.
+*   **The Yellow Bar:** There is a distinct 2-3 pixel wide bright yellow vertical line separating the "Address" column from the "Count" column.
+*   **Alignment:** 
+    *   Text in "Process Name," "Function," and "Address" is left-aligned.
+    *   Numbers in "Count" and "Sum" are right-aligned.
+*   **Colors:** 
+    *   Background: `#FFFFFF` (White)
+    *   Grid lines: `#D3D3D3` (Light Grey)
+    *   Selection highlight: `#004A99` (Deep Blue)
+    *   Column separator: `#FFFF00` (Yellow)]
+[IMAGE DESCRIPTION: To recreate this image exactly, you will need a spreadsheet program (like Microsoft Excel or Google Sheets). The image consists of a data table and a corresponding scatter plot with a smooth line.
+
+### 1. The Data Table
+Create a table with two columns. Enter the following values exactly:
+
+| CFG count | ms |
+| :--- | :--- |
+| 845 | 3.8 |
+| 80845 | 11.9 |
+| 160845 | 34.3 |
+| 240845 | 69.6 |
+| 320845 | 120.8 |
+| 400845 | 183.3 |
+| 480845 | 258.3 |
+| 560845 | 340.9 |
+| 640845 | 447.1 |
+| 720845 | 560.7 |
+| 800845 | 696.6 |
+| 880845 | 839.6 |
+| 960845 | 991.1 |
+| 1040845 | 1185.1 |
+| 1120845 | 1401.9 |
+| 1200845 | 1625.0 |
+| 1280845 | 1853.3 |
+
+---
+
+### 2. The Chart Setup
+**Chart Type:**
+*   Select the data and insert a **Scatter Chart with Smooth Lines and Markers**.
+
+**Axes and Scale:**
+*   **X-Axis (Horizontal):** 
+    *   **Label:** "Guard CF function count"
+    *   **Range:** 0 to 1,200,000 (Note: The data actually goes up to 1.28M, but the axis labels stop at 1,200,000).
+    *   **Major Units:** 400,000.
+*   **Y-Axis (Vertical):** 
+    *   **Label:** "CreateProcess time (ms)"
+    *   **Range:** 0 to 2,000.0.
+    *   **Major Units:** 200.0.
+    *   **Number Format:** Ensure one decimal place is shown (e.g., `200.0`).
+
+---
+
+### 3. Visual Styling (The "Look")
+To match the aesthetic of the provided image:
+
+*   **Line Style:** 
+    *   **Color:** Medium Blue.
+    *   **Weight:** Medium thickness.
+*   **Markers:** 
+    *   **Shape:** Diamonds.
+    *   **Fill Color:** Medium Blue.
+*   **Gridlines:** 
+    *   **Horizontal:** Enable light grey horizontal gridlines at every major interval (200 units).
+    *   **Vertical:** Disable vertical gridlines.
+*   **Border/Frame:** 
+    *   The chart should have a thin black border surrounding the entire plot area.
+*   **Font:** 
+    *   Use a standard sans-serif font (like Arial or Calibri).
+
+### 4. Final Layout
+Place the data table to the left of the chart. Crop the table so only the headers and the two columns of data are visible, with no outer cell borders except for the inner gridlines.]
+[IMAGE DESCRIPTION: To recreate this graph exactly, follow these specifications for layout, data, and styling. This appears to be a standard linear plot created in a program like Microsoft Excel.
+
+### 1. Chart Setup and Dimensions
+*   **Chart Type:** 2D Line Chart with markers.
+*   **Orientation:** Landscape/Wide rectangle.
+*   **Background:** White.
+*   **Border:** A thin, grey outer border surrounding the entire chart area.
+
+### 2. Axis Configuration
+**X-Axis (Horizontal):**
+*   **Label:** "Guard CF function count"
+*   **Range:** 0 to 1,200,000.
+*   **Major Tick Marks/Intervals:** Every 400,000 (Labels at 0, 400,000, 800,000, 1,200,000).
+*   **Formatting:** Numbers are displayed with no thousands-separator (e.g., `1200000` instead of `1,200,000`).
+*   **Line:** Solid black line.
+
+**Y-Axis (Vertical):**
+*   **Label:** "sqrt(CreateProcess time (ms))"
+*   **Range:** 0 to 50.
+*   **Major Tick Marks/Intervals:** Every 5 units (0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50).
+*   **Line:** Solid black line.
+
+### 3. Gridlines
+*   **Horizontal Gridlines:** Enabled. Use a thin, solid grey line for every major tick mark on the Y-axis (every 5 units).
+*   **Vertical Gridlines:** Disabled.
+
+### 4. Data Series and Styling
+*   **Relationship:** The data follows a strictly linear trend ($y \approx mx + b$).
+*   **Trend:** Starting at (0, 1) and ending at (1,200,000, 40).
+*   **Line Color:** Medium blue.
+*   **Line Weight:** Approximately 2pt (standard thickness).
+*   **Markers:** 
+    *   Small blue diamonds.
+    *   Placed at regular intervals along the X-axis (approximately every 50,000 to 100,000 units).
+    *   The markers are filled with the same blue as the line.
+
+### 5. Precise Data Points (Approximations for recreation)
+If you are plotting this in a spreadsheet, use these approximate coordinates to get the exact line:
+*   (0, 1)
+*   (200,000, 7.5)
+*   (400,000, 13.5)
+*   (600,000, 19.5)
+*   (800,000, 25.5)
+*   (1,000,000, 31.5)
+*   (1,200,000, 40)]
+

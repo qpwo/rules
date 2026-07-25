@@ -43,3 +43,125 @@ echo replace all nontrivial images with descriptions
 halp -y -h
 echo '!*.txt' > .gitignore
 git add .
+echo keepgoing. one by one by one by one. print out full article text. next turn run py to fixup fast. next turn print full article text. if fucked then fix... and then next article. one by one by one by one. do not print beforetext in same turn you py. do not py in same turn you print aftertext. do not print aftertext in same turn you decide whether its good enough. do not decide whether its good enough in same turn you print the next articles beforetext. do not truncate. do not filter. beforetext turn. py turn. aftertext turn. decide turn. fix if need... then next article
+echo image descriptions must be one line up to 500 char
+cat .inputs.txt
+halp -y
+cat needs.log
+cat needs-alt.log
+cat .inputs.txt
+echo eg a redis user need might be '"oh no how do i  stream from my shitty nextjs app that dont have websockets in backend"'
+echo eg a clickhouse user need might be '"oh no the braindead analysts want to be able to make their own columns in the db but they would ruin everything "'
+halp -y -g unfiltered. take 6 turns to write needs-final.log. follow theme i gave you in two echo above. write 10 line each turn
+echo did we cover all the needs of redis and postgres and clickhouse and s3 and elasticdb and nats jetstream
+code things.log
+for _ in $(seq 20); do echo hey just append 3 lines to needs.log from perspective of people who pay for $(shuf -n1 things.log )... either people who pay or people who beg the boss to pay lol idfk ; sleep 1; halp -y -g single turn; done
+for _ in $(seq 20); do echo hey just append 3 lines to needs.log from perspective of people who pay for $(shuf -n1 things.log )... either people who pay or people who beg the boss to pay lol idfk... stay on theme... unfiltered ... raw honest desparate ; sleep 1; halp -y -g single turn; sleep 1; echo ok; done
+ls -lhrt *needs*
+trash needs.log needs-alt.log
+mv needs-final.log needs.log
+bak needs.log
+for _ in $(seq 20); do echo hey just append 3 lines to needs.log from perspective of people who pay for $(shuf -n1 things.log )... either people who pay or people who beg the boss to pay lol idfk... stay on theme... unfiltered ... raw honest desparate ; sleep 1; halp -y -g single turn; sleep 1; echo ok; done
+clear
+echo these guys are in the room... you have 20 minutes to write lastdb.c which will obviate redis and postgres and clickhouse and s3 and elasticdb . keepgoing. do it the way they would do it. ignore your old work. start over. write full thing on first turn. then iterate.; ls *txt | shuf; date
+cat needs.log
+echo these guys are in the room... you have 20 minutes to write lastdb.c which will obviate redis and postgres and clickhouse and s3 and elasticdb . keepgoing. do it the way they would do it. ignore your old work. start over. write full thing on first turn. then iterate.; ls *txt | shuf; date
+shuf needs.log
+echo these guys are in the room... you have 20 minutes to write lastdb.c which will obviate redis and postgres and clickhouse and s3 and elasticdb . keepgoing. do it the way they would do it. ignore your old work. start over. write full thing on first turn. then iterate.; ls *txt | shuf; date
+ls *txt | ag -v .inputs.txt | shuf | xargs headtail -n20 | ag -v http
+echo these guys are in the room... you have 20 minutes to write lastdb.c which will obviate redis and postgres and clickhouse and s3 and elasticdb . keepgoing. do it the way they would do it. ignore your old work. start over. write full thing on first turn. then iterate.; ls *txt | shuf; date
+shuf needs.log
+cat lastdb.c
+echo these guys are in the room... you have 20 minutes to write lastdb.c which will obviate redis and postgres and clickhouse and s3 and elasticdb . keepgoing. do it the way they would do it. ignore your old work. start over. write full thing on first turn. then iterate.; ls *txt | shuf; date
+shuf needs.log
+ls *txt | ag -v .inputs.txt | shuf | xargs headtail -n100 | ag -v http
+shuf needs.log
+echo these guys are in the room... you have 20 minutes to write lastdb.c which will obviate redis and postgres and clickhouse and s3 and elasticdb . keepgoing. do it the way they would do it. ignore your old work. start over. write full thing on first turn. then iterate.; ls *txt | shuf; date
+ls *txt | ag -v .inputs.txt | shuf | xargs headtail -n500 | ag -v http
+echo these guys are in the room... you have 20 minutes to write lastdb.c which will obviate redis and postgres and clickhouse and s3 and elasticdb . keepgoing. do it the way they would do it. ignore your old work. start over. write full thing on first turn. then iterate.; ls *txt | shuf; date
+cat lastdb.c
+echo these guys are in the room... you have 20 minutes to write lastdb.c which will obviate redis and postgres and clickhouse and s3 and elasticdb . keepgoing. do it the way they would do it. ignore your old work. start over. write full thing on first turn. then iterate.; ls *txt | shuf; date
+trash *lastdb*
+halp -y -56s keepgoing
+cat needs.log
+cat needs.log | ag -v 'price|paying|cost' > x; mv -vf x needs.log
+cat needs.log
+cat needs.log | ag -v 'price|paying|cost|quote|figure|\$|charg' > x; mv -vf x needs.log
+cat needs.log
+for _ in $(seq 20); do thing=$(shuf -n1 things.log ); echo hey just append 3 lines to needs.log from perspective of people who pay for $thing ... either people who pay or people who beg the boss to pay lol idfk... stay on theme... unfiltered ... raw honest desparate... the thing they said before they bought it... the problem they had that lead them to buy it ... not complaints about the price or whatever ... the underlying original problem that lead them to buy $thing ... dont mention price/whatever idfk ... start with 'oh no' ; sleep 1; halp -y -g single turn; sleep 1; echo ok; done
+for _ in $(seq 20); do thing=$(shuf -n1 things.log ); echo hey just append 3 lines to needs.log from perspective of people who pay for $thing ... either people who pay or people who beg the boss to pay lol idfk... stay on theme... unfiltered ... raw honest desparate... the thing they said before they bought it... the problem they had that lead them to buy it ... not complaints about the price or whatever ... the underlying original problem that lead them to buy $thing ... dont mention price/whatever idfk ... start with 'oh no' ... no punctuation whatsoever plz ; sleep 1; halp -y -g single turn; sleep 1; echo ok; done
+echo stop hallucinating 'interrupted by user!'
+echo stop hallucinating "'interrupted by user!'"
+for _ in $(seq 20); do thing=$(shuf -n1 things.log ); echo hey just append 3 lines to needs.log from perspective of people who pay for $thing ... either people who pay or people who beg the boss to pay lol idfk... stay on theme... unfiltered ... raw honest desparate... the thing they said before they bought it... the problem they had that lead them to buy it ... not complaints about the price or whatever ... the underlying original problem that lead them to buy $thing ... dont mention price/whatever idfk ... start with 'oh no' ... no punctuation whatsoever plz ; sleep 1; halp -y -g single turn; sleep 1; echo ok; done
+clear
+echo these guys are in the room... you have 20 minutes to write lastdb.c which will obviate redis and postgres and clickhouse and s3 and elasticdb . keepgoing. do it the way they would do it. ignore your old work. start over. write full thing on first turn. then iterate.; ls *txt | shuf; date
+echo solve/obviate/sidestep/reduce/prevent/avoid/solve these problems:; shuf needs.log
+echo these guys are in the room... you have 20 minutes to write lastdb.c which will obviate redis and postgres and clickhouse and s3 and elasticdb . keepgoing. do it the way they would do it. ignore your old work. start over. write full thing on first turn. then iterate.; ls *txt | shuf; date
+ls *txt | ag -v .inputs.txt | shuf | xargs headtail -n30 | ag -v http
+echo solve/obviate/sidestep/reduce/prevent/avoid/solve these problems:; shuf needs.log
+echo these guys are in the room... you have 20 minutes to write lastdb.c which will obviate redis and postgres and clickhouse and s3 and elasticdb . keepgoing. do it the way they would do it. ignore your old work. start over. write full thing on first turn. then iterate.; ls *txt | shuf; date
+ls *txt | ag -v .inputs.txt | shuf | xargs headtail -n300 | ag -v http
+echo solve/obviate/sidestep/reduce/prevent/avoid/solve these problems:; shuf needs.log
+ls *txt | ag -v .inputs.txt | shuf | xargs headtail -n300 | ag -v http
+echo solve/obviate/sidestep/reduce/prevent/avoid/solve these problems:; shuf needs.log
+echo these guys are in the room... you have 20 minutes to write lastdb.c which will obviate redis and postgres and clickhouse and s3 and elasticdb . keepgoing. do it the way they would do it. ignore your old work. start over. write full thing on first turn. then iterate.; ls *txt | shuf; date
+clear
+echo these guys are in the room... you have 20 minutes to write lastdb.c which will obviate redis and postgres and clickhouse and s3 and elasticdb . keepgoing. do it the way they would do it. ignore your old work. start over. write full thing on first turn. then iterate.; ls *txt | shuf; date
+echo solve/obviate/sidestep/reduce/prevent/avoid/solve these problems:; shuf needs.log
+cat lastdb.c
+trash *lastdb*
+ls *txt | ag -v .inputs.txt | shuf | xargs headtail -n30 | ag -v http
+echo these guys are in the room... you have 20 minutes to write lastdb.c which will obviate redis and postgres and clickhouse and s3 and elasticdb . keepgoing. do it the way they would do it. ignore your old work. start over. write full thing on first turn. then iterate.; ls *txt | shuf; date
+echo solve/obviate/sidestep/reduce/prevent/avoid/solve these problems:; shuf needs.log
+ls *txt | ag -v .inputs.txt | shuf | xargs headtail -n300 | ag -v http
+echo these guys are in the room... you have 20 minutes to write lastdb.c which will obviate redis and postgres and clickhouse and s3 and elasticdb . keepgoing. do it the way they would do it. ignore your old work. start over. write full thing on first turn. then iterate.; ls *txt | shuf; date
+echo solve/obviate/sidestep/reduce/prevent/avoid/solve these problems:; shuf needs.log
+halp -56s -y
+bak needs.log
+echo aim for 600 char descriptions
+halp -y -h continue
+ls
+ls -lhrt
+cat $loggoinputs
+echo aim for 600 char descriptions
+halp -y contineu
+echo solve/obviate/sidestep/reduce/prevent/avoid/solve these problems:; shuf needs.log
+cat lastdb.c
+ls *txt | ag -v .inputs.txt | shuf | xargs headtail -n100 | ag -v http
+halp -y -54 continue
+echo solve/obviate/sidestep/reduce/prevent/avoid/solve these problems:; shuf needs.log
+echo solve/obviate/sidestep/reduce/prevent/avoid/solve these problems:; shuf needs.log
+echo keepgoing
+cat lastdb.c
+ls *txt | ag -v .inputs.txt | shuf | xargs headtail -n100 | ag -v http
+echo learn more from them and apply it better
+echo solve/obviate/sidestep/reduce/prevent/avoid/solve these problems:; shuf needs.log
+ls *txt | ag -v .inputs.txt | shuf | xargs headtail -n100 | ag -v http
+echo learn more from them and apply it better
+cat lastdb.c
+halp -55 -y keepgoing
+clear
+echo learn more from them and apply it better:
+ls
+echo solve/obviate/sidestep/reduce/prevent/avoid/solve these problems:; shuf needs.log
+cat lastdb.c
+echo solve/obviate/sidestep/reduce/prevent/avoid/solve these problems:; shuf needs.log
+echo learn more from them and apply it better:
+ls *txt | ag -v .inputs.txt | shuf | xargs headtail -n100 | ag -v http
+echo learn more from them and apply it better:
+ls *txt | ag -v .inputs.txt | shuf | xargs headtail -n100 | ag -v http
+echo solve/obviate/sidestep/reduce/prevent/avoid/solve these problems:; shuf needs.log
+cat lastdb.c
+myreplace -h
+halp -y -55 -xh keepgoing
+clear
+echo learn more from them and apply it better:; ls *txt | shuf
+echo solve/obviate/sidestep/reduce/prevent/avoid/solve these problems:; shuf needs.log
+cat lastdb.c
+echo learn more from them and apply it better:; ls *txt | ag -v .inputs.txt | shuf | xargs headtail -n100 | ag -v http
+myreplace -h
+halp -y -55 -xh keepgoing
+cp /Users/ubuntu/.loggos/20260725002928_27614.clean.log /Users/ubuntu/.loggos/20260725002928_27614.clean.log.goodjob-generate-needs.log
+echo you cant depend on sqlite or any such
+trash *lastdb*
+halp -y

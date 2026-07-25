@@ -358,5 +358,34 @@ For comments, please send me  an email.
  Back to top
 
 IMAGES
-https://eli.thegreenplace.net/images/logosmall.png
-https://eli.thegreenplace.net/images/hline.jpg
+
+[IMAGE DESCRIPTION: Based on the image provided, here is a detailed description broken down by visual components so you can recreate it (likely in CSS, Photoshop, or a 3D modeling tool).
+
+**1. Overall Shape and Orientation**
+*   **Form:** It is a long, horizontal rectangular bar. It appears to have a 3D, cylindrical, or "pill" shape due to the lighting.
+*   **Perspective:** It is viewed from the side, extending horizontally across the frame.
+
+**2. Color Palette**
+The image relies heavily on a specific gradient of greens. You will need these approximate color values:
+*   **Highlight (Top Edge):** Pure White (`#FFFFFF`) fading into a very pale lime (`#E8FFD6`).
+*   **Main Body (Center):** A vibrant, acidic "Neon Lime" or "Chartreuse" green (approx. `#7FFF00` or `#80FF00`).
+*   **Shadow (Bottom Edge):** A deep, dark olive green (approx. `#4A6600` or `#556B2F`).
+
+**3. Lighting and Gradients (The "Gloss" Effect)**
+The most important part of recreating this is the vertical gradient that creates the 3D volume.
+*   **Top Edge:** There is a sharp, bright white highlight running along the very top edge. This suggests a light source directly above. It fades quickly (within about 10-15% of the height) into the main bright green.
+*   **Middle Section:** The center of the bar is the most saturated, bright green. It is relatively flat in color but slightly lighter than the bottom.
+*   **Bottom Edge:** The bottom 25-30% of the bar transitions smoothly from the bright green into the dark olive shadow. This creates the illusion that the bar is rounded or resting on a surface.
+
+**4. The Ends (Left and Right)**
+*   **Left Side:** There is a distinct diagonal highlight on the top-left corner. It looks like a white streak reflecting off a beveled edge, angled slightly downward from left to right.
+*   **Right Side:** The right side is darker and less distinct, fading into the shadow, suggesting the light source is coming from the left or top-left.
+
+**5. Texture and Finish**
+*   **Surface:** The object looks smooth, glossy, and plastic-like. It has a "glassy" sheen.
+*   **Blur:** The edges are slightly soft, not razor-sharp. If you are drawing this, apply a very slight Gaussian blur (1-2 pixels) to soften the transition between the white highlight and the green.
+
+**Summary for Recreation (CSS Example Logic):**
+If you were coding this, you would create a `div` with a `linear-gradient` background:
+`background: linear-gradient(to bottom, white 0%, #80FF00 40%, #4A6600 100%);`
+And add a `box-shadow` or an inner gradient to create the beveled look on the left edge.]

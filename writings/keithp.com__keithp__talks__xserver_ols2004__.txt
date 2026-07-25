@@ -5,15 +5,11 @@ HP Cambridge Research Laboratory
 
 keithp@keithp.com
 
-
-
 Abstract
 The X window system is generally implemented by directly inserting hardware manipulation code into the X server. Mode selection and 2D acceleration code are often executed in user mode and directly communicate with the hardware. The current architecture provides for separate 2D and 3D acceleration code, with the 2D code executed within the X server and the 3D code directly executed by the application, partially in user space and partially in the kernel. Video mode selection remains within the X server, creating an artificial dependency for 3D graphics on the correct operation of the window system. This paper lays out an alternative structure for X within the Linux environment where the responsibility for acceleration lies entirely within the existing 3D user/kernel library, the mode selection is delegated to an external library and the X server becomes a simple application layered on top of both of these. Various technical issues related to this architecture along with a discussion of input device handling will be discussed.
 
-
 History
 The X11[SG92] server architecture was designed assuming significant operating assistance for supporting input and output devices. How that has changed over the years will inform the discussion of the design direction proposed in this paper.
-
 
 Original Architecture
 One of the first 2D accelerated targets for X11 was the Digital QDSS (Dragon) board. The Dragon included a 1024x768 frame buffer with 4 or 8 bits for each pixel. The frame buffer was not addressable by the CPU, rather every graphics operation was performed by the coprocessor. The Dragon board had only a single video mode supporting the monitor supplied with the machine. A primitive terminal emulator in the kernel provided the text mode necessary to boot the machine.
@@ -23,7 +19,6 @@ Graphics commands to the processor were queued to a shared DMA buffer. The X ser
 Keyboard and mouse support were provided by another shared memory queue between the kernel and X server. Abstract event structures were constructed by the kernel from the raw device data, timestamped and placed in the shared queue. A file descriptor would be signalled when new data were inserted to awaken the X server, and the X server could also directly examine the queue indices which were stored in the shared segment. This low-overhead queue polling was used by the X server to check for new input after every X request was executed to reduce input latency.
 
 The hardware sprite was handled in the kernel; it's movement was directly connected with the mouse driver so that it could be moved at interrupt time, leading to a responsive pointer even in the face of high CPU load within the X server and other applications. The keyboard controller managed the transition from ASCII console mode to key-transition X mode internally; abnormal termination of the X server would leave the underlying console session working normally.
-
 
 The Slippery Slope
 Early Sun workstations had unaccelerated frame buffers. Like the QDSS above, they used fixed monitors and had no need to support multiple video modes. As the hardware advanced, they did actually gain programmable timing hardware, but that was not configurable from the user mode applications.
@@ -42,7 +37,6 @@ Placing the entire graphics driver in user mode eliminated the need to write a k
 
 Fixing the kernel to address these problems was never even considered; the problems didn't prevent the system from functioning, they only made it less than ideal.
 
-
 The Dancing Bear
 With widespread availability of commodity 386-based PC hardware, numerous vendors began shipping Unix (and Unix-like) operating systems for them. These originally did not include the X window system. A disparate group of users ported X to these systems without any support from the operating system vendors.
 
@@ -60,7 +54,6 @@ Because the X server itself was managing video mode configuration, an abnormal X
 
 The X server has assumed the same reliability requirements as the operating system kernel itself; bugs in the X server would render the system just as unusable as bugs in the kernel.
 
-
 The Pit of Despair
 With the addition of graphics acceleration to the x86 environment, the X server extended its user-mode operations to include manipulation of the accelerator. As with the Sun GX driver described above, these drivers included no kernel support and were forced to busy-wait for the hardware.
 
@@ -72,7 +65,6 @@ If the machine included multiple graphics devices controlled through the standar
 
 The overall goal was not to build the best system possible, but rather to make the code as portable as possible, even in the face of obviously incorrect system architecture.
 
-
 A Glimmer of Hope
 The Mesa project started as a software-only rasterizer for the OpenGL API. By providing a freely available implementation of this widely accepted API, people could run 3D applications on every machine, even those without custom 3D acceleration hardware. Of course, performance was a significant problem, especially as the 3D world moved from simple colored polygons to textures and complex lighting environments.
 
@@ -82,12 +74,8 @@ All 3D commands are written to command buffers passed from the user application 
 
 The result is a system which is stable in the face of broken applications, and provides high performance and low CPU overhead. However, the DRI environment remains reliant on the X server to manage video mode selection and basic device input.
 
-
-
 Forward to the Past
 Given the dramatic changes in system architecture and performance characteristics since the original user-mode X server architecture was promulgated, it makes sense to look at how the system should be constructed from the ground up. Questions about where support for each operation should live will be addressed in turn, first starting with graphics acceleration, then video mode selection and finally (and most briefly) input devices.
-
-
 
 Graphics Acceleration
 X has always directly accessed the lowest levels of the system to accelerate 2D graphics. Even on the QDSS, it constructed the register-level instructions within the X server itself. With the inclusion of OpenGL[SAe99] 3D graphics in some systems, the system requires two separate graphics drivers, one for the X server operating strictly in 2D mode and the other inside the GL library for 3D operations. Improvements to the 3D support have no effect on 2D performance.
@@ -111,17 +99,13 @@ However, applications that wish to use OpenGL should find a wider range of suppo
 
 In any case, use of the cairo graphics library provides insulation from this decision as it supports X and GL requiring only modest changes in initialization to select between them.
 
-
-
 Video Mode Configuration
 The area of video mode selection involves many different projects and interests; one significant goal of this discussion is to identify which areas are relevant to X and how those can be separated from the larger project.
-
 
 Overview of the Problem
 Back in 1984 when X was designed, graphics devices were fundamentally fixed in their relationship with the attached monitor. The hardware would be carefully designed to emit video timings compatible with the included monitor; there was no provision for adjusting video timings to adapt to different monitors, each video card had a single monitor connector.
 
 Fast forward to 2004 when common video cards have two or more monitor connectors along with outputs for standard NTSC, SECAM or PAL video formats. The desire to dynamically adjust the display environment to accommodate different use modes is well supported within the Apple OS X and Microsoft Windows environments, but the X window system has remained largely stuck with its 1984 legacy.
-
 
 X Attempts to Fix Things
 X servers for PC operating systems adapted to simple video mode selection by creating a 'virtual' desktop at least as large as the largest desired mode and making the current mode view a subset of that, panning the display around to keep the mouse on the screen. For users able to accept this metaphor, this provided usable, if less than ideal support. Most of the time, however, having content off of the screen which could only be reached by moving the mouse was confusing. To help address this, the X Resize and Rotate extension (RandR)[GP01] was designed to notify applications of changes in the pixel size of the screen and allow programmatic selection among available video modes.
@@ -130,14 +114,12 @@ The RandR extension solved the simple single monitor case well enough, even perm
 
 Statically, the X server can address each video output correctly and even select between a large display spanning a collection of outputs or separate displays on each video screen. However, there is no capability to adjust these configurations dynamically, nor even to automatically adapt to detected changes in the environment.
 
-
 X is Only Part of the Universe
 With 2D performance no longer a significant marketing tool, graphics hardware vendors have been focusing instead on differentiating their products based on video output (and input) capabilities. This has dramatically extended the options available to the user, and increased the support necessary within the operating system.
 
 As the suite of possible video configuration options continues to expand, it seems impossible to construct a fixed, standard X extension capable of addressing all present and future needs. Therefore, a fully capable mechanism must provide some ``back door'' through which display drivers and user agents can communicate information about the video environment which is not directly relevant to the window system or applications running within it.
 
 One other problem with the current environment is that video mode selection is not a requirement unique to the X window system. Numerous other graphical systems exist which are all dependent on this code. Currently, that is implemented separately for each video card supported by each system. The MxN combination of graphics systems and video cards means that only a few systems have support for a wide range of video cards. Support for systems aside from X is pretty sparse.
-
 
 Who's in Charge Here, Anyway?
 X itself places relatively modest demands on the system. The X server needs to be aware of what video cards are available, what video modes are available for each card and how to select the current mode. Within that mode there may be a wealth of information that is not relevant to the X server; it really only needs to know the pixel dimensions of each frame buffer, the physical dimension of pixels on each monitor and the geometric relationship among monitors. Details about which video port are in use, or how the various ports relate to the frame buffer are not important. Information about video input mechanisms are even less relevant.
@@ -146,17 +128,13 @@ As the X server need have no way of interpreting the complexity of the video mod
 
 This external system could be implemented partially in the kernel and partially in user-mode. Doing this would allow the kernel to share the same logic for video mode selection during boot time for systems which don't automatically configure the video card suitably on power-on. In addition, alternate graphics systems would be able to share the same API for their own video mode configuration.
 
-
-
 Input Device Support
 In days of yore, the X environment supported exactly one kind of mouse and one (perhaps of an internationalized family) keyboard. Sadly, this is no longer the case. The wealth of available input devices has caused no small trouble in X configuration and management. Add to that the relative failure of the X Input extension to gain widespread acceptance in applications and the current environment is relegated to emulating that available in 1984.
-
 
 Uniform Device Access
 The first problem to attack is that of the current hodgepodge device support where the X server itself is responsible for parsing the raw bytestreams coming from the disparate input devices. Fortunately, the kernel has already solved that problem--the new /dev/input based drivers provide a uniform description of devices and standard interface to all. Converting the X server over to those interfaces is straightforward.
 
 However, the /dev/input/mice interface has a significant advantage in todays world; it unifies all mouse devices into a single stream so that the X server doesn't have to deal with devices that come and go. So, to switch input mechanisms, the X server must first learn to deal with that.
-
 
 Hotplug and HAL
 Mice (and even keyboards) can be easily attached and detached from the machine. With USB, the system is even automatically notified about the coming and going of devices. What is missing here is a way of getting that notification delivered to the X server, having the X server connect to the new device (when appropriate), notifying X applications about the availability of the new device and integrating the devices events into the core pointer or keyboard event stream.
@@ -165,11 +143,8 @@ The Hardware Abstraction Layer (HAL)[Zeu] project is designed to act as an inter
 
 One additional change needed is to extend the X Input Extension to include notification of new and departed devices. That extension already permits the list of available devices to change over time, all that it lacks is the mechanism to notify applications when that occurs. Inside the X server implementation, the extension is in for some significantly more challenging changes as the current codebase assumes that the set of available devices is fixed at server initialization time.
 
-
-
 Migrating Devices
 When X was developed, each display consisted of a single keyboard and mouse along with a fixed set of monitors. That collection was used for a single login session, and the input devices never moved. All of that has now changed; input devices come and go, computers get plugged into video projectors, multiple users login to the same display. The dynamic nature of the modern environment requires some changes to the X protocol in the form of new or modified extensions.
-
 
 Whose Mouse Is This?
 Input devices are generally located in physical proximity to the related output device. In a system with multiple output devices and multiple input devices, there is no existing mechanism to identify which device is where. Perhaps some future hardware advance will include geographic information along with the bus topology.
@@ -178,14 +153,12 @@ The best we can probably do for now is to provide a mechanism to encode in the H
 
 One problem with this simplistic approach is that it doesn't permit the migration of input devices from one grouping to another; one can easily imagine the user holding a wireless pointing device to attempt to interact with the "wrong" display. Some mechanism for dynamically reconfiguring the association database will need to be included.
 
-
 Hotplugging Video Hardware
 While most systems have no ability to add or remove graphics cards, it's not unheard of--many handheld computers support CF video adapters. On the other hand, nearly all systems do support ``hotplugging'' of the actual display device or devices. Many can even detect the presence or absence of a monitor enabling true auto-detection and automatic reconfiguration.
 
 When a new monitor is connected, the X server needs to adapt its configuration to include it. In the case where the set of physical screens are gathered together as a single logical screen, the change can be reflected by resizing that single screen as supported by the RandR extension. However, if each physical screen is exposed to applications as a separate logical screen, then the X server must somehow adapt to the presence of a new screen and report that information to applications. This will require an extension.
 
 In terms of the existing X server implementation, the changes are rather more dramatic. Again, it has some deep-seated assumptions that the set of hardware under its control will not change after startup. Fixing these will keep developers entertained for some time.
-
 
 Virtual Terminal Switching
 One capability Linux has had for a long time is the ability to rapidly switch among multiple sessions with ``virtual terminals''. The X server itself uses this to preserve a system console, running on a separate terminal ensures that the system console can be viewed by simply switching to the appropriate virtual terminal. Given this, multiple X servers can be started on the same hardware, each one on a different virtual terminal and rapidly switched among.
@@ -195,8 +168,6 @@ The virtual terminal mechanism manages only the primary graphics device and the 
 With the HAL providing some indication of which devices should be affiliated into a single session configuration, the X server can at least select them appropriately. Similarly, the X server should be able to detect which device is the console keyboard and manage virtual terminals from there. Whether the kernel needs to add support for virtual terminals on the other graphics/keyboard devices is not something X needs to answer.
 
 The final problem is that of other input devices; when switching virtual terminals, the X server conventionally drops its connection to the other input devices, presuming that whatever other program is about to run will want to use the same ones. While that does work, it leaves open the possibility that an error in the X server will leave these devices connected and deny other applications access to them. Perhaps it would be better if the kernel was involved in the process and directing input among multiple consumers automatically as VT affiliation changed.
-
-
 
 Conclusion
 Adapting the X window system to work effectively and competently in the modern environment will take some significant changes in architecture, however throughout this process existing applications will continue to operate largely unaffected. If this were not true, the fundamental motivation for the ongoing existence of the window system would be in doubt.
@@ -210,7 +181,6 @@ Significant work remains in defining the precise architecture of the kernel vide
 Other work remains to resolve conflicts over sharing devices among multiple sessions and creating a mechanism for associating specific input and output devices together.
 
 The resulting system regains much of the flavor of the original X11 server architecture. The overall picture of a system which provides hardware support at the right level in the architecture appears to have wide support among the relevant projects making the future prospects bright.
-
 
 Bibliography
 Anh04

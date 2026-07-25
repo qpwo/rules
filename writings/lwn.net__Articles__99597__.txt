@@ -109,6 +109,3 @@ Copyright © 2004, Eklektix, Inc.
 Comments and public postings are copyrighted by their creators.
 Linux is a registered trademark of Linus Torvalds
 
-IMAGES
-https://static.lwn.net/images/logo/barepenguin-70.webp
-https://static.lwn.net/images/lcorner-ss.png

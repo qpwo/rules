@@ -1093,6 +1093,6 @@ travis.downs@gmail.com
 A blog about low-level software and hardware performance.
 
 IMAGES
-https://travisdowns.github.io/assets/speed-limits/speed-limit-50-ns.svg
-https://travisdowns.github.io/assets/speed-limits/agner-imul.png
-https://travisdowns.github.io/assets/speed-limits/uops-info-imul.png
+
+[IMAGE DESCRIPTION: To recreate this image exactly, you would need a spreadsheet program (like Microsoft Excel or Google Sheets) and a basic image editor for the red circle.   1. General Layout & Styling    Font: Use a standard sans-serif font like Arial or Calibri.    Text Alignment: All text in all columns is center-aligned.    Borders: Apply a thin, solid grey border to all cells (all borders enabled).    Row Height/Column Width: Set a narrow row height and adjust column widths to fit the text tightly.   2. The Data (Row by Row) The table consists of 6 rows and 7 columns.  | Row  | Col 1 (ID) | Col 2 (Instr...]
+
