@@ -298,41 +298,29 @@ static Node *ht_get(const char *t, uint16_t tl, const char *k, uint16_t kl)
 
 static void load_db(const char *path)
 {
-    valid_size = 0;
-    int fd = open(path, O_RDONLY | O_CLOEXEC);
-    if (fd < 0 && errno == ENOENT) {
+    struct stat st;
+    if (stat(path, &st) || st.st_size <= (off_t)map_size) {
         return;
     }
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
     if (fd < 0) {
         die("open");
     }
-
-    struct stat st;
-    if (fstat(fd, &st)) {
-        die("fstat");
+    void *nm = map_size ? mremap(map_base, map_size, st.st_size, MREMAP_MAYMOVE) : mmap(NULL, st.st_size, PROT_READ, MAP_SHARED, fd, 0);
+    if (nm == MAP_FAILED) {
+        die("mmap/mremap");
     }
-
-    if (!st.st_size) {
-        if (close(fd)) {
-        die("close");
-    }
-        return;
-    }
-
-    map_size = (size_t)st.st_size;
-    map_base = mmap(NULL, map_size, PROT_READ, MAP_SHARED, fd, 0);
+    map_base = nm;
+    map_size = st.st_size;
     if (close(fd)) {
         die("close");
-    }
-    if (map_base == MAP_FAILED) {
-        die("mmap");
     }
     (void)posix_madvise(map_base, map_size, POSIX_MADV_SEQUENTIAL);
 #ifdef POSIX_MADV_NOREUSE
     (void)posix_madvise(map_base, map_size, POSIX_MADV_NOREUSE);
 #endif
-
-    uint64_t off = 0;
+    uint64_t off = valid_size;
+    int added = 0;
     while (off < map_size) {
         if (!rec_valid(off)) {
             break;
@@ -340,9 +328,12 @@ static void load_db(const char *path)
         Record *r = rec_at(off);
         ht_put(r->key_hash, off);
         off += r->len;
+        added = 1;
     }
-    valid_size = (size_t)off;
-    deduplicate_ht();
+    valid_size = off;
+    if (added) {
+        deduplicate_ht();
+    }
 }
 
 static void lock_ex(int fd)
@@ -1286,6 +1277,16 @@ static void send_response(int fd, int32_t cipherkey, int32_t status, const void 
     free(buf);
 }
 
+typedef struct { uint8_t *buf; size_t cap; } BufCache;
+static BufCache rx_desk[1024];
+
+static BufCache checkout_rx(BufCache iou) {
+    int tid = omp_get_thread_num() % 1024;
+    BufCache old = rx_desk[tid];
+    rx_desk[tid] = iou;
+    return old;
+}
+
 static void do_serve(const char *db_path, int port, int32_t cipherkey) {
     int srv = socket(AF_INET, SOCK_STREAM, 0);
     if (srv < 0) die("socket");
@@ -1313,8 +1314,12 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             if (!read_full(fd, &len, 4)) break;
                             len = ntohl(len);
                             if (len > 64 * 1024 * 1024) break;
-                            uint8_t *buf = malloc(len);
-                            if (!buf || !read_full(fd, buf, len)) { free(buf); break; }
+
+                            BufCache c = checkout_rx((BufCache){NULL, 0});
+                            if (c.cap < len) { c.buf = realloc(c.buf, len); c.cap = len; }
+                            uint8_t *buf = c.buf;
+
+                            if (!buf || !read_full(fd, buf, len)) { checkout_rx(c); break; }
                             crypt_buf(buf, len, cipherkey);
 
                             if (len < 32) { free(buf); break; }
@@ -1460,7 +1465,8 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             } else {
                                 send_response(fd, cipherkey, 1, "bad op", 6);
                             }
-                            free(buf);
+                            c = checkout_rx(c);
+                            if (c.buf) free(c.buf); // handle slot contention collisions by freeing
                         }
                         close(fd);
                     }
@@ -1518,29 +1524,7 @@ int main(int argc, char **argv)
             for (char *p = strtok(line, " \t\r\n"); p && n < 64; p = strtok(NULL, " \t\r\n")) args[n++] = p;
             if (!n) continue;
 
-            struct stat st;
-            if (!stat(db, &st) && st.st_size > (off_t)map_size) {
-                int fd = open(db, O_RDONLY | O_CLOEXEC);
-                if (fd >= 0) {
-                    void *nm = map_size ? mremap(map_base, map_size, st.st_size, MREMAP_MAYMOVE) : mmap(NULL, st.st_size, PROT_READ, MAP_SHARED, fd, 0);
-                    if (nm != MAP_FAILED) {
-                        map_base = nm;
-                        map_size = st.st_size;
-                        uint64_t off = valid_size;
-                        uint64_t added = 0;
-                        while (off < map_size) {
-                            if (!rec_valid(off)) break;
-                            Record *r = rec_at(off);
-                            ht_put(r->key_hash, off);
-                            off += r->len;
-                            added = 1;
-                        }
-                        valid_size = off;
-                        if (added) deduplicate_ht();
-                    }
-                    close(fd);
-                }
-            }
+            load_db(db);
             if (!strcmp(args[0], "get") && n == 3) do_get(args[1], args[2]);
             else if (!strcmp(args[0], "put") && n == 4) { append_fd(write_fd, args[1], args[2], args[3], OP_PUT); puts("ok"); }
             else if (!strcmp(args[0], "del") && n == 3) { append_fd(write_fd, args[1], args[2], NULL, OP_DEL); puts("ok"); }
