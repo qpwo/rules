@@ -321,6 +321,12 @@ static void ht_put(uint64_t hash, uint64_t off)
     }
 }
 
+static int cmp_u64(const void *a, const void *b) {
+    uint64_t x = *(const uint64_t *)a;
+    uint64_t y = *(const uint64_t *)b;
+    return x < y ? -1 : (x > y ? 1 : 0);
+}
+
 static int cmp_node(const void *a, const void *b) {
     const Node *x = a, *y = b;
     if (x->hash != y->hash) return x->hash < y->hash ? -1 : 1;
@@ -390,12 +396,17 @@ static Node *ht_get(const char *t, uint16_t tl, const char *k, uint16_t kl)
     return NULL;
 }
 
+static ino_t map_ino;
 static void load_db(const char *path)
 {
     struct stat st;
-    if (stat(path, &st) || st.st_size <= (off_t)map_size) {
-        return;
+    if (stat(path, &st)) return;
+    if (map_base && (st.st_ino != map_ino || st.st_size < (off_t)map_size)) {
+        munmap(map_base, map_size);
+        map_base = NULL; map_size = 0; valid_size = 0; ht_len = 0; ht_sorted_len = 0;
     }
+    map_ino = st.st_ino;
+    if (st.st_size <= (off_t)map_size) return;
     int fd = open(path, O_RDONLY | O_CLOEXEC);
     if (fd < 0) {
         die("open");
@@ -1898,10 +1909,15 @@ static inline int srv_read_lock_func(const char *db_path) {
     int cpu = sched_getcpu();
     if (cpu < 0 || cpu >= 256) cpu = 0;
     pthread_rwlock_rdlock(&srv_rwlocks[cpu].rw);
-    if (srv_db_fd < 0) {
+    struct stat st, fd_st;
+    int needs_reopen = (srv_db_fd < 0) || (!stat(db_path, &st) && !fstat(srv_db_fd, &fd_st) && st.st_ino != fd_st.st_ino);
+    if (needs_reopen) {
         pthread_rwlock_unlock(&srv_rwlocks[cpu].rw);
         for (int i = 0; i < 256; i++) pthread_rwlock_wrlock(&srv_rwlocks[i].rw);
-        if (srv_db_fd < 0) {
+        needs_reopen = (srv_db_fd < 0) || (!stat(db_path, &st) && !fstat(srv_db_fd, &fd_st) && st.st_ino != fd_st.st_ino);
+        if (needs_reopen) {
+            if (srv_db_fd >= 0) close(srv_db_fd);
+            srv_db_fd = -1;
             load_db(db_path);
             srv_db_fd = open_append(db_path);
         }
@@ -1919,7 +1935,14 @@ static inline int srv_write_lock_func(const char *db_path) {
         }
     }
     for (int i = 0; i < 256; i++) pthread_rwlock_wrlock(&srv_rwlocks[i].rw);
-    
+    struct stat st, fd_st;
+    if (srv_db_fd >= 0 && !stat(db_path, &st) && !fstat(srv_db_fd, &fd_st) && st.st_ino != fd_st.st_ino) {
+        close(srv_db_fd); srv_db_fd = -1;
+    }
+    if (srv_db_fd < 0) {
+        load_db(db_path);
+        srv_db_fd = open_append(db_path);
+    }
     return 0;
 }
 static inline void srv_unlock_read_attr(int *cpu) {
@@ -2073,9 +2096,15 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             { SRV_READ_LOCK(db_path);
                             uint64_t start_idx, end_idx;
                             ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
+                            uint64_t count = end_idx - start_idx;
+                            uint64_t *offs = count ? malloc(count * 8) : NULL;
+                            if (offs) {
+                                for (uint64_t i = 0; i < count; i++) offs[i] = ht[start_idx + i].off1;
+                                qsort(offs, count, 8, cmp_u64);
+                            }
                             #pragma omp parallel for schedule(dynamic, 1024) num_threads(worker_threads())
-                            for (uint64_t i = start_idx; i < end_idx; i++) {
-                                Record *r = rec_at(ht[i].off1 - 1);
+                            for (uint64_t i = 0; i < count; i++) {
+                                Record *r = rec_at((offs ? offs[i] : ht[start_idx + i].off1) - 1);
                                 if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
                                 if (threshold < 1.0) {
                                     uint64_t gh = r->key_hash;
@@ -2138,6 +2167,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                             }
                                         }
                                     }
+                                    if (offs) free(offs);
                                 }
                                 send_response(fd, cipherkey, out_len > OUT_CAP ? 4 : 0, out, out_len > OUT_CAP ? OUT_CAP : out_len);
                                 chunk_push(out_c);
@@ -2226,16 +2256,23 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         float best_score = -1e30f;
                                         uint64_t start_idx, end_idx;
                                         ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
+                                        uint64_t count = end_idx - start_idx;
+                                        uint64_t *offs = count ? malloc(count * 8) : NULL;
+                                        if (offs) {
+                                            for (uint64_t i = 0; i < count; i++) offs[i] = ht[start_idx + i].off1;
+                                            qsort(offs, count, 8, cmp_u64);
+                                        }
                                         #pragma omp parallel num_threads(worker_threads())
                                         {
                                             float local_best = -1e30f;
                                             const char *local_k = NULL;
                                             uint16_t local_k_len = 0;
                                             #pragma omp for schedule(dynamic, 1024)
-                                            for (uint64_t i = start_idx; i < end_idx; i++) {
-                                                Record *c_rec = rec_at(ht[i].off1 - 1);
+                                            for (uint64_t i = 0; i < count; i++) {
+                                                uint64_t c_off1 = offs ? offs[i] : ht[start_idx + i].off1;
+                                                Record *c_rec = rec_at(c_off1 - 1);
                                                 if (c_rec->op == OP_DEL || c_rec->t_len != ft_len || c_rec->v_len != q_len) continue;
-                                                if (n && ht[i].off1 == n->off1) continue;
+                                                if (n && c_off1 == n->off1) continue;
                                                 if (memcmp(rec_t(c_rec), full_tenant, ft_len) != 0) continue;
                                                 size_t p1 = q_len > 256 ? 256 : q_len;
                                                 float s1 = dot_fn(q_vec, rec_v(c_rec), p1);
@@ -2260,6 +2297,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                                 if (local_best > best_score) { best_score = local_best; best_k = local_k; best_k_len = local_k_len; }
                                             }
                                         }
+                                        if (offs) free(offs);
                                     }
                                 }
                                 if (best_k) send_response(fd, cipherkey, 0, best_k, best_k_len);
@@ -2276,9 +2314,15 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 { SRV_READ_LOCK(db_path);
                                     uint64_t start_idx, end_idx;
                                     ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
+                                    uint64_t count = end_idx - start_idx;
+                                    uint64_t *offs = count ? malloc(count * 8) : NULL;
+                                    if (offs) {
+                                        for (uint64_t i = 0; i < count; i++) offs[i] = ht[start_idx + i].off1;
+                                        qsort(offs, count, 8, cmp_u64);
+                                    }
                                     #pragma omp parallel for reduction(+:count_est,raw_count,sum) schedule(static, 4096) num_threads(worker_threads())
-                                    for (uint64_t i = start_idx; i < end_idx; i++) {
-                                        Record *r = rec_at(ht[i].off1 - 1);
+                                    for (uint64_t i = 0; i < count; i++) {
+                                        Record *r = rec_at((offs ? offs[i] : ht[start_idx + i].off1) - 1);
                                         if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
                                         if (kl && (r->k_len < kl || memcmp(rec_k(r), k, kl))) continue;
                                 if (threshold < 1.0) {
@@ -2311,6 +2355,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     }
                                         }
                                     }
+                                    if (offs) free(offs);
                                 }
                                 char val[64]; int vl_out = 0;
                                 if (op == 8) vl_out = snprintf(val, sizeof(val), "%.0f\t%llu", count_est, (unsigned long long)raw_count);
