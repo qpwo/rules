@@ -1,11 +1,11 @@
 Bcache: Version 7 - Writeback
-From:	 	Kent Overstreet <kent.overstreet@gmail.com>
-To:	 	linux-kernel@vger.kernel.org, linux-fsdevel@vger.kernel.org
-Subject:	 	[PATCH 1/2] Bcache: Version 7 - Writeback
-Date:	 	Mon, 13 Sep 2010 06:15:24 -0700
-Message-ID:	 	<20100913131523.GA18615@moria>
-Cc:	 	tridge@tridgell.net, heinzm@redhat.com, jrdanczyk@gmail.com, rvandolson@esri.com, laytonjb@gmail.com, jesper@krogh.cc, wstearns@pobox.com
-Archive‑link:	 	Article
+From:         Kent Overstreet <kent.overstreet@gmail.com>
+To:         linux-kernel@vger.kernel.org, linux-fsdevel@vger.kernel.org
+Subject:         [PATCH 1/2] Bcache: Version 7 - Writeback
+Date:         Mon, 13 Sep 2010 06:15:24 -0700
+Message-ID:         <20100913131523.GA18615@moria>
+Cc:         tridge@tridgell.net, heinzm@redhat.com, jrdanczyk@gmail.com, rvandolson@esri.com, laytonjb@gmail.com, jesper@krogh.cc, wstearns@pobox.com
+Archive‑link:         Article
 
 Bcache is a patch for caching arbitrary block devices with other block devices
 - it's designed for SSDs. It's meant to be suitable for use in any situation,
@@ -124,7 +124,7 @@ index 0000000..bcd5b41
 +
 +To script the UUID lookup, you could do something like:
 +  echo "`blkid /dev/md1 -s UUID -o value` /dev/md1"\
-+	  > /sys/kernel/bcache/register_dev
++      > /sys/kernel/bcache/register_dev
 +
 +There are a number of other files in sysfs, some that provide statistics,
 +others that allow tweaking of heuristics. Directories are also created
@@ -156,20 +156,20 @@ index 9be0b56..a6ae422 100644
 --- a/block/Kconfig
 +++ b/block/Kconfig
 @@ -77,6 +77,19 @@ config BLK_DEV_INTEGRITY
- 	T10/SCSI Data Integrity Field or the T13/ATA External Path
- 	Protection.  If in doubt, say N.
+     T10/SCSI Data Integrity Field or the T13/ATA External Path
+     Protection.  If in doubt, say N.
  
 +config BLK_CACHE
-+	tristate "Block device as cache"
-+	---help---
-+	Allows a block device to be used as cache for other devices; uses
-+	a btree for indexing and the layout is optimized for SSDs.
++    tristate "Block device as cache"
++    ---help---
++    Allows a block device to be used as cache for other devices; uses
++    a btree for indexing and the layout is optimized for SSDs.
 +
-+	Caches are persistent, and store the UUID of devices they cache.
-+	Hence, to open a device as cache, use
-+	echo /dev/foo > /sys/kernel/bcache/register_cache
-+	And to enable caching for a device
-+	echo "<UUID> /dev/bar" > /sys/kernel/bcache/register_dev
-+	See Documentation/bcache.txt for details.
++    Caches are persistent, and store the UUID of devices they cache.
++    Hence, to open a device as cache, use
++    echo /dev/foo > /sys/kernel/bcache/register_cache
++    And to enable caching for a device
++    echo "<UUID> /dev/bar" > /sys/kernel/bcache/register_dev
++    See Documentation/bcache.txt for details.
 +
  endif # BLOCK

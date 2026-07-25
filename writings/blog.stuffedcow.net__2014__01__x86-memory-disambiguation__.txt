@@ -1,6 +1,6 @@
 Random stuff…
 
-	
+    
 Comments
 Posts
 
@@ -78,15 +78,15 @@ Hardware
 
 Nine microarchitectures were tested:
 
-Yorkfield	Core 2 Quad Q9550 (45 nm)
-Lynnfield	Core i7-860
-Sandy Bridge	Core i5-2500K
-Ivy Bridge	Core i5-3570K
-Haswell	Pentium G3420
-Agena	Phenom 9550
-Thuban	Phenom II 1090T
-Bulldozer	FX-8120
-Piledriver	FX-8320
+Yorkfield    Core 2 Quad Q9550 (45 nm)
+Lynnfield    Core i7-860
+Sandy Bridge    Core i5-2500K
+Ivy Bridge    Core i5-3570K
+Haswell    Pentium G3420
+Agena    Phenom 9550
+Thuban    Phenom II 1090T
+Bulldozer    FX-8120
+Piledriver    FX-8320
 
 To my knowledge, Agena and Thuban do not do speculative loads, while the rest of the processors do.
 
@@ -95,16 +95,16 @@ Memory dependence speculation: Fast address vs. fast data
 
 Here are results for running the above microbenchmarks with load and store addresses equal, and both addresses at least 8-byte aligned. For reference, the L1 cache hit latencies are included. All latencies are in units of clock cycles.
 
-Processor	L1 hit time	Fast address	Fast data	Fast data, no address reuse
-Yorkfield	3	5.04	4.01	4.01
-Lynnfield	4	5.14	6.02	5.66
-Sandy Bridge	4	5.32	9.80	7.65
-Ivy Bridge	4	5.00	13.01	13.01
-Haswell	4	5.07	12.21	11.58
-Agena	3	~4.5	8.02	8.02
-Thuban	4	~4.5	8.01	8.01
-Bulldozer	4	8.02	35.2*	37.6*
-Piledriver	4	8.02	39.8*	40.0*
+Processor    L1 hit time    Fast address    Fast data    Fast data, no address reuse
+Yorkfield    3    5.04    4.01    4.01
+Lynnfield    4    5.14    6.02    5.66
+Sandy Bridge    4    5.32    9.80    7.65
+Ivy Bridge    4    5.00    13.01    13.01
+Haswell    4    5.07    12.21    11.58
+Agena    3    ~4.5    8.02    8.02
+Thuban    4    ~4.5    8.01    8.01
+Bulldozer    4    8.02    35.2*    37.6*
+Piledriver    4    8.02    39.8*    40.0*
 
 * The fast data numbers for Bulldozer and Piledriver increase somewhat with the amount of loop unrolling, and thus probably isn’t a true latency number.
 
@@ -143,15 +143,15 @@ Yorkfield (Core 2) Store-to-load forwarding time
 
 The same chart, animated. Bigger: [Ogg Theora][H.264]
 
-Colour	Latency	Comment
-	1.0	Load independent from store gets a throughput of one per clock (not a true latency measurement)
-	2.9	Some form of address comparison occurs at an eight-byte granularity
-	5.0	Successful store-to-load forwarding
-	10.7	Penalty for a cross-cache line store when load is independent.
-	12.0	Unable to forward because only part of the load forwards from a store.
-	13.1	Penalty for a cross-cache line load when load is independent
-	15.0	Penalty for a cross-cache line store when a load depends on it.
-	23.1	Penalty for a cross-cache line store when a cross-cache line load depends on it.
+Colour    Latency    Comment
+    1.0    Load independent from store gets a throughput of one per clock (not a true latency measurement)
+    2.9    Some form of address comparison occurs at an eight-byte granularity
+    5.0    Successful store-to-load forwarding
+    10.7    Penalty for a cross-cache line store when load is independent.
+    12.0    Unable to forward because only part of the load forwards from a store.
+    13.1    Penalty for a cross-cache line load when load is independent
+    15.0    Penalty for a cross-cache line store when a load depends on it.
+    23.1    Penalty for a cross-cache line store when a cross-cache line load depends on it.
 
 Here are the results for Yorkfield. The x and y axes are the load and store offsets, respectively, and range from 0 to 63. The latency is indicated by colour. Colours are not chosen to be particularly linear, but were chosen to make the latency variations visible. On the right is a 3D chart where the vertical axis represents the latency, to illustrate how the colours correspond to latency values.
 

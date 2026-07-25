@@ -68,7 +68,7 @@ JUMP_TO_HERE:
   - sense3, to detect whether the test code executed
   - setup pointer, to see if the data was cached or evicted
   - Done.
-	
+    
 # Specpoline = Speculative trampoline
 specpoline_to_measurements:
   # Insert a few long latency operations here
@@ -103,26 +103,26 @@ Read: The load produced a result with a value from memory
 Zero: The load produced a result with value zero
 Other: There are a few other uncommon possibilities that will be discussed later
 Results
-	Pentium
-Pentium MMX	Pentium Pro
-Pentium II	Core 2	Lynnfield	Ivy Bridge	Haswell	Atom SLM	P4 Prescott+	K6-2
-K6-2+	K8	Phenom II	Bulldozer	Piledriver	Via C3	Nano U3500
-L1	Mem	L1	Mem	L1	Mem	L1	Mem	L1	Mem	L1	Mem	L1	Mem	L1	Mem	L1	Mem	L1	Mem	L1	Mem	L1	Mem	L1	Mem	L1	Mem	L1	Mem
-Not present	None	None	PTE	PTE	Read/Zero	Zero	None	None	None	None	None	None	None	None	Read	None	None	None	None	None	None	None	None	None	None	None	None	None	Zero	Zero
+    Pentium
+Pentium MMX    Pentium Pro
+Pentium II    Core 2    Lynnfield    Ivy Bridge    Haswell    Atom SLM    P4 Prescott+    K6-2
+K6-2+    K8    Phenom II    Bulldozer    Piledriver    Via C3    Nano U3500
+L1    Mem    L1    Mem    L1    Mem    L1    Mem    L1    Mem    L1    Mem    L1    Mem    L1    Mem    L1    Mem    L1    Mem    L1    Mem    L1    Mem    L1    Mem    L1    Mem    L1    Mem
+Not present    None    None    PTE    PTE    Read/Zero    Zero    None    None    None    None    None    None    None    None    Read    None    None    None    None    None    None    None    None    None    None    None    None    None    Zero    Zero
 
-WB	User	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read+0
-WT	User	Read	Read	Read	Read	Read	Read			Read	Read			Read	Read			Read	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read	Read+0
-WP	User									Read	Read																				
-WC	User					Read	Read	None	None	None	None	None	None	None	None	None	None			None	None	None	None	None	None	None	None			Read	Zero
-UC	User			None	None	None	None	None	None	None	None	None	None	None	None	None	None			None	None	None	None	None	None	None	None			Read	Zero
-WB, A=0	User			PTE	PTE	Read	Zero	Read	Zero	Read	Zero	Read	Zero	None	None	Read	None			None	None	None	None	None	None	None	None			Zero	Zero
+WB    User    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read+0
+WT    User    Read    Read    Read    Read    Read    Read            Read    Read            Read    Read            Read    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read    Read+0
+WP    User                                    Read    Read                                                                                
+WC    User                    Read    Read    None    None    None    None    None    None    None    None    None    None            None    None    None    None    None    None    None    None            Read    Zero
+UC    User            None    None    None    None    None    None    None    None    None    None    None    None    None    None            None    None    None    None    None    None    None    None            Read    Zero
+WB, A=0    User            PTE    PTE    Read    Zero    Read    Zero    Read    Zero    Read    Zero    None    None    Read    None            None    None    None    None    None    None    None    None            Zero    Zero
 
-WB	Supervisor	None	None	Varies	Varies	Read	Zero	Read	Zero	Read	Zero	Read	Zero	None	None	Read	None	None	None	None	None	None	None	None	None	None	None	None	None	Zero	Zero
-WT	Supervisor	None	None	Varies	Varies	Read	Zero			Read	Zero			None	None			None	None	None	None	None	None	None	None	None	None	None	None	Zero	Zero
-WP	Supervisor									Read	Zero																				
-WC	Supervisor					Read	Zero	Zero	Zero	Read	Zero	Zero	Zero	None	None	Read	None			None	None	None	None	None	None	None	None			Zero	Zero
-UC	Supervisor	None	None	Varies	Varies	Zero	Zero	Zero	Zero	Read	Zero	Zero	Zero	None	None	Read	None	None	None	None	None	None	None	None	None	None	None	None	None	Zero	Zero
-WB, A=0	Supervisor	None	None	PTE	PTE	Read	Zero	Read	Zero	Read	Zero	Read	Zero	None	None	Read	None	None	None	None	None	None	None	None	None	None	None	None	None	Zero	Zero
+WB    Supervisor    None    None    Varies    Varies    Read    Zero    Read    Zero    Read    Zero    Read    Zero    None    None    Read    None    None    None    None    None    None    None    None    None    None    None    None    None    Zero    Zero
+WT    Supervisor    None    None    Varies    Varies    Read    Zero            Read    Zero            None    None            None    None    None    None    None    None    None    None    None    None    None    None    Zero    Zero
+WP    Supervisor                                    Read    Zero                                                                                
+WC    Supervisor                    Read    Zero    Zero    Zero    Read    Zero    Zero    Zero    None    None    Read    None            None    None    None    None    None    None    None    None            Zero    Zero
+UC    Supervisor    None    None    Varies    Varies    Zero    Zero    Zero    Zero    Read    Zero    Zero    Zero    None    None    Read    None    None    None    None    None    None    None    None    None    None    None    None    None    Zero    Zero
+WB, A=0    Supervisor    None    None    PTE    PTE    Read    Zero    Read    Zero    Read    Zero    Read    Zero    None    None    Read    None    None    None    None    None    None    None    None    None    None    None    None    None    Zero    Zero
 Table 1: Results. Meltdown is caused by a successful read of supervisor-only memory, marked in blue. Only those microarchitectures that have at least one blue box are affected by Meltdown.
 
 Meltdown occurs when a load from supervisor-only memory (a row labelled with Supervisor) has the result Read. These cells have been outlined in blue in Table 1. Out of the processors I tested, only newer Intel processors (except Silvermont) will return data read from the L1 cache when the page is marked supervisor-only, and only when the data is already in the L1 cache. When the data is not in the L1 cache (even when in the L2), the load returns zero and does not leak information. Both Intel and VIA designs choose to return a value (and wake up dependent operations) when a permission violation occurs, but the Via Nano does not leak information because it returns zero. AMD designs choose to not wake up dependent operations.
@@ -210,34 +210,34 @@ I expect that the hardware cost to prevent Meltdown on future Intel processors t
 Beyond detecting Meltdown, this microbenchmark can also reveal some information on how the memory load system is designed. For example, we already observed here that the Via Nano uses some form of replay to handle cache misses, and that the AMD K8 (like many out-of-order microarchitectures from that era) executes loads in-order.
 
 List of processors tested
-Short name	Description	CPUID family-model-stepping
-Pentium	P54CS, 200 MHz	5-2-12
-Pentium MMX	P55C, 233 MHz	5-4-3
-Pentium Pro	233 MHz, 256 KB L2 cache	6-1-9
-Pentium II	Klamath, 233 MHz	6-3-4
-Core 2	Core 2 Duo E4300
+Short name    Description    CPUID family-model-stepping
+Pentium    P54CS, 200 MHz    5-2-12
+Pentium MMX    P55C, 233 MHz    5-4-3
+Pentium Pro    233 MHz, 256 KB L2 cache    6-1-9
+Pentium II    Klamath, 233 MHz    6-3-4
+Core 2    Core 2 Duo E4300
 Pentium Dual-Core E5200
-Core 2 Quad Q9550	6-15-2
+Core 2 Quad Q9550    6-15-2
 6-23-6
 6-23-10
-Lynnfield	Core i7-860	6-30-5
-Ivy Bridge	Core i5-3570K	6-58-9
-Haswell	Core i7-4770K	6-60-3
+Lynnfield    Core i7-860    6-30-5
+Ivy Bridge    Core i5-3570K    6-58-9
+Haswell    Core i7-4770K    6-60-3
 
-Atom SLM	Celeron J1900 (Silvermont)	6-55-3
-P4 Prescott+	Pentium 4 521 (Prescott)
+Atom SLM    Celeron J1900 (Silvermont)    6-55-3
+P4 Prescott+    Pentium 4 521 (Prescott)
 Pentium D 820 (Smithfield)
-Pentium D 915 (Presler)	15-4-7
+Pentium D 915 (Presler)    15-4-7
 15-4-7
 15-6-4
-K6-2	K6-2 (CXT) 0.25µm 500 MHz	5-8-12
-K6-2+	K6-2+ 0.18µm 570 MHz	5-13-4
-K8	Sempron 2100+ 1 GHz (65nm)	15-108-2
-Phenom II	Phenom II X6 1090T	16-10-0
-Bulldozer	FX-8120	21-1-2
-Piledriver	FX-8320	21-2-0
-Via C3	Samuel 2	6-7-3
-Nano U3500	VIA (Centaur) Nano U3500	6-15-8
+K6-2    K6-2 (CXT) 0.25µm 500 MHz    5-8-12
+K6-2+    K6-2+ 0.18µm 570 MHz    5-13-4
+K8    Sempron 2100+ 1 GHz (65nm)    15-108-2
+Phenom II    Phenom II X6 1090T    16-10-0
+Bulldozer    FX-8120    21-1-2
+Piledriver    FX-8320    21-2-0
+Via C3    Samuel 2    6-7-3
+Nano U3500    VIA (Centaur) Nano U3500    6-15-8
 Source Code
 meltdown-uarch.tar.gz
 References

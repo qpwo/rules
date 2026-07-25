@@ -55,7 +55,7 @@ riddle.c
 20
 21
 
-	
+    
 static const char values[] = { 'X', 'Y' };
 
 static char
@@ -166,7 +166,7 @@ h4x.c
 64
 65
 
-	
+    
 #define RUN_ME /*
 gcc-6 -std=gnu99 $0 -o h4x && ./h4x; exit $?;
 

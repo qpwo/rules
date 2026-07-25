@@ -84,15 +84,15 @@ Similarly, objdump -M intel -d disassembles the code in the .text section withou
 Disassembly of section .text:
 
 0000000000028138 <.text>:
-   28138:	b8 01 00 00 00       	mov    eax,0x1
-   2813d:	bf 01 00 00 00       	mov    edi,0x1
-   28142:	48 be 5f 81 02 00 00 	movabs rsi,0x2815f
-   28149:	00 00 00 
-   2814c:	ba 0f 00 00 00       	mov    edx,0xf
-   28151:	0f 05                	syscall 
-   28153:	b8 3c 00 00 00       	mov    eax,0x3c
-   28158:	bf 00 00 00 00       	mov    edi,0x0
-   2815d:	0f 05
+   28138:    b8 01 00 00 00           mov    eax,0x1
+   2813d:    bf 01 00 00 00           mov    edi,0x1
+   28142:    48 be 5f 81 02 00 00     movabs rsi,0x2815f
+   28149:    00 00 00 
+   2814c:    ba 0f 00 00 00           mov    edx,0xf
+   28151:    0f 05                    syscall 
+   28153:    b8 3c 00 00 00           mov    eax,0x3c
+   28158:    bf 00 00 00 00           mov    edi,0x0
+   2815d:    0f 05
 
 Before moving on, we can look at the actual bytes in the ELF, and annotate what they're used for in the file:
 

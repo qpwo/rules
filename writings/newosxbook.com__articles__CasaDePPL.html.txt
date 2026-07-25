@@ -253,7 +253,7 @@ This enables us to locate functions in __PPLTEXT.__text, whose addresses are not
 
 morpheus@Chimera (~) %jtool2 -d __PPLTEXT.__text ~/Downloads/kernelcache.release.iphone11 |
                   grep -v ^ff |  # Ignore disassembly lines
-		  grep \"     |  # get strings
+          grep \"     |  # get strings
 Disassembling 78564 bytes from address 0xfffffff008f44000 (offset 0x1f40000):
         _func_fffffff007a28554(""%s: ledger %p array index invalid, index was %#llx"", "pmap_ledger_validate" );
         _func_fffffff007a28554(""%s: ledger still referenced, " "ledger=%p"", "pmap_ledger_free_internal");
@@ -501,7 +501,7 @@ fffffff007b90690        0x17fffed6  B           0xfffffff007b901e8       ;
 Therefore, PPL will have been locked by the time _ppl_enter does anything. Meaning it will jump to 0xfffffff008f5bfe0. That's in _PPLTRAMP - right where we started. To save you scrolling up, let's look at this code, piece by piece:
 
 fffffff008f5bfe0        0xd53b4234  MRS         X20, DAIF                ;
-fffffff008f5bfe4        0xd50347df  MSR         DAIFSet, #7		 ; #(DAIFSC_ASYNC | DAIFSC_IRQF | DAIFSC_FIQF)
+fffffff008f5bfe4        0xd50347df  MSR         DAIFSet, #7         ; #(DAIFSC_ASYNC | DAIFSC_IRQF | DAIFSC_FIQF)
 fffffff008f5bfe8        ---------- *MOVKKKK     X14, 0x4455445564666677  ;
 fffffff008f5bff8        0xd51cf22e  MSR         ARM64_REG_APRR_EL1, X14  ; S3_4_C15_C2_1
 fffffff008f5bffc        0xd5033fdf  ISB                                  ;
@@ -629,41 +629,41 @@ We still haven't looked at the __PPLDATA_CONST.__const. Let's see what it has (R
 minor note: I had to switch to another machine since my 2016 MBP's keyboard just spontaneously DIED ON ME while doing this. $#%$#%$# device won't boot from a bluetooth keyboard, so after I had to reboot it, I can't get in past the EFI screen till I get a USB keyboard (and hope that works). I'm using a slightly different kernel, but addresses are largely the same)
 morpheus@BifrÃ¶st (~) % jtool2 -d __PPLDATA_CONST.__const ~/Downloads/kernelcache.release.iphone11
 Dumping 192 bytes from 0xfffffff008f68000 (Offset 0x1f64000, __PPLDATA_CONST.__const):
-0xfffffff008f68000: 0xfffffff00747542d       	"ans2_sart"
+0xfffffff008f68000: 0xfffffff00747542d           "ans2_sart"
 0xfffffff008f68008: 03 00 01 00 b7 da ad de   
-0xfffffff008f68010: 0xfffffff008f541cc       	__func_0xfffffff008f541cc
-0xfffffff008f68018: 0xfffffff008f5455c       	__func_0xfffffff008f5455c
-0xfffffff008f68020: 0xfffffff008f54568       	__func_0xfffffff008f54568
-0xfffffff008f68028: 0xfffffff008f5479c       	__func_0xfffffff008f5479c
-0xfffffff008f68030: 0xfffffff008f54564       	__func_0xfffffff008f54564
-0xfffffff008f68038: 0xfffffff008f5430c       	__func_0xfffffff008f5430c
-0xfffffff008f68040: 0xfffffff007475813       	"t8020dart"
+0xfffffff008f68010: 0xfffffff008f541cc           __func_0xfffffff008f541cc
+0xfffffff008f68018: 0xfffffff008f5455c           __func_0xfffffff008f5455c
+0xfffffff008f68020: 0xfffffff008f54568           __func_0xfffffff008f54568
+0xfffffff008f68028: 0xfffffff008f5479c           __func_0xfffffff008f5479c
+0xfffffff008f68030: 0xfffffff008f54564           __func_0xfffffff008f54564
+0xfffffff008f68038: 0xfffffff008f5430c           __func_0xfffffff008f5430c
+0xfffffff008f68040: 0xfffffff007475813           "t8020dart"
 0xfffffff008f68048: 03 00 01 00 b7 da ad de  
-0xfffffff008f68050: 0xfffffff008f54a14       	__func_0xfffffff008f54a14
-0xfffffff008f68058: 0xfffffff008f559c8       	__func_0xfffffff008f559c8
-0xfffffff008f68060: 0xfffffff008f55df0       	__func_0xfffffff008f55df0
-0xfffffff008f68068: 0xfffffff008f56858       	__func_0xfffffff008f56858
-0xfffffff008f68070: 0xfffffff008f55dec       	__func_0xfffffff008f55dec
-0xfffffff008f68078: 0xfffffff008f55280       	__func_0xfffffff008f55280
-0xfffffff008f68080: 0xfffffff007475931       	"nvme_ppl"
+0xfffffff008f68050: 0xfffffff008f54a14           __func_0xfffffff008f54a14
+0xfffffff008f68058: 0xfffffff008f559c8           __func_0xfffffff008f559c8
+0xfffffff008f68060: 0xfffffff008f55df0           __func_0xfffffff008f55df0
+0xfffffff008f68068: 0xfffffff008f56858           __func_0xfffffff008f56858
+0xfffffff008f68070: 0xfffffff008f55dec           __func_0xfffffff008f55dec
+0xfffffff008f68078: 0xfffffff008f55280           __func_0xfffffff008f55280
+0xfffffff008f68080: 0xfffffff007475931           "nvme_ppl"
 0xfffffff008f68088: 03 00 01 00 b7 da ad de
-0xfffffff008f68090: 0xfffffff008f56978       	__func_0xfffffff008f56978
-0xfffffff008f68098: 0xfffffff008f5708c       	__func_0xfffffff008f5708c
-0xfffffff008f680a0: 0xfffffff008f57098       	__func_0xfffffff008f57098
-0xfffffff008f680a8: 0xfffffff008f572e0       	__func_0xfffffff008f572e0
-0xfffffff008f680b0: 0xfffffff008f57094       	__func_0xfffffff008f57094
-0xfffffff008f680b8: 0xfffffff008f56df8       	__func_0xfffffff008f56df8
+0xfffffff008f68090: 0xfffffff008f56978           __func_0xfffffff008f56978
+0xfffffff008f68098: 0xfffffff008f5708c           __func_0xfffffff008f5708c
+0xfffffff008f680a0: 0xfffffff008f57098           __func_0xfffffff008f57098
+0xfffffff008f680a8: 0xfffffff008f572e0           __func_0xfffffff008f572e0
+0xfffffff008f680b0: 0xfffffff008f57094           __func_0xfffffff008f57094
+0xfffffff008f680b8: 0xfffffff008f56df8           __func_0xfffffff008f56df8
 
 We see what appears to be three distinct structs here, identified as "ans2_sart", "t8020dart" and "nvme_ppl". (DART = Device Address Resolution Table). There are also six function pointers in each, and (right after the structure name) what appears to be three fields - two 16-bit shorts (0x0003, 0x0001) and some magic (0xdeaddab7).
 
 It's safe to assume, then, that if we find the symbol names for a function at slot x, corresponding functions for the other structures at the same slot will be similarly named. Looking through panic()s again, we find error messages which show us that 0xfffffff008f541cc is an init(), 0xffffff008f54568 is a map() operation, and 0xfffffff008f5479c is an unmap(). Some of these calls appear to be noop in some cases, and fffffff008f55280 has a switch, which implies it's likely an ioctl() style. Putting it all together, we have:
 
-0xfffffff008f68010: 0xfffffff008f541cc       	_ans2_sart_init
-0xfffffff008f68018: 0xfffffff008f5455c       	_ans2_unknown1_ret0
-0xfffffff008f68020: 0xfffffff008f54568       	_ans2_map
-0xfffffff008f68028: 0xfffffff008f5479c       	_ans2_unmap
-0xfffffff008f68030: 0xfffffff008f54564       	_ans2_sart_unknown2_ret
-0xfffffff008f68038: 0xfffffff008f5430c       	_ans2_sart_ioctl_maybe
+0xfffffff008f68010: 0xfffffff008f541cc           _ans2_sart_init
+0xfffffff008f68018: 0xfffffff008f5455c           _ans2_unknown1_ret0
+0xfffffff008f68020: 0xfffffff008f54568           _ans2_map
+0xfffffff008f68028: 0xfffffff008f5479c           _ans2_unmap
+0xfffffff008f68030: 0xfffffff008f54564           _ans2_sart_unknown2_ret
+0xfffffff008f68038: 0xfffffff008f5430c           _ans2_sart_ioctl_maybe
 
 which we can then apply to the NVMe and T8020DART. Note these look exactly like the ppl_map_iommu_ioctl* symbols we could obtain from the __TEXT.__cstring, with two unknowns remaining, possibly for allocating and freeing memory.
 
@@ -673,12 +673,12 @@ However, looking at __PPLTEXT we find no references to our structures. So we hav
 # falls in the __PPL_CONST.__const
 BifrÃ¶st:Downloads morpheus$ jtool2 -d ~/Downloads/kernelcache.release.iphone11 | grep fffffff008f680
 Disassembling 22431976 bytes from address 0xfffffff0079dc000 (offset 0x9d8000):
-fffffff007b9e028	0xd0009e40  ADRP  	X0, 5066               	 ; R0 = 0xfffffff008f68000
-fffffff007b9e02c	0x91000000  ADD   	X0, X0, #0             	 ; R0 = R0 + 0x0 = 0xfffffff008f68000
-fffffff007b9e034	0xd0009e40  ADRP  	X0, 5066               	 ; R0 = 0xfffffff008f68000
-fffffff007b9e038	0x91010000  ADD   	X0, X0, #64            	 ; R0 = R0 + 0x40 = 0xfffffff008f68040
-fffffff007b9e0f0	0xd0009e40  ADRP  	X0, 5066               	 ; R0 = 0xfffffff008f68000
-fffffff007b9e0f4	0x91020000  ADD   	X0, X0, #128           	 ; R0 = R0 + 0x80 = 0xfffffff008f68080
+fffffff007b9e028    0xd0009e40  ADRP      X0, 5066                    ; R0 = 0xfffffff008f68000
+fffffff007b9e02c    0x91000000  ADD       X0, X0, #0                  ; R0 = R0 + 0x0 = 0xfffffff008f68000
+fffffff007b9e034    0xd0009e40  ADRP      X0, 5066                    ; R0 = 0xfffffff008f68000
+fffffff007b9e038    0x91010000  ADD       X0, X0, #64                 ; R0 = R0 + 0x40 = 0xfffffff008f68040
+fffffff007b9e0f0    0xd0009e40  ADRP      X0, 5066                    ; R0 = 0xfffffff008f68000
+fffffff007b9e0f4    0x91020000  ADD       X0, X0, #128                ; R0 = R0 + 0x80 = 0xfffffff008f68080
 
 It's safe to assume, then, that the corresponding functions are "...art_get_struct" or something, so I added them to jokerlib as well, though I couldn't off hand find any references to these getters.
 

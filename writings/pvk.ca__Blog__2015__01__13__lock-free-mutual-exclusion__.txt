@@ -51,7 +51,7 @@ First, a mutable box because we don’t have raw pointers (I could also have tri
 2
 3
 
-	
+    
 (defstruct (box
             (:constructor make-box (%value)))
   %value)
@@ -66,7 +66,7 @@ Next, the type for write records: we have the the value for the next generation 
 6
 7
 
-	
+    
 (defstruct (record
              (:constructor %make-record (generation ops)))
   (generation (error "Missing arg") :type fixnum :read-only t)
@@ -88,7 +88,7 @@ The central bottleneck is the sequence lock, which each (read) transaction must 
 9
 10
 
-	
+    
 (declaim (type (or (and unsigned-byte fixnum) record) **current-record**))
 (defglobal **current-record** 0)
 
@@ -113,7 +113,7 @@ Before using any read, we make sure that the generation counter hasn’t changed
 7
 8
 
-	
+    
 (defun check ()
   #-(or x86 x86-64) (sb-thread:barrier (:read)) ; x86 don't reorder reads
   (let ((initial *initial-record*)
@@ -142,7 +142,7 @@ I see two ways to deal with starting a read transaction while a write is in prog
 15
 16
 
-	
+    
 (defvar *current-map* nil)
 
 (defun box-value (box)
@@ -177,7 +177,7 @@ We’re now ready to start read transactions. We take a snapshot of the generati
 13
 14
 
-	
+    
 (defun call-with-transaction (function &rest arguments)
   (catch 'fail
     (let* ((*initial-record* **current-record**)
@@ -226,7 +226,7 @@ The next function is the keystone: helping a write record go through exactly onc
 29
 30
 
-	
+    
 (defun help (record)
   (flet ((write-one (box old new)
            ;; if record isn't the current generation anymore,
@@ -276,7 +276,7 @@ Now we can commit with a small wrapper around help. Transactional mutex lock has
 14
 15
 
-	
+    
 (defun commit (record)
   (check-type record record)
   (let ((initial
@@ -313,7 +313,7 @@ And now some syntactic sugar to schedule writes
 16
 17
 
-	
+    
 (defvar *write-record*)
 
 (defun call-with-write-record (function)
@@ -358,7 +358,7 @@ That’s enough for a smoke test on my dual core laptop.
 22
 23
 
-	
+    
 (defvar *a* (make-box 0))
 (defvar *b* (make-box 0))
 (defvar *semaphore* (sb-thread:make-semaphore))
@@ -424,7 +424,7 @@ The baseline case should probably be serial execution, while the ideal case for 
 35
 36
 
-	
+    
 (defun test-serial (n)
   (setf *a* (make-box 0)
         *b* (make-box 0)
@@ -526,7 +526,7 @@ How does a straight mutex do with four threads?
 26
 27
 
-	
+    
 (defun test-mutex (n)
   (let ((mutex (sb-thread:make-mutex))
         (semaphore (sb-thread:make-semaphore))

@@ -43,7 +43,7 @@ A mutex is a object that ensures that only one thread enters a section of code a
 14
 15
 16
-	
+    
 struct bad_spinlock
 {
     void lock()
@@ -103,7 +103,7 @@ It’s not obvious how this works, but try to think through what happens when tw
 38
 39
 40
-	
+    
 --algorithm Spinlock 
 {
   variables locked = FALSE;
@@ -162,7 +162,7 @@ With this we can write our first assertions. The code above was written in “Pl
 1
 2
 3
-	
+    
 MutualExclusion == \A i, j \in Proc : 
                      (i # j) => ~ /\ pc[i] = "cs"
                                   /\ pc[j] = "cs"
@@ -178,7 +178,7 @@ The second thing that we want to check is that we don’t deadlock. We do that w
 1
 2
 3
-	
+    
 DeadlockFreedom == 
     \A i \in Proc : 
       (pc[i] = "exchange") ~> (\E j \in Proc : pc[j] = "cs")
@@ -219,7 +219,7 @@ The problem with the spinlock is that the waiting thread doesn’t go to sleep. 
 22
 23
 24
-	
+    
 struct futex_mutex
 {
     void lock()
@@ -251,32 +251,32 @@ You may be wondering what’s special about that atomic unsigned int. Why can we
 
 The comparison is crucial to make the above mutex correct. See for example this sequence of behaviors:
 
-Thread A	Thread B	State
-lock()		0
-if (exchange(1))		1
-	lock()	1
-	if (exchange(1))	1
-	if (exchange(2))	2
-unlock()		2
-if (exchange(0) == 2)		0
-futex_wake()		0
-	futex_wait(2)	0
+Thread A    Thread B    State
+lock()        0
+if (exchange(1))        1
+    lock()    1
+    if (exchange(1))    1
+    if (exchange(2))    2
+unlock()        2
+if (exchange(0) == 2)        0
+futex_wake()        0
+    futex_wait(2)    0
 
 The way to read this is that Thread A locks first, then Thread B locks, but before it can go to sleep, Thread A unlocks again, calling futex_wake() too early. In this case the futex_wait(2) at the very end will notice that 2 != 0, and won’t actually put the thread to sleep.
 
 Still there are a lot of possible code paths through this. Especially if we have three or more threads. Consider this start of an execution:
 
-Thread A	Thread B	Thread C	State
-lock()			0
-exchange(1)			1
-	lock()		1
-	exchange(1)		1
-	exchange(2)		2
-	futex_wait(2)		2
-		lock()	2
-		exchange(1)	1
-unlock()			1
-exchange(0)			0
+Thread A    Thread B    Thread C    State
+lock()            0
+exchange(1)            1
+    lock()        1
+    exchange(1)        1
+    exchange(2)        2
+    futex_wait(2)        2
+        lock()    2
+        exchange(1)    1
+unlock()            1
+exchange(0)            0
 
 So three threads try to enter, and we end up with state=1 at the time of the unlock, meaning thread A will not wake the sleeping thread B. Is this a bug? It’s actually OK because the next thing that thread C does is set state=2, so it will remember to wake thread B after it unlocks.
 
@@ -319,7 +319,7 @@ But it’s hard to think through all the cases, so lets implement this in TLA+. 
 35
 36
 37
-	
+    
 variables 
   futex_state = 0;
   futex_sleepers = {};
@@ -407,7 +407,7 @@ With that we’re ready to implement a mutex:
 37
 38
 39
-	
+    
 procedure lock_mutex()
 variable old_state = 0;
 {
@@ -452,11 +452,11 @@ This is where you can see why I like TLA+ so much. It’s a direct one-to-one tr
 
 One thing we can learn with this mutex implementation is how the number of states likes to explode in TLA+. If I verify my assertions for 2 processes, TLA+ finds 213 distinct states, and finishes running immediately. For 3 processes, TLA+ finds 7013 distinct states and takes 3 seconds to run. Lets make this a table:
 
-Number of processes	Number of distinct states	Time to verify
-2	213	1 second
-3	7,013	3 seconds
-4	174,233	48 seconds
-5	3,850,245	38:16 minutes
+Number of processes    Number of distinct states    Time to verify
+2    213    1 second
+3    7,013    3 seconds
+4    174,233    48 seconds
+5    3,850,245    38:16 minutes
 
 This explosion in the number of states is a common problem when verifying things with TLA+. The method of “try all possible execution paths” explodes quickly, and we’ll have to tweak our models to deal with this. For this mutex, we can run our model checker with 3 processes most of the time, and then we can move up to 4 or 5 processes to double-check once we’re done. (we can also massively reduce the number of states by taking advantage of the symmetry between different processes, but that’s for later)
 
@@ -516,7 +516,7 @@ We can implement condition variables by using a second futex:
 26
 27
 28
-	
+    
 struct futex_condition_variable
 {
     void wait(std::unique_lock<futex_mutex> & lock)
@@ -592,7 +592,7 @@ Lets write this in PlusCal:
 36
 37
 38
-	
+    
 variables 
   mutex_index = 0;
   cv_index = 1;
@@ -708,7 +708,7 @@ This is a bit tricky to solve, but for now we can just limit how many signals we
 68
 69
 70
-	
+    
 variables 
   work_to_do = 0;
   num_work_started = 0;
@@ -802,7 +802,7 @@ Finally we need new assertions to test if this code is correct. I landed on thes
 1
 2
 3
-	
+    
 WorkGetsTaken == work_to_do > 0 ~> work_to_do = 0
 WorkGetsDone == <>(num_work_started = work_done)
 AllFinish == all_done = GeneratorProcs ~> (\A i \in (WorkerProcs \union GeneratorProcs) : pc[i] = "Done")
@@ -815,19 +815,19 @@ The last one asserts that the broadcast at shutdown works correctly. If all Gene
 
 Running this with one generator, two workers and MaxNumLoops=3 finds 267,171 states, which takes 53 seconds to validate. Let’s make a table again:
 
-Num Generators	Num Workers	signal() calls	Distinct States	Time
-1	1	4	6,771	3 seconds
-1	2	3	267,171	53 seconds
-2	1	3	1,286,732	3:54 minutes
-2	2	2	>16,000,000	>2 hours (I canceled)
+Num Generators    Num Workers    signal() calls    Distinct States    Time
+1    1    4    6,771    3 seconds
+1    2    3    267,171    53 seconds
+2    1    3    1,286,732    3:54 minutes
+2    2    2    >16,000,000    >2 hours (I canceled)
 
 So this clearly explodes in complexity quickly, and running this on any kind of large number of workers or generators just never finishes, even though I kept on decreasing the number of loops. One possible solution is that TLA+ can take advantage of symmetry between processes. I don’t actually know the exact semantics of that, but I think the idea is that since all my workers are running the exact same code, and none of their logic depends on their ID, TLA+ can deduplicate a bunch of states. E.g. we’ll get the same behavior if process 1 takes the first piece of work or if process 2 takes the first piece of work. Here is the same table with symmetry enabled. (only within workers, and within generators, not across the two groups)
 
-Num Generators	Num Workers	signal() calls	Distinct States	Time
-1	1	4	6,771	3 seconds
-1	2	3	135,266	32 seconds
-2	1	3	647,440	2:21 minutes
-2	2	2	7,158,146	50:24 minutes
+Num Generators    Num Workers    signal() calls    Distinct States    Time
+1    1    4    6,771    3 seconds
+1    2    3    135,266    32 seconds
+2    1    3    647,440    2:21 minutes
+2    2    2    7,158,146    50:24 minutes
 
 This is a little better, so with that lets finally move on and work on the real code, the glibc implementation of condition variables. Sure, it’ll be a bit more complicated, but how bad can it be?
 
@@ -865,15 +865,15 @@ Detailed Walkthrough of the Order of Events
 
 Next I had to figure out what I had found. Is it actually the same bug? And if it is, is the theory from the bug description correct? Since I’m about to show you a long table, I’ll let you know ahead of time that the answer is yes, this is the original bug. This table describes the shortest order of events to make the bug happen:
 
-Generator	Worker 1	Worker 2
-*add work*		
-	*take work*	
-	*do work*	
-	*try to take work again*	
-	call cv_wait()	
-	set wrefs = 8	
-	g = 0	
-call cv_signal()		
+Generator    Worker 1    Worker 2
+*add work*        
+    *take work*    
+    *do work*    
+    *try to take work again*    
+    call cv_wait()    
+    set wrefs = 8    
+    g = 0    
+call cv_signal()        
 
 Let me interrupt here to explain how this works. This is just the first few steps, the table will continue below. The way to read this is that first the Generator process adds one unit of work. The first worker thread immediately takes that work, finishes it, and waits for the next unit of work. All this before the Generator process had time to signal that it added work. The last step in this table is that the Generator calls cv_signal() to signal that it added work, even though that work is already finished. So already we’re in a weird state, where the signal will allow a process to wake up even though there won’t be work for it. That’s not the source of the bug, just a introduction for the kinds of interleavings that TLA+ explores. Up to now Worker process 2 hasn’t done anything, but it will jump into action soon.
 
@@ -881,76 +881,76 @@ I skipped over most variable assignments, except for two: setting wrefs to 8 tel
 
 Also, just to clarify I am sometimes combining many steps into one. The *add work* line actually consists of seven steps. Looking at every single step just makes this more confusing. With that, lets continue. This is the next row of the same table:
 
-Generator	Worker 1	Worker 2
+Generator    Worker 1    Worker 2
 check for waiters
-(wrefs >= 8)		
-	unlock_mutex()	
-		lock_mutex()
-		cv_wait()
-quiesce_and_switch_g1()		
-		g = 1
-g_signals[0] = 2		
-	g_signals[0] = 0	
-futex_wake()		
-return from cv_signal()		
-		unlock_mutex()
+(wrefs >= 8)        
+    unlock_mutex()    
+        lock_mutex()
+        cv_wait()
+quiesce_and_switch_g1()        
+        g = 1
+g_signals[0] = 2        
+    g_signals[0] = 0    
+futex_wake()        
+return from cv_signal()        
+        unlock_mutex()
 
 At this point cv_signal() has finished. The signal was immediately consumed by Worker 1, who was just about to go to sleep, but then found that a signal was ready to consume. The call to futex_wake doesn’t actually wake anyone. Worker 2 has only just started it’s call to cv_wait(), getting far enough to unlock the mutex. It’s looking for a signal on group 1.
 
-Generator	Worker 1	Worker 2
-*add work*		
-call cv_signal()		
-quiesce_and_switch_g1()		
-g_signals[1] = 2		
-		g_signals[1] = 0
-return from cv_signal()		
-*add work*		
-call cv_signal()		
-		*do work*
-		*take work*
-		*do work*
-		cv_wait()
-call quiesce_and_switch_g1()		
-		unlock_mutex()
+Generator    Worker 1    Worker 2
+*add work*        
+call cv_signal()        
+quiesce_and_switch_g1()        
+g_signals[1] = 2        
+        g_signals[1] = 0
+return from cv_signal()        
+*add work*        
+call cv_signal()        
+        *do work*
+        *take work*
+        *do work*
+        cv_wait()
+call quiesce_and_switch_g1()        
+        unlock_mutex()
 
 At this point the setup for the bug is done, but nothing is wrong yet. Worker 1 is still not quite finished with cv_wait(), and in the meantime the Generator process and Worker 2 have generated and finished enough work that the active group has switched all the way back to group 0, the one that Worker 1 thinks it is in. Still nobody has ever actually gone to sleep on a futex. But now Worker 1 is about to get to the end of cv_wait(), where it will hit a rarely used code-path which starts with this comment: “We consumed a signal but we could have consumed from a more recent group that aliased with ours due to being in the same group slot.” Meaning this code path is supposed to handle the case when the group has wrapped around like this.
 
-Generator	Worker 1	Worker 2
+Generator    Worker 1    Worker 2
 *still in
-quiesce_and_switch_g1()*		
-	*undo steal*
-g_Signals[0] = 2	
-	futex_wake()
-*done with undo steal*	
-	lock_mutex()	
-	*check for work*	
-	cv_wait()	
-	unlock_mutex()	
-g_size[0] = 2		
-		g_signals[0] = 0
+quiesce_and_switch_g1()*        
+    *undo steal*
+g_Signals[0] = 2    
+    futex_wake()
+*done with undo steal*    
+    lock_mutex()    
+    *check for work*    
+    cv_wait()    
+    unlock_mutex()    
+g_size[0] = 2        
+        g_signals[0] = 0
 return from
-quiesce_and_switch_g1()		
+quiesce_and_switch_g1()        
 
 Now we’re in a buggy state. I don’t fully understand all of this state myself, but here is my best attempt at an explanation: Worker 1 thought it stole a signal, so it wanted to wake one person sleeping on the futex. But nobody ever went to sleep in this entire trace, so all it did was increment g_signals. This would normally just lead to a spurious wakeup, which are allowed, but at the same time the Generator process was still in quiesce_and_switch_g1(). That function sets g_size[0] to 2, which means that at that time there are two processes sleeping in group 0. This will be wrong, because immediately after that, Worker 2 consumes the signal from Worker 1, which will cause it to finish cv_wait. (once again without actually having gone to sleep)
 
 So now Generator thinks that there are two threads in cv_wait() when actually there is only one thread in cv_wait(). After finishing quiesce_and_switch_g1(), we are still inside of cv_signal(), so next we will do the work of that function, waking one process:
 
-Generator	Worker 1	Worker 2
+Generator    Worker 1    Worker 2
 *still in
-cv_signal()*		
-g_signals[0] = 2		
-g_size[0] = 1		
-futex_wake()		
-	g_signals[0] = 0	
-		cv_wait()
-	cv_wait()	
-		futex_wait(g_signals[1])
-*add work*		
-cv_signal()		
-g_signals[0] = 2		
-g_size[0] = 0		
-futex_wake(g_signals[0])		
-	futex_wait(g_signals[1])	
+cv_signal()*        
+g_signals[0] = 2        
+g_size[0] = 1        
+futex_wake()        
+    g_signals[0] = 0    
+        cv_wait()
+    cv_wait()    
+        futex_wait(g_signals[1])
+*add work*        
+cv_signal()        
+g_signals[0] = 2        
+g_size[0] = 0        
+futex_wake(g_signals[0])        
+    futex_wait(g_signals[1])    
 
 And finally we’re deadlocked. In the first two rows Generator increases g_signals[0], allowing Worker 1 to finish cv_wait(). It also decreases g_size[0] to remember that there is one fewer sleeper on group 0. There is still no additional work to do, so both Worker 1 and Worker 2 loop and call cv_wait() again. This is the first time that they actually go to sleep, sleeping on g_signals[1].
 
@@ -970,43 +970,43 @@ Understanding Stealing
 
 At this point I was thinking that I still don’t fully understand the code. So I decided to try to find out what this “potential stealing” case was actually intended to solve. TLA+ makes that easy: I just remove the code and see what breaks. I get a trace that deadlocks in 150 steps, which is still a lot of steps, but slightly better than before. Unfortunately I’ll need to create a second table to explain. I’ll try to compress it even more than above:
 
-Generator	Worker 1	Worker 2
-*add work*		
-	*take work*	
-	*do work*	
-g_signals[0] = 2		
-	cv_wait()	
-	*notice that
-g_signals[0] != 0*	
-*add work*		
-		*take work*
-		*do work*
-		cv_wait()
+Generator    Worker 1    Worker 2
+*add work*        
+    *take work*    
+    *do work*    
+g_signals[0] = 2        
+    cv_wait()    
+    *notice that
+g_signals[0] != 0*    
+*add work*        
+        *take work*
+        *do work*
+        cv_wait()
 
 The start is similar to before. The generator generates two pieces of work, both of which are consumed and finished before it has a chance to signal for them. Both workers immediately call cv_wait() again, looking for more work. Worker 1 hasn’t actually gone to sleep and is just about to consume the one signal that Generator has created, by doing a compare_exchange with g_signals[0] in order to early-out of cv_wait(). But first Generator will signal that it has added a second piece of work:
 
-Generator	Worker 1	Worker 2
-quiesce_and_switch_g1()		
+Generator    Worker 1    Worker 2
+quiesce_and_switch_g1()        
 *close group 0*
-g_signals[0] = 0		
-g_signals[1] = 2		
-		g_signals[1] = 0
-		cv_wait()
+g_signals[0] = 0        
+g_signals[1] = 2        
+        g_signals[1] = 0
+        cv_wait()
 
 When generator signals, it notices that there is nobody waiting on group 0. You might think that Worker 1 is sleeping, but it’s in a state where it wanted to early-out of cv_wait(), and never incremented g_refs. So the group gets closed and Worker 1’s compare_exchange won’t succeed. Not that it’s gotten there yet… Meanwhile Generator finally manages to signal that it has added a second piece of work, and Worker 2 immediately consumes that signal, in what’s called a “spurious wake,” because it got woken even though there is no extra work to do. (because it finished the available work before the signal got emitted) It immediately calls cv_wait() again.
 
-Generator	Worker 1	Worker 2
-		*notice that*
+Generator    Worker 1    Worker 2
+        *notice that*
 g_signals[0] = 0
-*stop loop*		
-cv_broadcast()		
-quiesce_switch_g1()		
-g_signals[0] = 2		
-futex_wake_all()		
-All Done		
-	g_signals[0] = 0	
-	All Done	
-		futex_wait(g_signals[0], 0)
+*stop loop*        
+cv_broadcast()        
+quiesce_switch_g1()        
+g_signals[0] = 2        
+futex_wake_all()        
+All Done        
+    g_signals[0] = 0    
+    All Done    
+        futex_wait(g_signals[0], 0)
 
 And these are the last steps for our deadlock. Generator decides to generate no more work and broadcast that it’s all done. (I didn’t show this option in my PlusCal code above. Pretend I ran with MaxNumLoops=2) Worker 1 finally gets around to doing the compare_exchange that it wanted to do to early out. Worker 2 finally calls futex_wait(g_signals[0], 0) and goes to sleep forever.
 

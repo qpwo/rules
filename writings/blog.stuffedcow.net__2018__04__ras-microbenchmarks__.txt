@@ -33,19 +33,19 @@ Appendix 2: List of processors tested
 References
 Summary of Results
 Summary of RAS measurements
-	Capacity	RAS corrupted on return misprediction	Max. in-flight calls	Max. in-flight branches
-Pentium Pro	16	No	13	40
-Core 2 45nm	16	Sometimes	19	91
-Lynnfield	16	Rarely	15	123
-Sandy Bridge	16	Sometimes	15	48
-Ivy Bridge	16	Sometimes	15	48
-Haswell	16	Rarely	14	48
-Phenom	24	No		
-Phenom II	24	No		
-Bulldozer	24	Always: TOS pointer off by 1		
-Piledriver	24	Sometimes		
-VIA Nano U3500	16 fetch
-32 translate			
+    Capacity    RAS corrupted on return misprediction    Max. in-flight calls    Max. in-flight branches
+Pentium Pro    16    No    13    40
+Core 2 45nm    16    Sometimes    19    91
+Lynnfield    16    Rarely    15    123
+Sandy Bridge    16    Sometimes    15    48
+Ivy Bridge    16    Sometimes    15    48
+Haswell    16    Rarely    14    48
+Phenom    24    No        
+Phenom II    24    No        
+Bulldozer    24    Always: TOS pointer off by 1        
+Piledriver    24    Sometimes        
+VIA Nano U3500    16 fetch
+32 translate            
 Background: Branches and branch prediction
 
 Branch operations are a common part of every computer program. These include conditional branches to implement if-then constructs, and call and return instructions to implement functions. In a pipelined processor, instructions are fetched many cycles earlier than when they are executed, so the outcome of branch instructions, and therefore what to fetch next, aren’t known until many cycles later. To avoid wasting time waiting for the branch outcome, the processor front-end uses branch prediction to continue fetching instructions past branches, by guessing which execution path is likely to be taken. In deeply-pipelined processors, accurate branch prediction is crucial for achieving high performance, so processors usually have specialized branch predictors to predict different types of branch instruction. This article focuses on the return address stack predictor used to predict function return instructions.
@@ -76,30 +76,30 @@ Properly-matched calls and returns
 If the RAS works as expected, all of the calls and returns should be correctly predicted (assuming direct call instructions are easily predicted). We’ll measure the runtime of the loop, then divide by the number of calls and get the number of clock cycles for each call and return pair. The Table 1 below shows the results. On every microarchitecture, properly-matched calls and returns results in correctly-predicted return addresses, executing a call and return in around 3-6 cycles (See Table 1, CALL+RET column).
 
 LOOP:
-	call F
-	call F
-	call F
-	...
-	call F
-	jmp LOOP
+    call F
+    call F
+    call F
+    ...
+    call F
+    jmp LOOP
 
-F:	ret
+F:    ret
 Figure 1: Repeatedly calling a function (CALL-RET)
  
 Figure 2: Diagram representation of the microbenchmarks in Table 1
 Table 1: Cycles per call-return iteration (Lower is faster). RET to wrong target includes the execution time to modify the return address on the stack in memory, so it is not purely the branch misprediction delay.
-	CALL + RET	JMP + RET	CALL + JMP	JMP + JMP	RET to wrong target
-Pentium Pro	4.4	16.1	15.4	16.1	22.9
-Core 2 45nm	4.25	19.1	4.25	4.4	26.1
-Lynnfield	4.4	21.4	4.4	4.4	28.7
-Sandy Bridge	4.25	25.7	4.25	4.4	30.6
-Ivy Bridge	4.25	25.8	4.25	4.4	30.5
-Haswell	3.3	26.0	3.3	3.6	32.5
-Phenom	5.5	17.4	18.5	17.4	22.3
-Phenom II	5.5	17.6	14.2	7.4	22.3
-Bulldozer	4.25	26.4	7.25	7.4	40.4
-Piledriver	4.25	27.4	7.25	7.4	34.3
-Nano U3500	8.69	26.69	30.75	26.69	33.8
+    CALL + RET    JMP + RET    CALL + JMP    JMP + JMP    RET to wrong target
+Pentium Pro    4.4    16.1    15.4    16.1    22.9
+Core 2 45nm    4.25    19.1    4.25    4.4    26.1
+Lynnfield    4.4    21.4    4.4    4.4    28.7
+Sandy Bridge    4.25    25.7    4.25    4.4    30.6
+Ivy Bridge    4.25    25.8    4.25    4.4    30.5
+Haswell    3.3    26.0    3.3    3.6    32.5
+Phenom    5.5    17.4    18.5    17.4    22.3
+Phenom II    5.5    17.6    14.2    7.4    22.3
+Bulldozer    4.25    26.4    7.25    7.4    40.4
+Piledriver    4.25    27.4    7.25    7.4    34.3
+Nano U3500    8.69    26.69    30.75    26.69    33.8
 Improperly matched call-returns and BTB predictions
 
 Each CALL and RET instruction can be replaced by a functionally-equivalent pair of PUSH/POP and JMP instructions. The main difference is that a JMP is not treated as a call or return for the purposes of branch prediction. Table 1 (above) shows all four combinations, where each call or return may be replaced with a PUSH/POP+JMP. Out of the four combinations, CALL+RET has properly matched calls and returns, JMP+RET has returns are not matched to any calls and causes return mispredictions, and the remaining two cases use the indirect branch predictor (BTB) rather than the RAS to predict the return address.
@@ -115,23 +115,23 @@ Special case: CALL +0 is not a call
 Most x86 processors treat a CALL to the immediately following instruction as though it were not a function call. Firstly, calling the next instruction is not used for calling a function because a return would return to the beginning of the function being called. Secondly, on x86, calling the immediately-following instruction then popping the return address is the idiom used to retrieve the current instruction pointer (for IP-relative addressing, before x86-64 added IP-relative addressing modes). In the following code listing (Figure 3), the function get_current_ip appears to have an extra call that would cause the RAS predictor to be misaligned (and also mispredict the return) if call-to-next-instruction were not handled as a special case.
 
 get_current_ip:
-	call 1f
-	1: pop %eax
-	ret
+    call 1f
+    1: pop %eax
+    ret
 Figure 3: Getting the instruction pointer. This looks like a mismatched call and return, but is treated as a special case.
 Table 2: Cycles per call to get_current_ip (Lower is faster)
-	CALL+RET	get_current_ip
-Pentium Pro	4.4	11.4
-Core 2 45nm	4.25	6.0
-Lynnfield	4.4	4.4
-Sandy Bridge	4.25	4.25
-Ivy Bridge	4.25	4.25
-Haswell	3.3	3.4
-Phenom	5.5	7.5
-Phenom II	5.5	7.5
-Bulldozer	4.25	5.2
-Piledriver	4.25	4.25
-Nano U3500	8.69	34.0
+    CALL+RET    get_current_ip
+Pentium Pro    4.4    11.4
+Core 2 45nm    4.25    6.0
+Lynnfield    4.4    4.4
+Sandy Bridge    4.25    4.25
+Ivy Bridge    4.25    4.25
+Haswell    3.3    3.4
+Phenom    5.5    7.5
+Phenom II    5.5    7.5
+Bulldozer    4.25    5.2
+Piledriver    4.25    4.25
+Nano U3500    8.69    34.0
 
 Table 2 shows the runtime of the above routine on each processor. For every processor except for the Nano U3500, calling get_current_ip is nearly or equally fast compared to calling an function with a single return instruction. This indicates that CALL +0 is usually treated as a special case, and get_current_ip does not cause a return misprediction.
 
@@ -479,13 +479,13 @@ The method used in this section relies on CPU performance counters to count the 
 
 Results
 
-Processor	Max. branches	Max. calls	Max. calls (after 2 rets)	Max. calls (after 3 rets)
-Pentium Pro	40	13	1	1
-Core 2 45nm	91	19	?	?
-Nehalem	123	15	1	1
-Sandy Bridge	48	15	15	15
-Ivy Bridge	48	15	15	15
-Haswell	48	14	14	14
+Processor    Max. branches    Max. calls    Max. calls (after 2 rets)    Max. calls (after 3 rets)
+Pentium Pro    40    13    1    1
+Core 2 45nm    91    19    ?    ?
+Nehalem    123    15    1    1
+Sandy Bridge    48    15    15    15
+Ivy Bridge    48    15    15    15
+Haswell    48    14    14    14
 Microbenchmark diagram
 
 Figure 10: Maximum number of speculative calls or branches in flight for Intel processors.
@@ -523,18 +523,18 @@ One unusual characteristic of this microbenchmark is that part of the code was d
 It was also discovered that some processors (at least Ivy Bridge) will not speculatively execute code located in a page that is not in the instruction TLB (it will also not speculatively fill the ITLB entry). The resulting symptom is that the speculative-only code will work for a while, and then cease to execute some random amount of time later (typically millions of cycles) when its ITLB entry gets evicted. The solution is to periodically non-speculatively execute code near the speculative code to keep the code page in the ITLB.
 Choosing a method to use as a delay is not easy. Some methods work better than others, and it is not always clear to me why. A sequence of IMUL instructions usually worked well, but did not work well when measuring the maximum number of in-flight branches on Lynnfield. I suspect IMULs did not work well in this case because a long chain of IMULs occupies instruction scheduler space that crowds out speculative branches, so the amount of speculation was initially limited by scheduler space, but then as the scheduler drained of IMULs, the amount of speculation became limited by execution bandwidth of branches (competing with IMUL) rather than the (quite large) ROB capacity.
 Appendix 2: List of processors tested
-Short name	Description	CPUID family-model-stepping
-Pentium Pro	233 MHz, 256 KB L2 cache	6-1-9
-Core 2 45nm	Core 2 Quad Q9550	6-23-10
-Lynnfield	Core i7-860	6-30-5
-Sandy Bridge	Core i5-2500K	6-42-7
-Ivy Bridge	Core i5-3570K	6-58-9
-Haswell	Pentium G3420	6-60-3
-Phenom	Phenom 9550	16-2-3
-Phenom II	Phenom II X6 1090T	16-10-0
-Bulldozer	FX-8120	21-1-2
-Piledriver	FX-8320	21-2-0
-Nano U3500	VIA (Centaur) Nano U3500	6-15-8
+Short name    Description    CPUID family-model-stepping
+Pentium Pro    233 MHz, 256 KB L2 cache    6-1-9
+Core 2 45nm    Core 2 Quad Q9550    6-23-10
+Lynnfield    Core i7-860    6-30-5
+Sandy Bridge    Core i5-2500K    6-42-7
+Ivy Bridge    Core i5-3570K    6-58-9
+Haswell    Pentium G3420    6-60-3
+Phenom    Phenom 9550    16-2-3
+Phenom II    Phenom II X6 1090T    16-10-0
+Bulldozer    FX-8120    21-1-2
+Piledriver    FX-8320    21-2-0
+Nano U3500    VIA (Centaur) Nano U3500    6-15-8
 Misc.
 2D plots were created in gnuplot, 3D plots in ParaView, and diagrams in Inkscape
 Source Code

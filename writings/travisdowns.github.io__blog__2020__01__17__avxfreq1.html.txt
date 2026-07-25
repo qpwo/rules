@@ -53,10 +53,10 @@ Hardware
 
 We are running these tests on a SKX architecture W-series CPU: a W-21046 with the following license-based frequencies7:
 
-Name	License	Frequency
-Non-AVX Turbo	L0	3.2 GHz
-AVX Turbo	L1	2.8 GHz
-AVX-512 Turbo	L2	2.4 GHz
+Name    License    Frequency
+Non-AVX Turbo    L0    3.2 GHz
+AVX Turbo    L1    2.8 GHz
+AVX-512 Turbo    L2    2.4 GHz
 
 For one (voltage) test I also use my Skylake (mobile) i7-6700HQ, running at either it’s nominal frequency of 2.6 GHz, or the turbo frequency of 3.5 GHz.
 
@@ -182,30 +182,30 @@ If only vpor is slowed down, each block of 4 instructions will take 4 cycles, li
 
 We can vary the number of add instructions (N) to see how long this effect persists. This table is the result:
 
-ADD instructions (N)	Cycles/ADD	Delta Cycles (slow)	Delta Cycles (fast)
-2	4.1	2.3	-0.2
-3	4.1	4.0	0.8
-4	4.1	4.1	1.1
-5	4.0	3.9	1.1
-6	4.1	4.3	0.7
-7	4.0	3.4	1.1
-8	4.0	4.2	0.9
-9	4.1	3.9	0.8
-10	4.1	4.3	1.1
-20	4.0	4.0	1.0
-30	4.0	4.0	1.0
-40	4.1	4.3	1.0
-50	4.1	3.9	1.0
-60	4.1	4.4	1.0
-70	4.2	4.5	1.0
-80	4.1	3.4	1.0
-90	3.6	-0.2	1.0
-100	3.3	1.1	1.0
-120	2.9	0.9	1.0
-140	2.7	1.1	1.0
-160	2.5	1.2	1.0
-180	2.3	0.7	0.9
-200	2.2	0.8	1.0
+ADD instructions (N)    Cycles/ADD    Delta Cycles (slow)    Delta Cycles (fast)
+2    4.1    2.3    -0.2
+3    4.1    4.0    0.8
+4    4.1    4.1    1.1
+5    4.0    3.9    1.1
+6    4.1    4.3    0.7
+7    4.0    3.4    1.1
+8    4.0    4.2    0.9
+9    4.1    3.9    0.8
+10    4.1    4.3    1.1
+20    4.0    4.0    1.0
+30    4.0    4.0    1.0
+40    4.1    4.3    1.0
+50    4.1    3.9    1.0
+60    4.1    4.4    1.0
+70    4.2    4.5    1.0
+80    4.1    3.4    1.0
+90    3.6    -0.2    1.0
+100    3.3    1.1    1.0
+120    2.9    0.9    1.0
+140    2.7    1.1    1.0
+160    2.5    1.2    1.0
+180    2.3    0.7    0.9
+200    2.2    0.8    1.0
 
 The Cycles/ADD column shows the number of cycles taken per add instruction over the entire slow region (roughly the first 8-10 μs after the payload starts executing). The Delta Cycles (slow) shows how many cycles each additional add instruction took compared to the previous row: i.e., for row N = 30, it determines how much longer the 10 additional add instructions took compared to the row N = 20. The Delta Cycles (fast) column is the same thing, but applies to the samples after ~10 μs when the CPU is back up to full speed (that column shows the expected 1.0 cycles per additional add).
 
@@ -264,10 +264,10 @@ A key motivator for this post was to give concrete, qualitative guidance on how 
 
 We also summarize the key timings in this beautifully rendered table:
 
-What	Time	Description	Details
-Voltage Transition	~8 to 20 μs	Time required for a voltage transition, depends on frequency	38
-Frequency Transition	~10 μs	Time required for the halted part of a frequency transition	39
-Relaxation Period	~680 μs	Time required to go back to a lower power license, measured from the last instruction requiring the higher license	40
+What    Time    Description    Details
+Voltage Transition    ~8 to 20 μs    Time required for a voltage transition, depends on frequency    38
+Frequency Transition    ~10 μs    Time required for the halted part of a frequency transition    39
+Relaxation Period    ~680 μs    Time required to go back to a lower power license, measured from the last instruction requiring the higher license    40
 Thanks
 
 Daniel Lemire who provided access to the AVX-512 system I used for testing.

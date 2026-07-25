@@ -27,10 +27,10 @@ But, is it a high-quality index?
 
 Absolutely! Let’s compare the centroids obtained with SuperKMeans and FAISS in terms of their quality to fulfill vector search tasks. For this analysis, we used the recall@100 metric, measuring the recall obtained in the top-100 results while exploring 3% of the available clusters. We have also compared the balance of clusters by counting the number of distance calculations performed. The results are summarized in the table below:
 
-Algorithm	Indexing Time (s)	Recall@100	Vectors Explored
-FAISS IVF	2113	0.956	33.5K
-Vanilla SuperKMeans	696 (3x faster)	0.955 (equal)	33.3K (equal)
-Hierarchical SuperKMeans	68 (30x faster)	0.937 (-0.02)	26.4K (21% less)
+Algorithm    Indexing Time (s)    Recall@100    Vectors Explored
+FAISS IVF    2113    0.956    33.5K
+Vanilla SuperKMeans    696 (3x faster)    0.955 (equal)    33.3K (equal)
+Hierarchical SuperKMeans    68 (30x faster)    0.937 (-0.02)    26.4K (21% less)
 
 The difference in recall@100 between FAISS IVF and Hierarchical SuperKMeans is minimal (around 2%). However, Hierarchical SuperKMeans significantly improves cluster balance while being 30x faster to construct. On the other hand, Vanilla SuperKMeans remains 3x faster to build!
 

@@ -458,14 +458,14 @@ Huge pages #
 
 Up to now we’ve presented pages as always being of the same size — 4KiB on x86-64. However, many CPU architectures, including x86-64, include larger page sizes. In the case of x86-64, we not only have 4KiB pages (the “standard” size), but also 2MiB and even 1GiB pages (“huge” pages). In the rest of the post we’ll only deal with 2MiB huge pages, since 1GiB pages are fairly uncommon, and overkill for our task anyway.
 
-Architecture	Smallest page size	Larger page sizes
-x86	4KiB	2MiB, 4MiB
-x86-64	4KiB	2MiB, 1GiB20
-ARMv7	4KiB	64KiB, 1MiB, 16MiB
-ARMv8	4KiB	16KiB, 64KiB
-RISCV32	4KiB	4MiB
-RISCV64	4KiB	2MiB, 1GiB, 512GiB, 256 TiB
-Power ISA	8KiB	64 KiB, 16 MiB, 16 GiB
+Architecture    Smallest page size    Larger page sizes
+x86    4KiB    2MiB, 4MiB
+x86-64    4KiB    2MiB, 1GiB20
+ARMv7    4KiB    64KiB, 1MiB, 16MiB
+ARMv8    4KiB    16KiB, 64KiB
+RISCV32    4KiB    4MiB
+RISCV64    4KiB    2MiB, 1GiB, 512GiB, 256 TiB
+Power ISA    8KiB    64 KiB, 16 MiB, 16 GiB
 
 Page sizes available on architectures commonly used today, from Wikipedia.
 

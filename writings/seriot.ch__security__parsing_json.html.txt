@@ -94,23 +94,23 @@ Finally, I also generated JSON files with the fuzzing software American Fuzzy Lo
 
 Scalars - Clearly, scalars such as 123 or "asd" must be parsed. In practice, many popular parsers do still implement RFC 4627 and won't parse lonely values. So there are basic tests such as:
 
-y_structure_lonely_string.json	"asd"
+y_structure_lonely_string.json    "asd"
 
 Trailing commas - Trailing commas such as in [123,] or {"a":1,} are not part of the grammar, so these files should not pass, right? The thing is that RFC 8259 allows parsers to support "extensions" (section 9), although it does not elaborate about extensions. In practice, allowing trailing commas is a common extension. Since it's not part of JSON grammar, parsers don't have to support it, so the file name starts with n.
 
-n_object_trailing_comma.json	{"id":0,}
-n_object_several_trailing_commas.json	{"id":0,,,,,}
+n_object_trailing_comma.json    {"id":0,}
+n_object_several_trailing_commas.json    {"id":0,,,,,}
 
 Comments - Comments are not part of the grammar. Crockford removed them from early specifications. Yet, they are still another common extension. Some parsers allow trailing comments [1]//xxx, or even inline comments [1,/*xxx*/2].
 
-y_string_comments.json	["a/*b*/c/*d//e"]
-n_object_trailing_comment.json	{"a":"b"}/**/
-n_structure_object_with_comment.json	{"a":/*comment*/"b"}
+y_string_comments.json    ["a/*b*/c/*d//e"]
+n_object_trailing_comment.json    {"a":"b"}/**/
+n_structure_object_with_comment.json    {"a":/*comment*/"b"}
 
 Unclosed Structures - These tests cover everything that is opened and not closed or the opposite, such as [ or [1,{,3]. They are clearly invalid and must fail.
 
-n_structure_object_unclosed_no_value.json	{"":
-n_structure_object_followed_by_closing_object.json	{}}
+n_structure_object_unclosed_no_value.json    {"":
+n_structure_object_followed_by_closing_object.json    {}}
 
 Nested Structures - Structures may contain other structures. An array may contain other arrays. The first element can be an array, whose first element is also an array, etc, like Russian dolls [[[[[]]]]]. RFC 8259 allows parsers to set limits to the maximum depth of nesting (section 9).
 
@@ -122,50 +122,50 @@ Segmentation fault: 11
 
 White Spaces - RFC 8259 grammar defines white spaces as 0x20 (space), 0x09 (tab), 0x0A (line feed) and 0x0D (carriage return). It allows white spaces before and after "structural characters" []{}:,. So, we'll write passing tests like 20[090A]0D and failing ones including all kinds of white spaces that are not explicitly allowed, such as 0x0C form feed or [E281A0], which is the UTF-8 encoding for U+2060 WORD JOINER.
 
-n_structure_whitespace_formfeed.json	[0C]
-n_structure_whitespace_U+2060_word_joiner.json	[E281A0]
-n_structure_no_data.json	
+n_structure_whitespace_formfeed.json    [0C]
+n_structure_whitespace_U+2060_word_joiner.json    [E281A0]
+n_structure_no_data.json    
 2.2 Numbers
 
 NaN and Infinity - Strings that describe special numbers such as NaN or Infinity are not part of the JSON grammar. However, several parsers accept them, which can be considered as an "extension" (section 9). Test files also test the negative forms -NaN and -Infinity.
 
-n_number_NaN.json	[NaN]
-n_number_minus_infinity.json	[-Infinity]
+n_number_NaN.json    [NaN]
+n_number_minus_infinity.json    [-Infinity]
 
 Hex Numbers - RFC 8259 doesn't allow hex numbers. Tests will include numbers such as 0xFF, and these files should not be parsed.
 
-n_number_hex_2_digits.json	[0x42]
+n_number_hex_2_digits.json    [0x42]
 
 Range and Precision - What about numbers with a huge amount of digits? According to RFC 8259, "A JSON parser MUST accept all texts that conform to the JSON grammar" (section 9). However, according to the same paragraph, "An implementation may set limits on the range and precision of numbers.". So, it is unclear to me whether parsers are allowed to raise errors when they meet extreme values such as 1e9999 or 0.0000000000000000000000000000001.
 
-i_number_very_big_negative_int.json	[-237462374673276894279832(...)
+i_number_very_big_negative_int.json    [-237462374673276894279832(...)
 
 [Update 2016-11-02] The original version of this article classified the "Range and Precision" tests as y_ (must pass). This classification was challenged and I eventually changed the tests into i_ (implementation defined).
 
 Exponential Notation - Parsing exponential notation can be surprisingly hard (see the results section). Here are some valid contents [0E0], [0e+1] and invalid ones [1.0e+], [0E] and [1eE2].
 
-n_number_0_capital_E+.json	[0E+]
-n_number_.2e-3.json	[.2e-3]
-y_number_double_huge_neg_exp.json	[123.456e-789]
+n_number_0_capital_E+.json    [0E+]
+n_number_.2e-3.json    [.2e-3]
+y_number_double_huge_neg_exp.json    [123.456e-789]
 2.3 Arrays
 
 Most edge cases regarding arrays are opening/closing issues and nesting limit. These cases were discussed in section 2.1 Structure. Passing tests will include [[],[[]]], while failing tests will be like ] or [[]]].
 
-n_array_comma_and_number.json	[,1]
-n_array_colon_instead_of_comma.json	["": 1]
-n_array_unclosed_with_new_lines.json	[1,0A10A,1
+n_array_comma_and_number.json    [,1]
+n_array_colon_instead_of_comma.json    ["": 1]
+n_array_unclosed_with_new_lines.json    [1,0A10A,1
 2.4 Objects
 
 Duplicated Keys - RFC 8259 section 4 says that "The names within an object should be unique.". It does not prevent parsing objects where the same key does appear several times {"a":1,"a":2}, but lets parsers decide what to do in this case. The same section 4 even mentions that "(some) implementations report an error or fail to parse the object", without telling clearly if failing to parse such objects is compliant or not with the RFC and especially section 9: "A JSON parser MUST accept all texts that conform to the JSON grammar.".
 
 Variants of this special case include same key - same value {"a":1,"a":1}, and similar keys or values, where the similarity depends on how you compare strings. For example, the keys may be binary different but equivalent according to Unicode NFC normalization, such as in {"C3A9:"NFC","65CC81":"NFD"} where both keys encode "é". Tests will also include {"a":0,"a":-0}.
 
-y_object_empty_key.json	{"":0}
-y_object_duplicated_key_and_value.json	{"a":"b","a":"b"}
-n_object_double_colon.json	{"x"::"b"}
-n_object_key_with_single_quotes.json	{key: 'value'}
-n_object_missing_key.json	{:"b"}
-n_object_non_string_key.json	{1:1}
+y_object_empty_key.json    {"":0}
+y_object_duplicated_key_and_value.json    {"a":"b","a":"b"}
+n_object_double_colon.json    {"x"::"b"}
+n_object_key_with_single_quotes.json    {key: 'value'}
+n_object_missing_key.json    {:"b"}
+n_object_non_string_key.json    {1:1}
 2.5 Strings
 
 File Encoding - Former RFC 7159 did only recommend UTF-8, and said that "JSON text SHALL be encoded in UTF-8, UTF-16, or UTF-32".
@@ -176,8 +176,8 @@ Still, passing tests should include text encoded in these three encodings. UTF-1
 
 The parsing of invalid UTF-8 will be implementation defined.
 
-y_string_utf16.json	FFFE[00"00E900"00]00
-i_string_iso_latin_1.json	["E9"]
+y_string_utf16.json    FFFE[00"00E900"00]00
+i_string_iso_latin_1.json    ["E9"]
 
 [Update 2016-11-04] The first version of this article considered invalid UTF-8 as n_ tests. This classification was challenged and I eventually changed these tests into i_ tests.
 
@@ -187,26 +187,26 @@ Now, RFC 8259 section 8.1 adds: "Implementations MUST NOT add a byte order mark 
 
 Tests with implementation defined will include a plain UTF-8 BOM with no other content, a UTF-8 BOM with a UTF-8 string, but also a UTF-8 BOM with a UTF-16 string, and a UTF-16 BOM with a UTF-8 string.
 
-n_structure_UTF8_BOM_no_data.json	EFBBBF
-n_structure_incomplete_UTF8_BOM.json	EFBB{}
-i_structure_UTF-8_BOM_empty_object.json	EFBBBF{}
+n_structure_UTF8_BOM_no_data.json    EFBBBF
+n_structure_incomplete_UTF8_BOM.json    EFBB{}
+i_structure_UTF-8_BOM_empty_object.json    EFBBBF{}
 
 Control Characters - Control characters must be escaped, and are defined as U+0000 through U+001F (section 7). This range does not include 0x7F DEL, which may be part of other definitions of control characters (see section 4.6 Bash JSON.sh). That is why passing tests include ["7F"].
 
-n_string_unescaped_ctrl_char.json	["a09a"]
-y_string_unescaped_char_delete.json	["7F"]
-n_string_escape_x.json	["\x00"]
+n_string_unescaped_ctrl_char.json    ["a09a"]
+y_string_unescaped_char_delete.json    ["7F"]
+n_string_escape_x.json    ["\x00"]
 
 Escape - "All characters may be escaped" (section 7) like uXXXX, but some MUST be escaped: quotation mark, reverse solidus and control characters. Failing tests should include the escape character without the escaped value, or with an incomplete escaped value. Examples: [""], [", [.
 
-y_string_allowed_escapes.json	["\"\/\b\f\n\r\t"]
-n_structure_bad_escape.json	[\"
+y_string_allowed_escapes.json    ["\"\/\b\f\n\r\t"]
+n_structure_bad_escape.json    [\"
 
 The escape character can be used to represent codepoints in the Basic Multilingual Plane (u005C). Passing tests will include the zero character u0000, which may cause issues in C-based parsers. Failing tests will include capital U U005C, non-hexadecimal escaped values u123Z and incomplete escaped values u123.
 
-y_string_backslash_and_u_escaped_zero.json	["\u0000"]
-n_string_invalid_unicode_escape.json	["\uqqqq"]
-n_string_incomplete_escaped_character.json	["\u00A"]
+y_string_backslash_and_u_escaped_zero.json    ["\u0000"]
+n_string_invalid_unicode_escape.json    ["\uqqqq"]
+n_string_incomplete_escaped_character.json    ["\u00A"]
 
 Escaped Invalid Characters
 
@@ -218,12 +218,12 @@ The editors considered that the grammar should not be restricted, and that warni
 
 [Update 2016-11-03] In the first version of this article, I treated non-characters such as U+FDD0 to U+10FFFE the same way as invalid codepoints (i_ tests). This classification was challenged and I eventually changed the non-characters tests into y_ tests.
 
-y_string_accepted_surrogate_pair.json	["\uD801\udc37"]
-n_string_incomplete_escaped_character.json	["\u00A"]
-i_string_incomplete_surrogates_escape_valid.json	["\uD800\uD800n"]
-i_string_lone_second_surrogate.json	["\uDFAA"]
-i_string_1st_valid_surrogate_2nd_invalid.json	["\uD888\u1234"]
-i_string_inverted_surrogates_U+1D11E.json	["\uDd1e\uD834"]
+y_string_accepted_surrogate_pair.json    ["\uD801\udc37"]
+n_string_incomplete_escaped_character.json    ["\u00A"]
+i_string_incomplete_surrogates_escape_valid.json    ["\uD800\uD800n"]
+i_string_lone_second_surrogate.json    ["\uDFAA"]
+i_string_1st_valid_surrogate_2nd_invalid.json    ["\uD888\u1234"]
+i_string_inverted_surrogates_U+1D11E.json    ["\uDd1e\uD834"]
 
 Raw non-Unicode Characters
 
@@ -231,9 +231,9 @@ The previous section discussed non-Unicode codepoints that appear in strings, su
 
 Parsers also have to handle raw bytes that don't encode Unicode characters. For instance, the byte FF does not represent a Unicode character in UTF-8. As a consequence, a string containing FF is not a UTF-8 string. In this case, parsers should simply refuse to parse the string, because "A string is a sequence of zero or more Unicode characters" RFC 8259 section 1 and "JSON text (...) MUST be encoded using UTF-8 RFC 8259 section 8.1.
 
-y_string_utf8.json	["€𝄞"]
-n_string_invalid_utf-8.json	["FF"]
-n_array_invalid_utf8.json	[FF]
+y_string_utf8.json    ["€𝄞"]
+n_string_invalid_utf-8.json    ["FF"]
+n_array_invalid_utf8.json    [FF]
 2.6 RFC 8259 Ambiguities
 
 Beyond the specific cases we just went through, finding out if a parser is RFC 8259 compliant or not is next to impossible because of section 9 "Parsers":
@@ -318,11 +318,11 @@ https://github.com/udp/json-parser
 
 And here is a quick comparison between them:
 
-	jsmn	jansson	ccan	cJSON	json-parser
-Parses `["u0000"]`	YES	YES	NO	NO	YES
-Too liberal	YES	NO	NO	YES	YES
-Crash on nested structs.	NO	NO	YES	YES	NO
-Rejects big numbers	YES	YES	NO	NO	NO
+    jsmn    jansson    ccan    cJSON    json-parser
+Parses `["u0000"]`    YES    YES    NO    NO    YES
+Too liberal    YES    NO    NO    YES    YES
+Crash on nested structs.    NO    NO    YES    YES    NO
+Rejects big numbers    YES    YES    NO    NO    NO
 
 You can refer to the full results for more details.
 
@@ -336,14 +336,14 @@ https://github.com/stig/json-framework aka SBJSON
 
 And here is a quick comparison between them:
 
-	JSONKit	TouchJSON	SBJSON
-Crash on nested structs.	YES	NO	YES
-Crash on invalid UTF-8	NO	NO	YES
-Parses trailing garbage `[]x`	NO	NO	YES
-Rejects big numbers	NO	YES	NO
-Parses bad numbers `[0.e1]`	NO	YES	NO
-Treats `0x0C FORM FEED` as white space	NO	YES	NO
-Parses non-char. `["uFFFF"]`	NO	YES	YES
+    JSONKit    TouchJSON    SBJSON
+Crash on nested structs.    YES    NO    YES
+Crash on invalid UTF-8    NO    NO    YES
+Parses trailing garbage `[]x`    NO    NO    YES
+Rejects big numbers    NO    YES    NO
+Parses bad numbers `[0.e1]`    NO    YES    NO
+Treats `0x0C FORM FEED` as white space    NO    YES    NO
+Parses non-char. `["uFFFF"]`    NO    YES    YES
 
 SBJSON survived after the arrival of NSJSONSerialization, is still maintained and is available through CocoaPods, so I reported the crash when parsing non UTF-8 strings such as ["FF"] in issue #219.
 

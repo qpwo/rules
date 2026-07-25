@@ -88,9 +88,9 @@ main()
 }
 
 Results:
-Compiler	Executable size (in bytes)
-OTCCELF	424
-GCC (stripped)	2448
+Compiler    Executable size (in bytes)
+OTCCELF    424
+GCC (stripped)    2448
 Links
 TinyCC, a tiny but complete C compiler.
 Tiny ELF programs from Brian Raiter.

@@ -1,13 +1,13 @@
 FS-Cache Benchmarks
 [Posted December 24, 2008 by jake]
 
-From:	 	David Howells <dhowells-AT-redhat.com>
-To:	 	Andrew Morton <akpm-AT-linux-foundation.org>
-Subject:	 	FS-Cache Benchmarks
-Date:	 	Tue, 25 Nov 2008 13:39:02 +0000
-Message-ID:	 	<25516.1227620342@redhat.com>
-Cc:	 	nfsv4-AT-linux-nfs.org, linux-kernel-AT-vger.kernel.org, dhowells-AT-redhat.com, viro-AT-ZenIV.linux.org.uk, linux-fsdevel-AT-vger.kernel.org
-Archive‑link:	 	Article
+From:         David Howells <dhowells-AT-redhat.com>
+To:         Andrew Morton <akpm-AT-linux-foundation.org>
+Subject:         FS-Cache Benchmarks
+Date:         Tue, 25 Nov 2008 13:39:02 +0000
+Message-ID:         <25516.1227620342@redhat.com>
+Cc:         nfsv4-AT-linux-nfs.org, linux-kernel-AT-vger.kernel.org, dhowells-AT-redhat.com, viro-AT-ZenIV.linux.org.uk, linux-fsdevel-AT-vger.kernel.org
+Archive‑link:         Article
 
 [Repost with more appropriate subject line]
 
@@ -39,7 +39,7 @@ The Ext3 partition used for the cache was tuned to have 4096-byte blocks.
 During each run, a watch was put on the FS-Cache statistics on the client
 machine:
 
-	watch -n0 cat /proc/fs/fscache/stats
+    watch -n0 cat /proc/fs/fscache/stats
 
 This went over SSH to my desktop machine by GigE ethernet.
 
@@ -50,13 +50,13 @@ The first benchmark involved pulling a 100MB file by NFS to the client using
 cat to /dev/zero run under time as a test.  The 'Time taken' reported by time
 was logged.  The benchmark was repeated three times and the average was taken:
 
-	Cache	RUN #1		RUN #2		RUN #3		AVG
-	=======	===============	===============	===============	===============
-	SERVER	0m0.062s
-	NONE	1m59.462s	1m59.948s	2m1.852s	2.007 mins
-	COLD	1m58.448s	1m59.436s	2m5.746s	2.020 mins
-	HOT	0m2.235s	0m2.154s	0m2.171s	0.036 mins
-	PGCACHE	0m0.040s
+    Cache    RUN #1        RUN #2        RUN #3        AVG
+    =======    ===============    ===============    ===============    ===============
+    SERVER    0m0.062s
+    NONE    1m59.462s    1m59.948s    2m1.852s    2.007 mins
+    COLD    1m58.448s    1m59.436s    2m5.746s    2.020 mins
+    HOT    0m2.235s    0m2.154s    0m2.171s    0.036 mins
+    PGCACHE    0m0.040s
 
 Firstly the test was run on the server twice and the second result logged
 (SERVER).
@@ -80,13 +80,13 @@ tree or 1185 directories containing 19258 files using a single tar to /dev/zero
 as a tesk.  The 'Time taken' reported by time was logged.  The benchmark was
 repeated three times and the average was taken:
 
-	Cache	RUN #1		RUN #2		RUN #3		AVG
-	=======	===============	===============	===============	===============
-	SERVER	0m0.348s
-	NONE	7m35.335s	7m42.075s	7m32.797s	7.612 mins
-	COLD	7m45.117s	7m54.774s	8m2.172s	7.900 mins
-	HOT	7m14.970s	7m10.953s	7m16.390s	7.235 mins
-	PGCACHE	3m10.864s
+    Cache    RUN #1        RUN #2        RUN #3        AVG
+    =======    ===============    ===============    ===============    ===============
+    SERVER    0m0.348s
+    NONE    7m35.335s    7m42.075s    7m32.797s    7.612 mins
+    COLD    7m45.117s    7m54.774s    8m2.172s    7.900 mins
+    HOT    7m14.970s    7m10.953s    7m16.390s    7.235 mins
+    PGCACHE    3m10.864s
 
 The procedure was as for the first benchmark.
 
@@ -95,11 +95,11 @@ to determine the network loading of run #3.  The following table shows the
 counts of three different RPC operations issued, and the number of bytes read
 over the network as part of READ RPC operations:
 
-	Cache	GETATTR (N)	ACCESS (N)	READ (N)	READ (BYTES)
-	=======	===============	===============	===============	===============
-	NONE	22371		20486		21402		221252168
-	COLD	22411		20486		21402		221252168
-	HOT	22495		20481		0		0
+    Cache    GETATTR (N)    ACCESS (N)    READ (N)    READ (BYTES)
+    =======    ===============    ===============    ===============    ===============
+    NONE    22371        20486        21402        221252168
+    COLD    22411        20486        21402        221252168
+    HOT    22495        20481        0        0
 
 CONCLUSION
 ==========

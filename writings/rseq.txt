@@ -90,17 +90,17 @@ Here's your gentle introduction to restartable sequences. We're going to build a
 96 core AMD Ryzen Threadripper Pro 7995WX (x86-64)
 
 wall
-time (ms)	wall
-ops/sec	user
-time (ms)	system
-time (ms)	cpu
-ops/sec	implementation
-62,461	30,739k	118,631	11,744,462	161k	hitcounter-mutex.c (glibc)
-29,389	65,331k	34,094	13,259	40,547k	hitcounter-mutex.c (cosmo)
-23,412	82,009k	4,366,203	0	440k	hitcounter-atomic.c
-543	3,535,912k	93,274	0	20,585k	hitcounter-shard.c
-20	96,000,000k	1,150	12	1,652,324k	hitcounter-rseq.c
-7	274,285,714k	0	11	174,545,455k	hitcounter-affinity.c
+time (ms)    wall
+ops/sec    user
+time (ms)    system
+time (ms)    cpu
+ops/sec    implementation
+62,461    30,739k    118,631    11,744,462    161k    hitcounter-mutex.c (glibc)
+29,389    65,331k    34,094    13,259    40,547k    hitcounter-mutex.c (cosmo)
+23,412    82,009k    4,366,203    0    440k    hitcounter-atomic.c
+543    3,535,912k    93,274    0    20,585k    hitcounter-shard.c
+20    96,000,000k    1,150    12    1,652,324k    hitcounter-rseq.c
+7    274,285,714k    0    11    174,545,455k    hitcounter-affinity.c
 Earlier when I said rseq made my code go 34x or 43x faster, it's important to note that I was comparing it to the portable version of my malloc() implementation, which is already heavily optimized for multicore systems. If we compare rseq to a truly naïve solution, such as using a glibc mutex to guard an increment operation, then we see that rseq can actually make things go a million times faster judging by CPU time consumption. It sounds like I'm joking, except I'm not, since half the friends I asked told me that using the mutex was their first instinct here.
 
 Now in terms of exploring the five approaches listed above, we can see that only three are worth considering.
@@ -114,17 +114,17 @@ Photo of System76 Ampere workstation, a black tower with a red stripe on the fro
 System76 Thelio Astra w/ Ampere's 128 core 3GHz Altra CPU (ARM64)
 
 wall
-time (ms)	wall
-ops/sec	user
-time (ms)	system
-time (ms)	cpu
-ops/sec	implementation
-219,484	5,832k	322,259	15,790,712	79k	hitcounter-mutex.c (glibc)
-212,005	6,038k	144,163	67,841	6,038k	hitcounter-mutex.c (cosmo)
-17,924	71,413k	2,162,867	0	592k	hitcounter-atomic.c
-417	3,069,544k	42,972	0	29,787k	hitcounter-shard.c
-39	32,820,513k	2,966	61	422,861k	hitcounter-rseq.c
-12	106,666,667k	15	1	80,000,000k	hitcounter-affinity.c
+time (ms)    wall
+ops/sec    user
+time (ms)    system
+time (ms)    cpu
+ops/sec    implementation
+219,484    5,832k    322,259    15,790,712    79k    hitcounter-mutex.c (glibc)
+212,005    6,038k    144,163    67,841    6,038k    hitcounter-mutex.c (cosmo)
+17,924    71,413k    2,162,867    0    592k    hitcounter-atomic.c
+417    3,069,544k    42,972    0    29,787k    hitcounter-shard.c
+39    32,820,513k    2,966    61    422,861k    hitcounter-rseq.c
+12    106,666,667k    15    1    80,000,000k    hitcounter-affinity.c
 In the table above, the ops/sec columns are most directly comparable with the Threadripper results, since they're scaled with respect to the workload. More ops/sec is better. Looking at these numbers, a few things stand out:
 
 Ampere's ARM Altra CPU has really fast atomics. One benefit of ARM is that it has a fancier memory model, which hitcounter-atomic.c exploits using atomic_fetch_add_explicit(&counter, 1, memory_order_relaxed). Thanks to relaxed ordering, we get an ldadd instruction, which doesn't need to manage memory barriers. You can't do that on x86, since xadd is always strongly ordered. What's more interesting is that, even if I specify memory_order_seq_cst (for ldaddal) my Altra CPU still goes noticeably faster than my Threadripper. I suspect it might be hyperthreading that got it into trouble, because my Threadripper claims to have 192 CPUs.
@@ -158,51 +158,51 @@ Here we see that we finally got rid of the locks and atomics. We're using aligna
 static inline void push(struct List *chunk) {
 #ifdef __x86_64__
   asm volatile(".pushsection .rodata.rseq,\"a\",@progbits\n"
-               "	.balign	32\n"
-               "300:	.long	0\n"                  // rseq_cs::version
-               "	.long	0\n"                  // rseq_cs::flags
-               "	.quad	301f\n"               // rseq_cs::start_ip
-               "	.quad	302f-301f\n"          // rseq_cs::post_commit_offset
-               "	.quad	303f\n"               // rseq_cs::abort_ip
-               "	.popsection\n"                //
-               "301:	lea	300b(%%rip),%%rcx\n"  //
-               "	mov	%%rcx,8(%1)\n"        // rseq->rseq_cs
-               "	mov	(%1),%%ecx\n"         // rseq->cpu_id_start
-               "	shl	$6,%%ecx\n"           //
-               "	mov	(%2,%%rcx),%%rdx\n"   // rdx = freelist
-               "	mov	%%rdx,(%0)\n"         // chunk->next = rdx
-               "	mov	%0,(%2,%%rcx)\n"      // freelist = chunk
-               "302:	.pushsection .text.unlikely,\"ax\",@progbits\n"
-               "	.byte	0x0f,0xb9,0x4d\n"
-               "	.long	0x53053053\n"
-               "303:	jmp	301b\n"               // restart on abort
-               "	.popsection"
+               "    .balign    32\n"
+               "300:    .long    0\n"                  // rseq_cs::version
+               "    .long    0\n"                  // rseq_cs::flags
+               "    .quad    301f\n"               // rseq_cs::start_ip
+               "    .quad    302f-301f\n"          // rseq_cs::post_commit_offset
+               "    .quad    303f\n"               // rseq_cs::abort_ip
+               "    .popsection\n"                //
+               "301:    lea    300b(%%rip),%%rcx\n"  //
+               "    mov    %%rcx,8(%1)\n"        // rseq->rseq_cs
+               "    mov    (%1),%%ecx\n"         // rseq->cpu_id_start
+               "    shl    $6,%%ecx\n"           //
+               "    mov    (%2,%%rcx),%%rdx\n"   // rdx = freelist
+               "    mov    %%rdx,(%0)\n"         // chunk->next = rdx
+               "    mov    %0,(%2,%%rcx)\n"      // freelist = chunk
+               "302:    .pushsection .text.unlikely,\"ax\",@progbits\n"
+               "    .byte    0x0f,0xb9,0x4d\n"
+               "    .long    0x53053053\n"
+               "303:    jmp    301b\n"               // restart on abort
+               "    .popsection"
                : /* no outputs */
                : "r"(chunk), "r"(__get_rseq()), "r"(heaps)
                : "rcx", "rdx", "memory");
 #elifdef __aarch64__
   asm volatile(".pushsection .rodata.rseq,\"a\",@progbits\n"
-               "	.balign	32\n"
-               "300:	.long	0\n"                  // rseq_cs::version
-               "	.long	0\n"                  // rseq_cs::flags
-               "	.quad	301f\n"               // rseq_cs::start_ip
-               "	.quad	302f-301f\n"          // rseq_cs::post_commit_offset
-               "	.quad	303f\n"               // rseq_cs::abort_ip
-               "	.popsection\n"                //
-               "301:	adrp	x4, 300b\n"           // load address of rseq_cs
-               "	add	x4, x4, :lo12:300b\n" //
-               "	str	x4, [%1, #8]\n"       // rseq->rseq_cs
-               "	ldr	w4, [%1]\n"           // rseq->cpu_id_start
-               "	lsl	w4, w4, #6\n"         //
-               "	ldr	x5, [%2, x4]\n"       // x5 = freelist
-               "	str	x5, [%0]\n"           // chunk->next = x5
-               "	str	%0, [%2, x4]\n"       // freelist = chunk
-               "302:	.pushsection .text.unlikely,\"ax\",@progbits\n"
-               "	.long	0xd428bc00\n"
-               "303:	adrp	x5, 301b\n"           // load page address of 301b
-               "	add	x5, x5, :lo12:301b\n" // add low 12 bits
-               "	br	x5\n"                 // branch to 301b via register
-               "	.popsection"
+               "    .balign    32\n"
+               "300:    .long    0\n"                  // rseq_cs::version
+               "    .long    0\n"                  // rseq_cs::flags
+               "    .quad    301f\n"               // rseq_cs::start_ip
+               "    .quad    302f-301f\n"          // rseq_cs::post_commit_offset
+               "    .quad    303f\n"               // rseq_cs::abort_ip
+               "    .popsection\n"                //
+               "301:    adrp    x4, 300b\n"           // load address of rseq_cs
+               "    add    x4, x4, :lo12:300b\n" //
+               "    str    x4, [%1, #8]\n"       // rseq->rseq_cs
+               "    ldr    w4, [%1]\n"           // rseq->cpu_id_start
+               "    lsl    w4, w4, #6\n"         //
+               "    ldr    x5, [%2, x4]\n"       // x5 = freelist
+               "    str    x5, [%0]\n"           // chunk->next = x5
+               "    str    %0, [%2, x4]\n"       // freelist = chunk
+               "302:    .pushsection .text.unlikely,\"ax\",@progbits\n"
+               "    .long    0xd428bc00\n"
+               "303:    adrp    x5, 301b\n"           // load page address of 301b
+               "    add    x5, x5, :lo12:301b\n" // add low 12 bits
+               "    br    x5\n"                 // branch to 301b via register
+               "    .popsection"
                : /* no outputs */
                : "r"(chunk), "r"(__get_rseq()), "r"(heaps)
                : "x4", "x5", "memory");
@@ -213,54 +213,54 @@ static inline struct List *pop(void) {
   struct List *chunk;
 #ifdef __x86_64__
   asm volatile(".pushsection .rodata.rseq,\"a\",@progbits\n"
-               "	.balign	32\n"
-               "300:	.long	0\n"                  // rseq_cs::version
-               "	.long	0\n"                  // rseq_cs::flags
-               "	.quad	301f\n"               // rseq_cs::start_ip
-               "	.quad	302f-301f\n"          // rseq_cs::post_commit_offset
-               "	.quad	303f\n"               // rseq_cs::abort_ip
-               "	.popsection\n"                //
-               "301:	lea	300b(%%rip),%%rcx\n"  //
-               "	mov	%%rcx,8(%1)\n"        // rseq->rseq_cs
-               "	mov	(%1),%%ecx\n"         // rseq->cpu_id_start
-               "	shl	$6,%%ecx\n"           //
-               "	mov	(%2,%%rcx),%0\n"      // chunk = chunks[cpu].freelist
-               "	test	%0,%0\n"              //
-               "	jz	302f\n"               //
-               "	mov	(%0),%%rdx\n"         // rdx = chunk->next
-               "	mov	%%rdx,(%2,%%rcx)\n"   // freelist = rdx
-               "302:	.pushsection .text.unlikely,\"ax\",@progbits\n"
-               "	.byte	0x0f,0xb9,0x4d\n"
-               "	.long	0x53053053\n"
-               "303:	jmp	301b\n"               // restart on abort
-               "	.popsection"
+               "    .balign    32\n"
+               "300:    .long    0\n"                  // rseq_cs::version
+               "    .long    0\n"                  // rseq_cs::flags
+               "    .quad    301f\n"               // rseq_cs::start_ip
+               "    .quad    302f-301f\n"          // rseq_cs::post_commit_offset
+               "    .quad    303f\n"               // rseq_cs::abort_ip
+               "    .popsection\n"                //
+               "301:    lea    300b(%%rip),%%rcx\n"  //
+               "    mov    %%rcx,8(%1)\n"        // rseq->rseq_cs
+               "    mov    (%1),%%ecx\n"         // rseq->cpu_id_start
+               "    shl    $6,%%ecx\n"           //
+               "    mov    (%2,%%rcx),%0\n"      // chunk = chunks[cpu].freelist
+               "    test    %0,%0\n"              //
+               "    jz    302f\n"               //
+               "    mov    (%0),%%rdx\n"         // rdx = chunk->next
+               "    mov    %%rdx,(%2,%%rcx)\n"   // freelist = rdx
+               "302:    .pushsection .text.unlikely,\"ax\",@progbits\n"
+               "    .byte    0x0f,0xb9,0x4d\n"
+               "    .long    0x53053053\n"
+               "303:    jmp    301b\n"               // restart on abort
+               "    .popsection"
                : "=&r"(chunk)
                : "r"(__get_rseq()), "r"(heaps)
                : "rcx", "rdx", "memory");
 #elifdef __aarch64__
   asm volatile(".pushsection .rodata.rseq,\"a\",@progbits\n"
-               "	.balign	32\n"
-               "300:	.long	0\n"                  // rseq_cs::version
-               "	.long	0\n"                  // rseq_cs::flags
-               "	.quad	301f\n"               // rseq_cs::start_ip
-               "	.quad	302f-301f\n"          // rseq_cs::post_commit_offset
-               "	.quad	303f\n"               // rseq_cs::abort_ip
-               "	.popsection\n"                //
-               "301:	adrp	x4, 300b\n"           // load address of rseq_cs
-               "	add	x4, x4, :lo12:300b\n" //
-               "	str	x4, [%1, #8]\n"       // rseq->rseq_cs
-               "	ldr	w4, [%1]\n"           // rseq->cpu_id_start
-               "	lsl	w4, w4, #6\n"         //
-               "	ldr	%0, [%2, x4]\n"       // chunk = chunks[cpu].freelist
-               "	cbz	%0, 302f\n"           //
-               "	ldr	x5, [%0]\n"           // x5 = chunk->next
-               "	str	x5, [%2, x4]\n"       // freelist = x5
-               "302:	.pushsection .text.unlikely,\"ax\",@progbits\n"
-               "	.long	0xd428bc00\n"
-               "303:	adrp	x5, 301b\n"           // load page address of 301b
-               "	add	x5, x5, :lo12:301b\n" // add low 12 bits
-               "	br	x5\n"                 // branch to 301b via register
-               "	.popsection"
+               "    .balign    32\n"
+               "300:    .long    0\n"                  // rseq_cs::version
+               "    .long    0\n"                  // rseq_cs::flags
+               "    .quad    301f\n"               // rseq_cs::start_ip
+               "    .quad    302f-301f\n"          // rseq_cs::post_commit_offset
+               "    .quad    303f\n"               // rseq_cs::abort_ip
+               "    .popsection\n"                //
+               "301:    adrp    x4, 300b\n"           // load address of rseq_cs
+               "    add    x4, x4, :lo12:300b\n" //
+               "    str    x4, [%1, #8]\n"       // rseq->rseq_cs
+               "    ldr    w4, [%1]\n"           // rseq->cpu_id_start
+               "    lsl    w4, w4, #6\n"         //
+               "    ldr    %0, [%2, x4]\n"       // chunk = chunks[cpu].freelist
+               "    cbz    %0, 302f\n"           //
+               "    ldr    x5, [%0]\n"           // x5 = chunk->next
+               "    str    x5, [%2, x4]\n"       // freelist = x5
+               "302:    .pushsection .text.unlikely,\"ax\",@progbits\n"
+               "    .long    0xd428bc00\n"
+               "303:    adrp    x5, 301b\n"           // load page address of 301b
+               "    add    x5, x5, :lo12:301b\n" // add low 12 bits
+               "    br    x5\n"                 // branch to 301b via register
+               "    .popsection"
                : "=&r"(chunk)
                : "r"(__get_rseq()), "r"(heaps)
                : "x4", "x5", "memory");
@@ -269,37 +269,37 @@ static inline struct List *pop(void) {
 }
 Now let's go over the assembly code, in the hopes of demystifying it. For starters, we're using Richard Stallman's Math 55 assembly notation, which I documented for personal reference on x86 many years ago in that text file. The GNU assembler mixed with the C/C++ constraints system is the most powerful thing there is. For starters,
 
-	.pushsection .rodata.rseq,"a",@progbits
-	// ...
-	.popsection
+    .pushsection .rodata.rseq,"a",@progbits
+    // ...
+    .popsection
 lets us teleport content to a totally different area of the executable file. In this case, we're using the section name .rodata.rseq because the standard GNU linker scripts (e.g. /usr/lib/x86_64-linux-gnu/ldscripts/elf_x86_64.x) are hard-coded to recognize sections named .rodata or .rodata.* and then puts them into an ELF program header segment that'll be marked PROT_READ on process startup. The code within the pushpop:
 
-300:	.long	0                  // rseq_cs::version
-	.long	0                  // rseq_cs::flags
-	.quad	301f               // rseq_cs::start_ip
-	.quad	302f-301f          // rseq_cs::post_commit_offset
-	.quad	303f               // rseq_cs::abort_ip
+300:    .long    0                  // rseq_cs::version
+    .long    0                  // rseq_cs::flags
+    .quad    301f               // rseq_cs::start_ip
+    .quad    302f-301f          // rseq_cs::post_commit_offset
+    .quad    303f               // rseq_cs::abort_ip
 lays out the static const struct rseq_cs content (see definition below) which describes the restartable sequence. It's important to use System V style numeric labels here with the forwards (f) and backwards (b) references. That's because they can be repeated in the assembly multiple times, which means the assembler won't break if our function is inlined multiple times by the compiler. Alternatively, it's also possible to create labels like .Ldescription.%= since that'll generate a unique ID for each asm() block.
 
-301:	lea	300b(%%rip),%%rcx
-	mov	%%rcx,8(%1)
+301:    lea    300b(%%rip),%%rcx
+    mov    %%rcx,8(%1)
 We use the 301 label for the actual restartable sequence. These first two opcodes in our sequence is basically saying __get_rseq()->rseq_cs = &300b (note: the %1 is used to reference the asm block arguments by index, which in this case is "r"(__get_rseq()), further noting that the r causes the rseq address to be stored in an arbitrary register). That's basically modifying a piece of TLS memory we shared with the kernel. The lea instruction is needed to support PIC, but the above could be shortened to movq $300b,8(%1) if you're using Cosmopolitan.
 When the kernel decides to preempt our thread, it'll check the rseq_cs field and read the rodata structure we created earlier, to determine whether or not the program counter (%rip) is currently located inside 300 label. If it is, then kernel changes the program counter to the abort_ip which we specified as pointing to label 303.
 
-	mov	(%1),%%ecx         // rseq->cpu_id_start
-	shl	$6,%%ecx           //
+    mov    (%1),%%ecx         // rseq->cpu_id_start
+    shl    $6,%%ecx           //
 Next up, we load the __get_rseq()->cpu_id_start field documented below. This tells us the index of the CPU on which our thread is currently running. Then we shift it left by 6 places, which is a fast way to multiply by 64. It's important that this happen inside the sequence. Since you'll notice our abort handler simply jumps back to the start of the sequence. At that point, after being preempted and relocated, the CPU index is obviously going to change, so the memory index needs to be recomputed.
 
-	mov	(%2,%%rcx),%%rdx   // rdx = heaps[rcx].freelist
-	mov	%%rdx,(%0)         // chunk->next = rdx
-	mov	%0,(%2,%%rcx)      // heaps[rcx].freelist = chunk
+    mov    (%2,%%rcx),%%rdx   // rdx = heaps[rcx].freelist
+    mov    %%rdx,(%0)         // chunk->next = rdx
+    mov    %0,(%2,%%rcx)      // heaps[rcx].freelist = chunk
 302:
 Finally, we perform the actual push operation. Note that we don't actually mutate global memory until the last instruction. The whole sequence works like a transaction. The last instruction is special, since it's what commits the change.
-	.pushsection .text.unlikely,"ax",@progbits
-	.byte	0x0f,0xb9,0x4d
-	.long	0x53053053
-303:	jmp	301b               // restart on abort
-	.popsection
+    .pushsection .text.unlikely,"ax",@progbits
+    .byte    0x0f,0xb9,0x4d
+    .long    0x53053053
+303:    jmp    301b               // restart on abort
+    .popsection
 Our abort handler is simple enough. All it does is jump back to the start of our restartable sequence. The only thing surprising about this code is that the kernel requires it to be prefixed by an arbitrary 32-bit word that was passed to the rseq() system call earlier. Since that Cosmopolitan C runtime is responsible for issuing that system call, cosmo defines that magic number as RSEQ_SIG in the <linux/rseq.h> header file documented below. Another thing we do is we teleport the abort handler code to the .text.unlikely section of our binary, since that's another GNU standard section name explicitly defined by stock linker scripts.
 
 All you see here is basically the technique I used in my malloc() implementation for Cosmopolitan Libc. When a small allocation (fewer than 512 bytes) is requested, it tries to pop a piece of memory from a global sharded list like the above. If one isn't there, then it asks mmap() for a new page of memory, divides it into chunks, pushes them all, and then the allocation operation tries again. It's a fast, simple, and elegant design. But the tradeoff is that it's difficult to release memory back to the system, since here we're basically assuming List memory is permanent.

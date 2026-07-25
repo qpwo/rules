@@ -29,7 +29,7 @@ In All about Global Offset Table, I mentioned that linker/loader developers ofte
 8
 9
 
-	
+    
 call foo  # R_X86_64_PC32
 call foo  # R_X86_64_PC32
 
@@ -80,7 +80,7 @@ ELF uses Procedure Linkage Table to provide the indirection. Here is an x86-64 e
 32
 33
 
-	
+    
 <.text>:
   call foo
   call bar
@@ -155,7 +155,7 @@ For better understanding, we can ignore many instructions in the assembly output
 18
 19
 
-	
+    
 <.text>:
   call foo
   call bar
@@ -198,7 +198,7 @@ In the lazy binding scheme, ld.so does minimum work to ensure the jmp instructio
 8
 9
 
-	
+    
 <.plt>:
   pushq .got.plt+8(%rip)   # Push the descriptor
   jmpq *.got.plt+16(%rip)  # Jump to the PLT resolver in ld.so
@@ -225,7 +225,7 @@ After the .got.plt entry is resolved, a function call requires the following 3 i
 2
 3
 
-	
+    
 In .text: call foo  # 5 bytes
 At foo@plt: jmpq *.got.plt+offset(%rip)
 In another component: the first instruction of the target function
@@ -234,7 +234,7 @@ An optimization idea is that we can just use one instruction (note that a GOT en
 
 1
 
-	
+    
 In .text: call *.got.plt+offset(%rip)  # 6 bytes
 
 GCC 6.0 added -fno-plt to AArch64 and x86 to perform this transformation. The call instruction is one byte longer than the R_X86_64_PLT32 form.
@@ -251,7 +251,7 @@ On RISC architectures, there is typically no single instruction which can load a
 2
 3
 
-	
+    
 adrp    x0, _GLOBAL_OFFSET_TABLE_
 ldr     x0, [x0, #:gotpage_lo15:bar]
 br      x0
@@ -267,7 +267,7 @@ GCC's x86 port supports -mforce-indirect-call to force register indirect branche
 3
 4
 
-	
+    
 movq preemptible@GOTPCREL(%rip), %rax
 call *%rax
 leaq nonpreemptible(%rip), %rax
@@ -284,7 +284,7 @@ x86-32 is a notorious example.
 1
 2
 
-	
+    
 void bar(void);
 void foo(void) { bar(); }
 
@@ -306,7 +306,7 @@ void foo(void) { bar(); }
 16
 17
 
-	
+    
 foo:
   pushl   %ebx
   call    __x86.get_pc_thunk.bx
@@ -337,7 +337,7 @@ Using a callee-saved register has pros and cons. On the upside, a function just 
 2
 3
 
-	
+    
 foo:
   call __x86.get_pc_thunk.cx
   jmp  *bar@GOT+_GLOBAL_OFFSET_TABLE_(%ecx)
@@ -349,7 +349,7 @@ jmp *bar@GOT+_GLOBAL_OFFSET_TABLE_(%ecx) requires a relocation type representing
 3
 4
 
-	
+    
 foo:
   call __x86.get_pc_thunk.ax
   addl $_GLOBAL_OFFSET_TABLE_, %eax
@@ -386,7 +386,7 @@ Every PLT entry has an associated R_*_JUMP_SLOT entry and has a dynamic symbol (
 5
 6
 
-	
+    
 // a.c
 extern void foo(void);
 int main() { foo(); }
@@ -403,7 +403,7 @@ void foo(void) {}
 7
 8
 
-	
+    
 % gcc -m32 -shared -fuse-ld=bfd -fpic b.c -o b.so
 % gcc -m32 -fno-pic -no-pie -fuse-ld=lld a.c ./b.so
 % readelf -W --dyn-syms a.out
@@ -451,7 +451,7 @@ PLT header
 7
 8
 
-	
+    
 stp    x16, x30, [sp,#-16]!
 adrp   x16, Page(&(.got.plt[2]))
 ldr    x17, [x16, Offset(&(.got.plt[2]))]
@@ -468,7 +468,7 @@ nop
 3
 4
 
-	
+    
 adrp x16, Page(&(.got.plt[n]))
 ldr  x17, [x16, Offset(&(.got.plt[n]))]
 add  x16, x16, Offset(&(.got.plt[n]))
@@ -480,7 +480,7 @@ When Arm v8.5 Branch Target Enablement is enabled, all indirect branches must la
 
 1
 
-	
+    
 % aarch64-linux-gnu-gcc -fpic -mbranch-protection=standard -shared a.c -o a.so
 
 In glibc, the PLT resolver does not preserve all the registers required for AdvSIMD and SVE vector calls. Saving and restoring all registers would use more stack space and break existing binaries. To support such a variant procedure call standard with different register usage convention, the following scheme is used.
@@ -511,7 +511,7 @@ For Mach-O, the stub helper and a stub look like:
 20
 21
 
-	
+    
 __stub_helper:
   adrp  x17, _dyld_private@page
   add   x17, x17, _dyld_private@pageoff
@@ -594,7 +594,7 @@ Like x86-32, PowerPC32 lacks memory load with relative addressing and has a dist
 27
 28
 
-	
+    
 00000000.plt_call32.f:
   lis 11, .plt[n]@ha
   lwz 11, .plt[n]@l(11)
@@ -648,7 +648,7 @@ For PIC function prologue code, setting up r30 is expensive. The previous foo ta
 14
 15
 
-	
+    
 <foo>:
   stwu 1, -16(1)      # allocate stack
   mflr 0
@@ -717,7 +717,7 @@ The third doubleword contains the environment pointer for languages such as Pasc
 41
 42
 
-	
+    
 00000000000002c0 <0000001a.plt_call.bar>:
   std     r2,40(r1)       # Save the TOC base address
   ld      r12,-32488(r2)  # Load the function address from the function descriptor
@@ -819,7 +819,7 @@ The idea is to move the TOC base address setup code from call stubs to the start
 37
 38
 
-	
+    
 00000000000002c0 <0000001a.plt_call.bar>:
   std     r2,24(r1)                    # Save the TOC base address
   ld      r12,-32496(r2)               # Load function address from .plt entry
@@ -882,7 +882,7 @@ In POWER10, IBM finally decided to add PC-relative instructions (Prefixed Load).
 15
 16
 
-	
+    
 0000000000000300 <0000001a.plt_call.bar>:
   pld     r12,130320      # 20010 [bar@plt]
   mtctr   r12
@@ -924,7 +924,7 @@ Compatibility is a thing. How to make the PC-relative instructions work with TOC
 18
 19
 
-	
+    
 if (plt) {
   if (is(R_PPC64_REL24_NOTOC))
     use PC-relative PLT call stub (`__plt_pcrel_${name}`)
@@ -971,7 +971,7 @@ Otherwise, its PLT scheme is quite good.
 16
 17
 
-	
+    
 Disassembly of section .plt:
 
 0000000000000270 <.plt>:
@@ -1046,7 +1046,7 @@ ld.lld supports -z retpolineplt for Spectre v2 mitigation. The indirection branc
 44
 45
 
-	
+    
 000000000000142c <foo>:
     142c: 55                            pushq   %rbp
     142d: 48 89 e5                      movq    %rsp, %rbp
@@ -1099,7 +1099,7 @@ As part of Intel's Control-flow Enforcement Technology, Indirect Branch Tracking
 
 1
 
-	
+    
 % gcc -fpic -fcf-protection=full -shared a.c -o a.so
 
 An endbr64 instruction takes 4 bytes and does not fit in the current 16-byte PLT entry scheme. They somehow decided to add a new section .plt.sec. The linker uses endbr64 if all object files have the GNU_PROPERTY_X86_FEATURE_1_IBT GNU property.
@@ -1129,7 +1129,7 @@ An endbr64 instruction takes 4 bytes and does not fit in the current 16-byte PLT
 23
 24
 
-	
+    
 Disassembly of section .plt:
 
 0000000000001000 <.plt>:
@@ -1165,7 +1165,7 @@ Let me register a complaint here. I think .plt.sec is unneeded complexity and I 
 4
 5
 
-	
+    
 endbr64
 jmpq *xxx(%rip)  # jump to the next endbr64 for lazy binding
 endbr64
@@ -1191,7 +1191,7 @@ If we can clobber r11, we can use the following scheme:
 13
 14
 
-	
+    
 plt_header:
 f3 0f 1e fa        endbr64
 41 53              push %r11
@@ -1222,7 +1222,7 @@ We can optimize out the unconditional mov instruction by computing the PLT index
 11
 12
 
-	
+    
 plt_header:
   pop %r11
   sub %r11d, plt_header
@@ -1286,7 +1286,7 @@ Summary
 24
 25
 
-	
+    
 if (supports memory load with PC-relative addressing) {
   You made the right design choice!
   Non-PIC PLT and PIC PLT can be the same.

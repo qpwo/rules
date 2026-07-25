@@ -50,9 +50,9 @@ We have three arrays and three loops. We have the input array, the output array,
 
 The second loop turns the counting array into a prefix sum of the counts. So let’s say the array didn’t have 256 entries, but only 8 entries. And let’s say the numbers come up this often:
 
-index	0	1	2	3	4	5	6	7
-count	0	2	1	0	5	1	0	0
-prefix sum	0	0	2	3	3	8	9	9
+index    0    1    2    3    4    5    6    7
+count    0    2    1    0    5    1    0    0
+prefix sum    0    0    2    3    3    8    9    9
 
 So in this case there were nine elements in total. The number 1 showed up twice, the number 2 showed up once, the number 4 showed up five times and the number 5 showed up once. So maybe the input sequence was { 4, 4, 2, 4, 1, 1, 4, 5, 4 }.
 

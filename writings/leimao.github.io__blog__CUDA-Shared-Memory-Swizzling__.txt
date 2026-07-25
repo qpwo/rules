@@ -65,22 +65,22 @@ Proof
 
 We will first prove the property 1.
 
-	
-	
-	
-	
-	
-	
-	
-	
-xchunk	=ichunk%(SWIZZLE_SIZE/sizeof(TC))
-	=((y×NX+x)×sizeof(T)/sizeof(TC))%(NX×sizeof(T)/sizeof(TC))
-	=(y×NX×sizeof(T)/sizeof(TC)+x×sizeof(T)/sizeof(TC))%(NX×sizeof(T)/sizeof(TC))
-	=(y×NX×sizeof(T)/sizeof(TC)%(NX×sizeof(T)/sizeof(TC))+x×sizeof(T)/sizeof(TC)%(NX×sizeof(T)/sizeof(TC)))%(NX×sizeof(T)/sizeof(TC))
-	=(x×sizeof(T)/sizeof(TC)%(NX×sizeof(T)/sizeof(TC)))%(NX×sizeof(T)/sizeof(TC))
-	=x×sizeof(T)/sizeof(TC)%(NX×sizeof(T)/sizeof(TC))
-	=(x%NX)×sizeof(T)/sizeof(TC)
-	=x×sizeof(T)/sizeof(TC)
+    
+    
+    
+    
+    
+    
+    
+    
+xchunk    =ichunk%(SWIZZLE_SIZE/sizeof(TC))
+    =((y×NX+x)×sizeof(T)/sizeof(TC))%(NX×sizeof(T)/sizeof(TC))
+    =(y×NX×sizeof(T)/sizeof(TC)+x×sizeof(T)/sizeof(TC))%(NX×sizeof(T)/sizeof(TC))
+    =(y×NX×sizeof(T)/sizeof(TC)%(NX×sizeof(T)/sizeof(TC))+x×sizeof(T)/sizeof(TC)%(NX×sizeof(T)/sizeof(TC)))%(NX×sizeof(T)/sizeof(TC))
+    =(x×sizeof(T)/sizeof(TC)%(NX×sizeof(T)/sizeof(TC)))%(NX×sizeof(T)/sizeof(TC))
+    =x×sizeof(T)/sizeof(TC)%(NX×sizeof(T)/sizeof(TC))
+    =(x%NX)×sizeof(T)/sizeof(TC)
+    =x×sizeof(T)/sizeof(TC)
 
 It seems that we have derived another equivalent formula for 
 xchunk
@@ -90,33 +90,33 @@ sizeof(T)/sizeof(TC)
 sizeof(TC)/sizeof(T)
  is a power of 2.
 
-	
-	
-	
-	
-	
-	
-ychunk	=ichunk/(SWIZZLE_SIZE/sizeof(TC))
-	=((y×NX+x)×sizeof(T)/sizeof(TC))/(NX×sizeof(T)/sizeof(TC))
-	=(y×NX×sizeof(T)/sizeof(TC)+x×sizeof(T)/sizeof(TC))/(NX×sizeof(T)/sizeof(TC))
-	=y×NX×sizeof(T)/sizeof(TC)/(NX×sizeof(T)/sizeof(TC))+x×sizeof(T)/sizeof(TC)/(NX×sizeof(T)/sizeof(TC))
-	=y+x/NX
-	=y
+    
+    
+    
+    
+    
+    
+ychunk    =ichunk/(SWIZZLE_SIZE/sizeof(TC))
+    =((y×NX+x)×sizeof(T)/sizeof(TC))/(NX×sizeof(T)/sizeof(TC))
+    =(y×NX×sizeof(T)/sizeof(TC)+x×sizeof(T)/sizeof(TC))/(NX×sizeof(T)/sizeof(TC))
+    =y×NX×sizeof(T)/sizeof(TC)/(NX×sizeof(T)/sizeof(TC))+x×sizeof(T)/sizeof(TC)/(NX×sizeof(T)/sizeof(TC))
+    =y+x/NX
+    =y
 
 It seems that we have also derived another equivalent formula for 
 ychunk
 .
 
-	
-	
-	
-	
-	
-xchunk_swz	=ychunk⊕xchunk
-	=y⊕(x×sizeof(T)/sizeof(TC))
-	=y/(NX×sizeof(T)/sizeof(TC))×NX×sizeof(T)/sizeof(TC)+(y%(NX×sizeof(T)/sizeof(TC)))⊕(x×sizeof(T)/sizeof(TC))
-	=y/(NX×sizeof(T)/sizeof(TC))×NX×sizeof(T)/sizeof(TC)+((y%NX)×sizeof(T)/sizeof(TC))⊕(x×sizeof(T)/sizeof(TC))
-	=y/(NX×sizeof(T)/sizeof(TC))×NX×sizeof(T)/sizeof(TC)+(y%NX)⊕x×sizeof(T)/sizeof(TC)
+    
+    
+    
+    
+    
+xchunk_swz    =ychunk⊕xchunk
+    =y⊕(x×sizeof(T)/sizeof(TC))
+    =y/(NX×sizeof(T)/sizeof(TC))×NX×sizeof(T)/sizeof(TC)+(y%(NX×sizeof(T)/sizeof(TC)))⊕(x×sizeof(T)/sizeof(TC))
+    =y/(NX×sizeof(T)/sizeof(TC))×NX×sizeof(T)/sizeof(TC)+((y%NX)×sizeof(T)/sizeof(TC))⊕(x×sizeof(T)/sizeof(TC))
+    =y/(NX×sizeof(T)/sizeof(TC))×NX×sizeof(T)/sizeof(TC)+(y%NX)⊕x×sizeof(T)/sizeof(TC)
 
 Note that 
 ⊕
@@ -126,8 +126,8 @@ ychunk
 xchunk
  is a constant, the mapping is a one to one mapping.
 
-	
-xswz	=xchunk_swz×sizeof(TC)/sizeof(T)%NX+x%(sizeof(TC)/sizeof(T))
+    
+xswz    =xchunk_swz×sizeof(TC)/sizeof(T)%NX+x%(sizeof(TC)/sizeof(T))
 
 Here the proof becomes a little bit informal.
 
@@ -159,14 +159,14 @@ The property 3 might be somewhat easier to see given the following expression fo
 xswz
 .
 
-	
-	
-	
-	
-xswz	=xchunk_swz×sizeof(TC)/sizeof(T)%NX+x%(sizeof(TC)/sizeof(T))
-	=(y/(NX×sizeof(T)/sizeof(TC))×NX×sizeof(T)/sizeof(TC)+(y%NX)⊕x×sizeof(T)/sizeof(TC))×sizeof(TC)/sizeof(T)%NX+x%(sizeof(TC)/sizeof(T))
-	=(y%NX)⊕x×sizeof(T)/sizeof(TC)×sizeof(TC)/sizeof(T)%NX+x%(sizeof(TC)/sizeof(T))
-	=(y%NX)⊕x×sizeof(T)/sizeof(TC)×sizeof(TC)/sizeof(T)+x%(sizeof(TC)/sizeof(T))
+    
+    
+    
+    
+xswz    =xchunk_swz×sizeof(TC)/sizeof(T)%NX+x%(sizeof(TC)/sizeof(T))
+    =(y/(NX×sizeof(T)/sizeof(TC))×NX×sizeof(T)/sizeof(TC)+(y%NX)⊕x×sizeof(T)/sizeof(TC))×sizeof(TC)/sizeof(T)%NX+x%(sizeof(TC)/sizeof(T))
+    =(y%NX)⊕x×sizeof(T)/sizeof(TC)×sizeof(TC)/sizeof(T)%NX+x%(sizeof(TC)/sizeof(T))
+    =(y%NX)⊕x×sizeof(T)/sizeof(TC)×sizeof(TC)/sizeof(T)+x%(sizeof(TC)/sizeof(T))
 
 Given any 
 x
@@ -555,7 +555,7 @@ transpose.cu
 366
 367
 
-	
+    
 #include <algorithm>
 #include <cassert>
 #include <chrono>
@@ -933,7 +933,7 @@ The program was built and performed on a platform that has an Intel i9-9900K CPU
 5
 6
 
-	
+    
 $ nvcc transpose.cu -o transpose
 $ ./transpose
 8192 x 8192 Matrix

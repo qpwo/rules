@@ -39,7 +39,7 @@ In scenarios with numerous smaller relocation sections (such as when using -ffun
 7
 8
 
-	
+    
 # configure-llvm is my wrapper of cmake that specifies some useful options.
 configure-llvm s2-custom0 -DLLVM_TARGETS_TO_BUILD=host -DLLVM_ENABLE_PROJECTS='clang;lld'
 configure-llvm s2-custom1 -DLLVM_TARGETS_TO_BUILD=host -DLLVM_ENABLE_PROJECTS='clang;lld' -DCMAKE_{C,CXX}_FLAGS=-Xclang=--compress-relocations=zstd
@@ -81,7 +81,7 @@ Many C++ virtual tables have the first relocation at offset 0x10. In the absence
 6
 7
 
-	
+    
 Relocation section '.crel.data.rel.ro._ZTVN12_GLOBAL__N_113InlineSpillerE' at offset 0x116fe contains 5 entries:
     Offset             Info             Type               Symbol's Value  Symbol's Name + Addend
 0000000000000010  0000007e00000001 R_X86_64_64            0000000000000000 _ZN4llvm7Spiller6anchorEv + 0
@@ -138,7 +138,7 @@ Encoding the delta addend offers a slight size advantage and optimizes for cases
 3
 4
 
-	
+    
 .quad .data + 0x78
 .quad .data + 0x80
 .quad .data + 0x88
@@ -155,7 +155,7 @@ Type/addend remain constant with varying symbol indexes, common for non-section 
 3
 4
 
-	
+    
 // Type/addend do not change.
 // R_AARCH64_CALL(g0), ...
 // R_X86_64_PLT32(g0-4), ...
@@ -189,7 +189,7 @@ While we could utilize zigzag encoding (i>>31) ^ (i<<1) to convert SLEB128-encod
 8
 9
 
-	
+    
 // One-byte case for SLEB128
 int64_t from_signext(uint64_t v) {
   return v < 64 ? v - 128 : v;
@@ -217,7 +217,7 @@ Here is an extremely simple C decoder implementation for ULEB128 and SLEB128. Th
 11
 12
 
-	
+    
 static uint64_t read_leb128(unsigned char **buf, uint64_t sleb_uleb) {
   uint64_t acc = 0, shift = 0, byte;
   do {
@@ -244,7 +244,7 @@ I have used a modified lld analyze LEB128 length distribution in a x86-64 releas
 9
 10
 
-	
+    
 zo[std::min(getULEB128Size(offset-old_offset), 3u) - 1]++;
 if (b & 1) {
   auto x = readSLEB128(p); symidx += x; zs[std::min(getSLEB128Size(x), 3u) - 1]++;
@@ -264,7 +264,7 @@ The distribution of ULEB128/SLEB128 lengths is:
 4
 5
 
-	
+    
         1       2       3+      any
 offset  633056  48846   0       681902
 type    187759  0       0       187759
@@ -294,7 +294,7 @@ https://sqlite.org/src4/doc/trunk/www/varint.wiki describes a scheme that encode
 8
 9
 
-	
+    
 uint64_t read_vu128(const uint8_t *&p) {
   uint8_t b = *p++;
   if (b < 0xf0) return b;
@@ -423,7 +423,7 @@ The following code implements 70-bit little-endian SuffixVarInt, which covers ou
 114
 115
 
-	
+    
 #include <assert.h>
 #include <stdbit.h>
 #include <stdio.h>
@@ -541,20 +541,20 @@ int main() {
 }
 
 Experiments
-build	format	.o size	size(.rel*)	.o size
+build    format    .o size    size(.rel*)    .o size
 decrease
--O3	RELA	136012504	28235448	
--O3	CREL	111583312	3806234	18.0%
-aarch64 -O3	RELA	124965808	25855800	
-aarch64 -O3	CREL	102529784	3388307	18.0%
-ppc64le -O3	RELA	129017272	26589192	
-ppc64le -O3	CREL	105860576	3432419	17.9%
-riscv64 -O3	RELA	227189744	91396344	
-riscv64 -O3	CREL	149343352	13549699	34.3%
--O1 -g	RELA	1506173760	340965576	
--O1 -g	CREL	1202445768	37237274	20.2%
--O3 -g $SPLIT	RELA	549003848	104227128	
--O3 -g $SPLIT	CREL	459768736	14992114	16.3%
+-O3    RELA    136012504    28235448    
+-O3    CREL    111583312    3806234    18.0%
+aarch64 -O3    RELA    124965808    25855800    
+aarch64 -O3    CREL    102529784    3388307    18.0%
+ppc64le -O3    RELA    129017272    26589192    
+ppc64le -O3    CREL    105860576    3432419    17.9%
+riscv64 -O3    RELA    227189744    91396344    
+riscv64 -O3    CREL    149343352    13549699    34.3%
+-O1 -g    RELA    1506173760    340965576    
+-O1 -g    CREL    1202445768    37237274    20.2%
+-O3 -g $SPLIT    RELA    549003848    104227128    
+-O3 -g $SPLIT    CREL    459768736    14992114    16.3%
 
 SPLIT="-gpubnames -gsplit-dwarf"
 
@@ -567,7 +567,7 @@ It would be interesting to explore the potential gains of combining zstd compres
 3
 4
 
-	
+    
 configure-llvm s2-custom3 -DLLVM_TARGETS_TO_BUILD=host -DLLVM_ENABLE_PROJECTS='clang;lld' -DCMAKE_{C,CXX}_FLAGS='-Wa,--crel -Xclang --compress-relocations=zstd'
 ninja -C /tmp/out/s2-custom3 lld
 
@@ -585,7 +585,7 @@ ruby -e 'p Dir.glob("/tmp/out/s2-custom3/**/*.o").sum{|f| File.size(f)}'  # 1113
 8
 9
 
-	
+    
 agg=Hash.new 0
 Dir.glob("**/*.o").each{|f|
   `readelf -Wr #{f}`.lines {|line|
@@ -636,7 +636,7 @@ DWARF v5 accelerated name-based access with the introduction of the .debug_names
 6
 7
 
-	
+    
 Relocation section '.crel.debug_names' at offset 0x65c0 contains 200 entries:
     Offset             Info             Type               Symbol's Value  Symbol's Name + Addend
 000000000000002c  0000002f0000000a R_X86_64_32            0000000000000000 .debug_info + 0
@@ -664,7 +664,7 @@ This size increase has sparked discussions within the LLVM community about poten
 13
 14
 
-	
+    
 Relocation section '.crel.debug_addr' at offset 0x64f1 contains 51 entries:
     Offset             Info             Type               Symbol's Value  Symbol's Name + Addend
 0000000000000008  0000004300000001 R_X86_64_64            0000000000000000 _ZN4llvm30VerifyDisableABIBreakingChecksE + 0
@@ -702,7 +702,7 @@ Here is a one-liner to dump the relative relocation and non-relative relocation 
 
 1
 
-	
+    
 ruby -e 'Dir.glob("/usr/lib/x86_64-linux-gnu/*.so.*").each{|f| next if File.symlink?(f) || `file #{f}`!~/shared object/; s=`readelf -Wr #{f}`.lines; nr=s.count{|x|x=~/R_/&&x !~/_RELATIVE/}*24; r=s.count{|x|x=~/_RELATIVE/}*24; s=File.size(f); puts "#{f}\t#{s}\t#{r} (#{(r*100.0/s).round(2)}%)\t#{nr} (#{(nr*100.0/s).round(2)}%)" }'
 
 I believe CREL compresses dynamic relocations well, but it is far from an optimal dynamic relocation format. A generalized RELR format would leverage the dyamic relocation properties well. Here's a possible encoding:
@@ -726,7 +726,7 @@ I believe CREL compresses dynamic relocations well, but it is far from an optima
 17
 18
 
-	
+    
 // R_*_RELATIVE group
 Encode(length of the group)
 Encode(R_*_RELATIVE)
@@ -794,7 +794,7 @@ If glibc only intends to support addend_bit==0, the code can simply be:
 14
 15
 
-	
+    
 extern const uint8_t __crel_iplt_start[] __attribute__ ((weak));
 extern const uint8_t __crel_iplt_end[] __attribute__ ((weak));
 if (&__crel_iplt_start != &__crel_iplt_end) {
@@ -865,7 +865,7 @@ Let's link clang-16-release using RELA, -z pack-relative-relocs, --pack-dyn-relo
 20
 21
 
-	
+    
 % fld.lld @response.txt -o - | fllvm-readelf -S - | grep -E ' \.c?rel.?\.'
   [ 8] .rela.dyn         RELA            00000000005df318 5df318 c3a980 18   A  3   0  8
   [ 9] .rela.plt         RELA            0000000001219c98 1219c98 001f38 18  AI  3  26  8
@@ -925,7 +925,7 @@ but reports errors and stops linking for others (unless --no-warn-mismatch is sp
 5
 6
 
-	
+    
 % clang -Wa,--crel -fuse-ld=bfd a.c b.c
 /usr/bin/ld.bfd: unknown architecture of input file `/tmp/a-1e0778.o' is incompatible with i386:x86-64 output
 /usr/bin/ld.bfd: unknown architecture of input file `/tmp/b-9963f0.o' is incompatible with i386:x86-64 output
@@ -968,7 +968,7 @@ It's important to consider that data compression, while beneficial for size redu
 16
 17
 
-	
+    
 with open(f'{f}.bin', 'wb') as out, \
         open(f'{f}.bin.lz4', 'wb') as out_lz4, \
         open(f'{f}.bin.zst', 'wb') as out_zstd, \
@@ -1001,7 +1001,7 @@ Even more surprising, CREL outperforms RELA compressed with lz4 (level 9) and zs
 8
 9
 
-	
+    
 % stat -c '%s %n' *.bin*
 3808775 crel.bin
 2855535 crel.bin.lz4
@@ -1033,7 +1033,7 @@ Dynamic relocations are also worth investigating.
 17
 18
 
-	
+    
 ld.lld @response.txt -z now --pack-dyn-relocs=relr -o clang.relr
 ld.lld @response.txt -z now --pack-dyn-relocs=android+relr -o clang.relr+android
 ld.lld @response.txt -z now --pack-dyn-relocs=relr -z crel -o clang.relr+crel
@@ -1101,7 +1101,7 @@ In Figure 4-23: Relocation Entries, add:
 12
 13
 
-	
+    
 typedef struct {
   Elf32_Addr r_offset;
   Elf32_Word r_symidx;
@@ -1176,7 +1176,7 @@ Example C++ encoder:
 32
 33
 
-	
+    
 // encodeULEB128(uint64_t, raw_ostream &os);
 // encodeSLEB128(int64_t, raw_ostream &os);
 
@@ -1234,7 +1234,7 @@ Example C++ decoder:
 19
 20
 
-	
+    
 // uint64_t decodeULEB128(uint8_t *&p);
 // int64_t decodeSLEB128(uint8_t *&p);
 
@@ -1316,7 +1316,7 @@ Encoder in pseudo-code:
 23
 24
 
-	
+    
 Elf_Addr offset = 0, addend = 0;
 uint32_t symidx = 0, type = 0;
 encodeULEB128(relocs.size());
@@ -1374,7 +1374,7 @@ Encoding/decoding a unsigned 65-bit does not need multi-precision arithmetic. We
 28
 29
 
-	
+    
 // encodeULEB128(uint64_t, raw_ostream &os);
 // encodeSLEB128(int64_t, raw_ostream &os);
 
@@ -1432,7 +1432,7 @@ Example C++ decoder:
 23
 24
 
-	
+    
 // uint64_t decodeULEB128(uint8_t *&p);
 // int64_t decodeSLEB128(uint8_t *&p);
 

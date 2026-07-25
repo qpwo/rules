@@ -30,7 +30,7 @@ Expressions can be constants, symbol refereces (like sym), or unary and binary o
 6
 7
 
-	
+    
 % echo 'addi a0, a0, 2048' | llvm-mc -triple=riscv64
 <stdin>:1:14: error: operand must be a symbol with %lo/%pcrel_lo/%tprel_lo modifier or an integer in the range [-2048, 2047]
 addi a0, a0, 2048
@@ -74,7 +74,7 @@ Attempting to use unsupported expression forms will result in assembly errors:
 6
 7
 
-	
+    
 % echo -e 'movl a+b, %eax\nmovl a-b, %eax' | clang -c -xassembler -
 <stdin>:1:1: error: expected relocatable expression
 movl a+b, %eax
@@ -143,7 +143,7 @@ none disables the conversion entirely; every local symbol is referenced directly
 3
 4
 
-	
+    
 # referencing named `local:` and temporary `.Ltemp:`, both in .text
 # all:      R_X86_64_PLT32  .text-0x3     R_X86_64_PLT32  .text-0x2
 # internal: R_X86_64_PLT32  local-0x4     R_X86_64_PLT32  .text-0x2
@@ -160,7 +160,7 @@ On x86-64, however, a PC-relative reference to a mergeable string can produce a 
 1
 2
 
-	
+    
 leaq    .LC0(%rip), %rax
 # R_X86_64_PC32          .LC0 - 4
 
@@ -182,7 +182,7 @@ RISC-V applies the same rule for a related reason: linker relaxation can change 
 10
 11
 
-	
+    
 .section        .rodata.str1.1,"aMS",@progbits,1
 .L.str:
 .asciz  "abcdef"
@@ -228,7 +228,7 @@ Branches
 11
 12
 
-	
+    
 % echo -e 'call fun\njmp fun' | clang -c -xassembler - -o - | fob -dr -
 ...
        0: e8 00 00 00 00                callq   0x5 <.text+0x5>
@@ -251,7 +251,7 @@ Absolute and PC-relative symbol references
 5
 6
 
-	
+    
 % echo -e 'movl a, %eax\nmovl a(%rip), %eax' | clang -c -xassembler - -o - | llvm-objdump -dr -
 ...
        0: 8b 04 25 00 00 00 00          movl    0x0, %eax
@@ -287,7 +287,7 @@ For example, RISC-V addi can be used with either an absolute address or a PC-rel
 10
 11
 
-	
+    
 # Position-dependent code (PDC) - absolute addressing
 lui     a0, %hi(var)                    # Load upper immediate with high bits of symbol address
 addi    a0, a0, %lo(var)                # Add lower 12 bits of symbol address
@@ -324,7 +324,7 @@ MIPS, SPARC, RISC-V, and LoongArch favor this prefix style, wrapping the express
 4
 5
 
-	
+    
 # MIPS
 addiu   $2, $2, %lo(0x12345)
 addiu   $2, $2, %lo 0x12345
@@ -337,7 +337,7 @@ Like expr@specifier, the specifier applies to the whole expression. Don't misint
 2
 3
 
-	
+    
 # MIPS
 addiu   $2, $2, %lo(3)+sym  # R_MIPS_LO16  sym+0x3
 addiu   $2, $2, %lo 3+sym   # R_MIPS_LO16  sym+0x3
@@ -353,7 +353,7 @@ A simpler suffix style, this is used by AArch32 for data directives. It's less c
 3
 4
 
-	
+    
 .word sym(gotoff)
 .long f(FUNCDESC)
 
@@ -372,7 +372,7 @@ AArch32 and AArch64 adopt this colon-framed prefix notation, avoiding the confus
 7
 8
 
-	
+    
 // AArch32
 movw    r0, :lower16:x
 
@@ -388,7 +388,7 @@ One idea is to # for disambiguitation:
 
 1
 
-	
+    
 .word #:gotpcrel:var
 
 Recommendation
@@ -403,7 +403,7 @@ I favor %specifier(expr) over %specifier expr because it provides clearer scopin
 2
 3
 
-	
+    
 .altmacro
 .macro m arg; .long \arg; .endm
 .data; m %(1+2)
@@ -426,7 +426,7 @@ When a symbol is defined in a section with the SHF_TLS flag (Thread-Local Storag
 4
 5
 
-	
+    
 // AArch64
 add     x8, x8, :tprel_hi12:tls
 
@@ -476,7 +476,7 @@ GNU Assembler utilizes struct fixup to represent both the fixup and the relocata
 10
 11
 
-	
+    
 struct fix {
   ...
   /* NULL or Symbol whose value we add in.  */
@@ -519,7 +519,7 @@ The relocation specifier is part of the instruction instead of part of struct fi
 26
 27
 
-	
+    
 // gas/config/tc-aarch64.c
 struct reloc
 {
@@ -575,7 +575,7 @@ LLVM integrated assembler encodes fixups and relocatable expressions separately.
 15
 16
 
-	
+    
 class MCFixup {
   /// The value to put into the fixup location. The exact interpretation of the
   /// expression is target dependent, usually it will be one of the operands to
@@ -601,7 +601,7 @@ LLVM encodes relocatable expressions as MCValue,
 4
 5
 
-	
+    
 class MCValue {
   const MCSymbol *SymA = nullptr, *SymB = nullptr;
   int64_t Cst = 0;
@@ -636,7 +636,7 @@ AArch64 implements a clean approach to select the relocation type. It dispatches
 15
 16
 
-	
+    
 // AArch64ELFObjectWriter::getRelocType
 unsigned Kind = Fixup.getTargetKind();
 switch (Kind) {
@@ -679,7 +679,7 @@ MCAssembler::evaluateFixup and ELFObjectWriter::recordRelocation record a reloca
 21
 22
 
-	
+    
 // MCAssembler::evaluateFixup
 Evaluate `const MCExpr *Fixup::Value` to a relocatable expression.
 Determine the fixup value. Adjust the value if FKF_IsPCRel.
@@ -716,7 +716,7 @@ The expression structure follows a traditional object-oriented hierarchy:
 7
 8
 
-	
+    
 MCExpr
   MCConstantExpr: Value
   MCSymbolRefExpr: VariantKind, Symbol
@@ -738,7 +738,7 @@ Consider what happens with addition or subtraction:
 2
 3
 
-	
+    
 MCBinaryExpr
   LHS(MCSymbolRefExpr): VariantKind, SymA
   RHS(MCSymbolRefExpr): SymB

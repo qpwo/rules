@@ -344,6 +344,6 @@ Beware of different compilers and different targets. The above discusses gcc 4.8
 Compiler optimizations are, by definition, a multi-layered affair. Each is simple but they enable each other. Inlining enables some additional optimizations (such as moving hot code out of inner loops). Other optimizations may enable inlining (by making the leaf methods smaller).
 CRTP, when implemented correctly, is recognized by the compiler as static dispatch and optimized accordingly.
 CRTP can thus be significantly more efficient than virtual calls, mostly due to inlining. This also means that inlining is crucial to its performance (as it is to many performance features of C++).
-[1]	This is a degenerate use of CRTP, for sure. It's not here to be realistic - just to demonstrate the same mechanism used in a simple scenario. See the previous article for a more use-focused discussion of CRTP.
-[2]	These numbers depend on the CPU, of course. When I tried the same benchmark on a Xeon E5-2690 (Sandy Bridge) with gcc 4.6.3 (same code generated) the speed difference is just 3x (0.46 vs 1.39 sec).
+[1]    This is a degenerate use of CRTP, for sure. It's not here to be realistic - just to demonstrate the same mechanism used in a simple scenario. See the previous article for a more use-focused discussion of CRTP.
+[2]    These numbers depend on the CPU, of course. When I tried the same benchmark on a Xeon E5-2690 (Sandy Bridge) with gcc 4.6.3 (same code generated) the speed difference is just 3x (0.46 vs 1.39 sec).
 

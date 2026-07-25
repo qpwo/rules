@@ -87,52 +87,52 @@ The conversion to a query is not simply a matter of pulling out the text strings
 The full rules compute five results from each regular expression r: whether the empty string is a matching string, the exact set of matching strings or an indication that the exact set is unknown, a set of prefixes of all matching strings, a set of suffixes of all matching strings, and a match query like the above, often describing the middle of the string. The rules follow from the meaning of the regular expressions:
 
 ‘’ (empty string)
-	emptyable(‘’)	=	true
-	exact(‘’)	=	{‘’}
-	prefix(‘’)	=	{‘’}
-	suffix(‘’)	=	{‘’}
-	match(‘’)	=	ANY (special query: match all documents)
+    emptyable(‘’)    =    true
+    exact(‘’)    =    {‘’}
+    prefix(‘’)    =    {‘’}
+    suffix(‘’)    =    {‘’}
+    match(‘’)    =    ANY (special query: match all documents)
 c (single character)
-	emptyable(c)	=	false
-	exact(c)	=	{c}
-	prefix(c)	=	{c}
-	suffix(c)	=	{c}
-	match(c)	=	ANY
+    emptyable(c)    =    false
+    exact(c)    =    {c}
+    prefix(c)    =    {c}
+    suffix(c)    =    {c}
+    match(c)    =    ANY
 e? (zero or one)
-	emptyable(e?)	=	true
-	exact(e?)	=	exact(e) ∪ {‘’}
-	prefix(e?)	=	{‘’}
-	suffix(e?)	=	{‘’}
-	match(e?)	=	ANY
+    emptyable(e?)    =    true
+    exact(e?)    =    exact(e) ∪ {‘’}
+    prefix(e?)    =    {‘’}
+    suffix(e?)    =    {‘’}
+    match(e?)    =    ANY
 e* (zero or more)
-	emptyable(e*)	=	true
-	exact(e*)	=	unknown
-	prefix(e*)	=	{‘’}
-	suffix(e*)	=	{‘’}
-	match(e*)	=	ANY
+    emptyable(e*)    =    true
+    exact(e*)    =    unknown
+    prefix(e*)    =    {‘’}
+    suffix(e*)    =    {‘’}
+    match(e*)    =    ANY
 e+ (one or more)
-	emptyable(e+)	=	emptyable(e)
-	exact(e+)	=	unknown
-	prefix(e+)	=	prefix(e)
-	suffix(e+)	=	suffix(e)
-	match(e+)	=	match(e)
+    emptyable(e+)    =    emptyable(e)
+    exact(e+)    =    unknown
+    prefix(e+)    =    prefix(e)
+    suffix(e+)    =    suffix(e)
+    match(e+)    =    match(e)
 e1 | e2 (alternation)
-	emptyable(e1 | e2)	=	emptyable(e1) or emptyable(e2)
-	exact(e1 | e2)	=	exact(e1) ∪ exact(e2)
-	prefix(e1 | e2)	=	prefix(e1) ∪ prefix(e2)
-	suffix(e1 | e2)	=	suffix(e1) ∪ suffix(e2)
-	match(e1 | e2)	=	match(e1) OR match(e2)
+    emptyable(e1 | e2)    =    emptyable(e1) or emptyable(e2)
+    exact(e1 | e2)    =    exact(e1) ∪ exact(e2)
+    prefix(e1 | e2)    =    prefix(e1) ∪ prefix(e2)
+    suffix(e1 | e2)    =    suffix(e1) ∪ suffix(e2)
+    match(e1 | e2)    =    match(e1) OR match(e2)
 e1 e2 (concatenation)
-	emptyable(e1e2)	=	emptyable(e1) and emptyable(e2)
-	exact(e1e2)	=	exact(e1) × exact(e2), if both are known
-			or       unknown, otherwise
-	prefix(e1e2)	=	exact(e1) × prefix(e2), if exact(e1) is known
-			or       prefix(e1) ∪ prefix(e2), if emptyable(e1)
-			or       prefix(e1), otherwise
-	suffix(e1e2)	=	suffix(e1) × exact(e2), if exact(e2) is known
-			or       suffix(e2) ∪ suffix(e1), if emptyable(e2)
-			or       suffix(e2), otherwise
-	match(e1e2)	=	match(e1) AND match(e2)
+    emptyable(e1e2)    =    emptyable(e1) and emptyable(e2)
+    exact(e1e2)    =    exact(e1) × exact(e2), if both are known
+            or       unknown, otherwise
+    prefix(e1e2)    =    exact(e1) × prefix(e2), if exact(e1) is known
+            or       prefix(e1) ∪ prefix(e2), if emptyable(e1)
+            or       prefix(e1), otherwise
+    suffix(e1e2)    =    suffix(e1) × exact(e2), if exact(e2) is known
+            or       suffix(e2) ∪ suffix(e1), if emptyable(e2)
+            or       suffix(e2), otherwise
+    match(e1e2)    =    match(e1) AND match(e2)
 
 The rules as described above are correct but would not produce very interesting match queries, and the various string sets could get exponentially large depending on the regular expression. At each step, we can apply some simplifications to keep the computed information manageable. First, we need a function to compute trigrams.
 
@@ -206,10 +206,10 @@ csearch [-c] [-f fileregexp] [-h] [-i] [-l] [-n] regexp
 The regexp syntax is RE2's, which is to say basically Perl's, but without backreferences. (RE2 does support capturing parentheses. Backreferences are when those submatches are substituted back into the regular expression during the match.) The boolean command-line flags are like grep's, except that as is standard for Go programs, there is no distinction between short and long options, so options cannot be combined: it is csearch -i -n, not csearch -in. The new -f flag causes csearch to consider only files with paths matching fileregexp.
 
 $ csearch -f /usr/include DATAKIT
-/usr/include/bsm/audit_domain.h:#define	BSM_PF_DATAKIT		9
+/usr/include/bsm/audit_domain.h:#define    BSM_PF_DATAKIT        9
 /usr/include/gssapi/gssapi.h:#define GSS_C_AF_DATAKIT    9
-/usr/include/sys/socket.h:#define	AF_DATAKIT	9		/* datakit protocols */
-/usr/include/sys/socket.h:#define	PF_DATAKIT	AF_DATAKIT
+/usr/include/sys/socket.h:#define    AF_DATAKIT    9        /* datakit protocols */
+/usr/include/sys/socket.h:#define    PF_DATAKIT    AF_DATAKIT
 $
 
 The -verbose flag causes csearch to report statistics about the search. The -brute flag bypasses the trigram index, searching every file listed in the index instead of using a precise trigram query. In the case of the Datakit query, it turns out that the trigram query narrows the search down to just three files, all of which are matches.
@@ -217,10 +217,10 @@ The -verbose flag causes csearch to report statistics about the search. The -bru
 $ time csearch -verbose -f /usr/include DATAKIT
 2011/12/10 00:23:24 query: "AKI" "ATA" "DAT" "KIT" "TAK"
 2011/12/10 00:23:24 post query identified 3 possible files
-/usr/include/bsm/audit_domain.h:#define	BSM_PF_DATAKIT		9
+/usr/include/bsm/audit_domain.h:#define    BSM_PF_DATAKIT        9
 /usr/include/gssapi/gssapi.h:#define GSS_C_AF_DATAKIT    9
-/usr/include/sys/socket.h:#define	AF_DATAKIT	9		/* datakit protocols */
-/usr/include/sys/socket.h:#define	PF_DATAKIT	AF_DATAKIT
+/usr/include/sys/socket.h:#define    AF_DATAKIT    9        /* datakit protocols */
+/usr/include/sys/socket.h:#define    PF_DATAKIT    AF_DATAKIT
 0.00u 0.00s 0.00r
 $
 
@@ -228,10 +228,10 @@ In contrast, without the index we'd have to search 2,739 files:
 
 $ time csearch -brute -verbose -f /usr/include DATAKIT
 2011/12/10 00:25:02 post query identified 2739 possible files
-/usr/include/bsm/audit_domain.h:#define	BSM_PF_DATAKIT		9
+/usr/include/bsm/audit_domain.h:#define    BSM_PF_DATAKIT        9
 /usr/include/gssapi/gssapi.h:#define GSS_C_AF_DATAKIT    9
-/usr/include/sys/socket.h:#define	AF_DATAKIT	9		/* datakit protocols */
-/usr/include/sys/socket.h:#define	PF_DATAKIT	AF_DATAKIT
+/usr/include/sys/socket.h:#define    AF_DATAKIT    9        /* datakit protocols */
+/usr/include/sys/socket.h:#define    PF_DATAKIT    AF_DATAKIT
 0.08u 0.03s 0.11r  # brute force
 $
 

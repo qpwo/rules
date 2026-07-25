@@ -91,7 +91,7 @@ float4 PS(FullScreenVertexOut pin) : SV_Target
 {
     float4 worldDir = normalize(mul(float4(pin.clipPos, 0.0f, 1.0f), g_cameraBuffer.VPinverse));
 
-	//degamma color
+    //degamma color
     float3 ground = float3(0.142f, 0.119, 0.103);
     float3 skyTop = float3(0.103f, 0.173f, 0.325f);
     float3 skybottom = float3(0.804f, 1.0f, 1.0f);

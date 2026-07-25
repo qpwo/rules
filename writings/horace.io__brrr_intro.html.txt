@@ -181,10 +181,10 @@ If you want to speed up your deep learning system, the most important thing is t
 
 Often, I see researchers and other folks interested in speeding up their PyTorch code try things out blindly without an understanding of what regime you're in.
 
-Performance Regime	Plausible Solutions
-Overhead-Bound	Tracing, Operator Fusion, don't use Python, a real JIT :^)
-Bandwidth-Bound	Operator Fusion
-Compute-Bound	Use Tensor Cores, give Nvidia more money
+Performance Regime    Plausible Solutions
+Overhead-Bound    Tracing, Operator Fusion, don't use Python, a real JIT :^)
+Bandwidth-Bound    Operator Fusion
+Compute-Bound    Use Tensor Cores, give Nvidia more money
 
 Of course, arguably, users needing to think about this stuff at all reflects a failure on the part of the framework. PyTorch's compiler or profile APIs haven't always been the ... easiest to work with, although it is an active area of focus.
 

@@ -204,15 +204,15 @@ Serialization lets us have some control over that, by instructing the CPU to res
 
 The idea of a Serialized Oracle is to generate a random program, then automatically transform it into a serialized form.
 
-movnti [rbp+0x0],ebx	movnti [rbp+0x0],ebx
-	sfence
-rcr dh,1	rcr dh,1
-	lfence
-sub r10, rax	sub r10, rax
-	mfence
-rol rbx, cl	rol rbx, cl
-	nop
-xor edi,[rbp-0x57]	xor edi,[rbp-0x57]
+movnti [rbp+0x0],ebx    movnti [rbp+0x0],ebx
+    sfence
+rcr dh,1    rcr dh,1
+    lfence
+sub r10, rax    sub r10, rax
+    mfence
+rol rbx, cl    rol rbx, cl
+    nop
+xor edi,[rbp-0x57]    xor edi,[rbp-0x57]
 : A randomly generated sequence of instructions, and the same sequence but with randomized alignment, serialization and speculation fences added.
 
 These two program might have very different performance characteristics, but they should produce identical output. The serialized form can now be my oracle!

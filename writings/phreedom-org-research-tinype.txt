@@ -738,33 +738,33 @@ Scanning the 133 byte PE file that downloads a DLL over WebDAV with common anti-
 
 Complete scanning result of "tiny.exe", received in VirusTotal at 11.08.2006, 07:14:08 (CET).
 
-Antivirus	Version	Update	Result
-AntiVir	7.2.0.39	11.07.2006	no virus found
-Authentium	4.93.8	11.07.2006	no virus found
-Avast	4.7.892.0	11.07.2006	no virus found
-AVG	386	11.07.2006	no virus found
-BitDefender	7.2	11.08.2006	no virus found
-CAT-QuickHeal	8.00	11.07.2006	(Suspicious) - DNAScan
-ClamAV	devel-20060426	11.07.2006	no virus found
-DrWeb	4.33	11.08.2006	no virus found
-eTrust-InoculateIT	23.73.49	11.08.2006	no virus found
-eTrust-Vet	30.3.3181	11.07.2006	no virus found
-Ewido	4.0	11.07.2006	no virus found
-Fortinet	2.82.0.0	11.08.2006	no virus found
-F-Prot	3.16f	11.07.2006	no virus found
-F-Prot4	4.2.1.29	11.07.2006	no virus found
-Ikarus	0.2.65.0	11.07.2006	no virus found
-Kaspersky	4.0.2.24	11.08.2006	no virus found
-McAfee	4890	11.07.2006	no virus found
-Microsoft	1.1609	11.08.2006	no virus found
-NOD32v2	1.1858	11.07.2006	no virus found
-Norman	5.80.02	11.07.2006	no virus found
-Panda	9.0.0.4	11.07.2006	no virus found
-Sophos	4.11.0	11.07.2006	no virus found
-TheHacker	6.0.1.114	11.08.2006	no virus found
-UNA	1.83	11.07.2006	no virus found
-VBA32	3.11.1	11.07.2006	no virus found
-VirusBuster	4.3.15:9	11.07.2006	no virus found
+Antivirus    Version    Update    Result
+AntiVir    7.2.0.39    11.07.2006    no virus found
+Authentium    4.93.8    11.07.2006    no virus found
+Avast    4.7.892.0    11.07.2006    no virus found
+AVG    386    11.07.2006    no virus found
+BitDefender    7.2    11.08.2006    no virus found
+CAT-QuickHeal    8.00    11.07.2006    (Suspicious) - DNAScan
+ClamAV    devel-20060426    11.07.2006    no virus found
+DrWeb    4.33    11.08.2006    no virus found
+eTrust-InoculateIT    23.73.49    11.08.2006    no virus found
+eTrust-Vet    30.3.3181    11.07.2006    no virus found
+Ewido    4.0    11.07.2006    no virus found
+Fortinet    2.82.0.0    11.08.2006    no virus found
+F-Prot    3.16f    11.07.2006    no virus found
+F-Prot4    4.2.1.29    11.07.2006    no virus found
+Ikarus    0.2.65.0    11.07.2006    no virus found
+Kaspersky    4.0.2.24    11.08.2006    no virus found
+McAfee    4890    11.07.2006    no virus found
+Microsoft    1.1609    11.08.2006    no virus found
+NOD32v2    1.1858    11.07.2006    no virus found
+Norman    5.80.02    11.07.2006    no virus found
+Panda    9.0.0.4    11.07.2006    no virus found
+Sophos    4.11.0    11.07.2006    no virus found
+TheHacker    6.0.1.114    11.08.2006    no virus found
+UNA    1.83    11.07.2006    no virus found
+VBA32    3.11.1    11.07.2006    no virus found
+VirusBuster    4.3.15:9    11.07.2006    no virus found
 Additional Information
 File size: 133 bytes
 MD5: a6d732dd4b460000151a5f3cb448a4be

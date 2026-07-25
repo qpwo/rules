@@ -78,16 +78,16 @@ Changing this architectural constraint is beyond the scope of this project and s
 
 The cost of system calls and other operating-system procedures is important in determining how often each call can be made without a significant impact on overall performance.
 
-Procedure	Time (m seconds)
-Null procedure activation	0	.0470
-Null syscall (getppid)	0	.4708
-Gettimeofday	0	.8333
-Read (1 byte) from /dev/zero	0	.9789
-Write (1 byte) to /dev/null	0	.7709
-Select on 10 fd's	9	.3765
-Signal handler overhead	3	.158
-UDP latency using localhost	77	.3502
-TCP latency using localhost	128	.1683
+Procedure    Time (m seconds)
+Null procedure activation    0    .0470
+Null syscall (getppid)    0    .4708
+Gettimeofday    0    .8333
+Read (1 byte) from /dev/zero    0    .9789
+Write (1 byte) to /dev/null    0    .7709
+Select on 10 fd's    9    .3765
+Signal handler overhead    3    .158
+UDP latency using localhost    77    .3502
+TCP latency using localhost    128    .1683
 Table 1: Performance for Linux System Operations
 
 Measurements made with lmbench [MS96] on a Pentium 300 MHz Mobile MMX laptop by Theodore Ts'o yield the numbers shown in Table 1.
@@ -184,17 +184,17 @@ By inferring what effects can be expected from the scheduler changes, particular
 
 The effect of this change should be greatest for requests which execute quickly, and as seen in table 2 this is indeed the case. The units are operations per second.
 
-Test	Old	New	New/Old
-PolyPoint	4740000	4900000	1.03
-NoOp	2130000	2680000	1.26
+Test    Old    New    New/Old
+PolyPoint    4740000    4900000    1.03
+NoOp    2130000    2680000    1.26
 Table 2: X11perf Performance Comparison
 
 Although the tests noted above did show measurable changes, for most of the test results, the two schedulers performed within 2% of each other. This shows that the scheduler changes have little effect on this performance measurement tool.
 
 A standard synthetic benchmark, Xmark, has been created which performs a weighted geometric average of the x11perf test results. While it is more meaningless than most benchmarks, it has, nonetheless gained some popularity.
 
-	Old	New	New/Old
-Xmark	24.9919	25.4732	1.02
+    Old    New    New/Old
+Xmark    24.9919    25.4732    1.02
 Table 3: Xmark Comparison
 
 As the results in table 3 are generated from the x11perf numbers, the result is not surprising.

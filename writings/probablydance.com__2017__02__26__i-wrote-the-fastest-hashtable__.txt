@@ -55,7 +55,7 @@ So if I set the max_load_factor so low that I never reach the probe count limit 
 10
 11
 12
-	
+    
 iterator find(const FindKey & key)
 {
     size_t index = hash_policy.index_for_hash(hash_object(key));
@@ -181,7 +181,7 @@ So then how do we solve the problem of the slow integer modulo? For this I’m u
 34
 35
 36
-	
+    
 switch(prime_index)
 {
 case 0:
@@ -240,7 +240,7 @@ So you put this typedef into your custom hash function object:
 9
 10
 11
-	
+    
 struct CustomHashFunction
 {
     size_t operator()(const YourStruct & foo)
@@ -256,7 +256,7 @@ ska::flat_hash_map<YourStruct, int, CustomHashFunction> your_hash_map;
 In your custom hash function you typedef ska::power_of_two_hash_policy as hash_policy. Then my flat_hash_map will switch to using powers of two. Also if you know that std::hash is good enough in your case, I provide a type called power_of_two_std_hash that will just call std::hash but will use the power_of_two_hash_policy:
 
 1
-	
+    
 ska::flat_hash_map<K, V, ska::power_of_two_std_hash<K>> your_hash_map;
 
 With either of these you can get a faster hashtable if you know that you won’t be getting too many hash collisions.
@@ -735,7 +735,7 @@ I don’t quite know. What happens is that the assembly looks slightly worse whe
 8
 9
 10
-	
+    
 void reset(const std::string& s,unsigned beg,unsigned end)
 {
    size = end-beg;
@@ -764,7 +764,7 @@ The fix is to store data on the stack and to only write it back to the member va
 9
 10
 11
-	
+    
 void reset(const std::string& s,unsigned beg,unsigned end)
 {
    size = end-beg;
@@ -790,7 +790,7 @@ Similarly in this function:
 9
 10
 11
-	
+    
 HashMap calculate(const std::string& input,unsigned size, unsigned beg=0,unsigned incr=1)
 {
    HashMap frequencies;

@@ -1,7 +1,7 @@
 Windows User Mode Debugging Internals
 
 Tuesday, October 31 2006 18:02.31 CST
-Author:  AlexIonescu 	# Views: 59986	 Printer Friendly ...
+Author:  AlexIonescu     # Views: 59986     Printer Friendly ...
 
 Introduction
 
@@ -591,16 +591,16 @@ Because Dbgk opens certain handles during Debug Events, Win32 needs a way to ass
 Article Comments
 Write Comment / View Complete Comments
 
- 	 	Username	Comment Excerpt	Date
-		securex0	Awesome jobs! I am waiting next instruction.	Sunday, April 15 2012 21:55.51 CDT
-		Civa	Great article Alex! I wonder If you can explai...	Tuesday, March 9 2010 05:07.34 CST
-		shijiaoan	great	Monday, May 4 2009 21:48.06 CDT
-		NeOXQuiCk	Nice,thx for sharing.. its helped me a lot.. ...	Tuesday, April 3 2007 17:55.47 CDT
-		tinybyte	Nice stuff! Waiting for the sequels :)	Friday, December 8 2006 15:25.33 CST
-		chip	Thanks, It's great	Monday, November 20 2006 01:07.46 CST
-		mxatone	I start making userland tracer using PaiMei fra...	Friday, November 10 2006 02:29.04 CST
-		mugg	Thanks for the great article!	Wednesday, November 1 2006 10:45.07 CST
-		anonymouse	Neat and Simple Explanation ! looking forward t...	Wednesday, November 1 2006 04:13.46 CST
-		JasonGeffner	Great article! I'm looking forward to Parts 2 a...	Tuesday, October 31 2006 23:57.37 CST
-		AlexIonescu	A PDF is also available in my repository and on...	Tuesday, October 31 2006 18:10.46 CST
-		
+          Username    Comment Excerpt    Date
+        securex0    Awesome jobs! I am waiting next instruction.    Sunday, April 15 2012 21:55.51 CDT
+        Civa    Great article Alex! I wonder If you can explai...    Tuesday, March 9 2010 05:07.34 CST
+        shijiaoan    great    Monday, May 4 2009 21:48.06 CDT
+        NeOXQuiCk    Nice,thx for sharing.. its helped me a lot.. ...    Tuesday, April 3 2007 17:55.47 CDT
+        tinybyte    Nice stuff! Waiting for the sequels :)    Friday, December 8 2006 15:25.33 CST
+        chip    Thanks, It's great    Monday, November 20 2006 01:07.46 CST
+        mxatone    I start making userland tracer using PaiMei fra...    Friday, November 10 2006 02:29.04 CST
+        mugg    Thanks for the great article!    Wednesday, November 1 2006 10:45.07 CST
+        anonymouse    Neat and Simple Explanation ! looking forward t...    Wednesday, November 1 2006 04:13.46 CST
+        JasonGeffner    Great article! I'm looking forward to Parts 2 a...    Tuesday, October 31 2006 23:57.37 CST
+        AlexIonescu    A PDF is also available in my repository and on...    Tuesday, October 31 2006 18:10.46 CST
+        

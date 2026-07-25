@@ -29,10 +29,10 @@ Engine\Source\ThirdParty\Vulkan\Include\vulkan\vulkan.hpp
 
 And here’s the table of timings in seconds; here we also run qgrep with a b option that will be explained later (it stands for bruteforce):
 
-tool	cold	hot
-qgrep	0.42	0.03
-qgrep bruteforce	0.66	0.08
-ripgrep	10.2	1.2
+tool    cold    hot
+qgrep    0.42    0.03
+qgrep bruteforce    0.66    0.08
+ripgrep    10.2    1.2
 
 It’s possible that if in 2012 I used SSDs and ripgrep was available, I wouldn’t have gone through the trouble of making a new tool - but the pain threshold was crossed so I did and here we are. But how is it possible to make a code search tool that’s so much faster than ripgrep? Why, by cheating, of course.
 

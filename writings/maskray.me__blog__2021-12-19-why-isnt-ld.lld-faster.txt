@@ -44,7 +44,7 @@ In Chrome, chrome is a large executable. In the default build configuration (no 
 5
 6
 
-	
+    
 # Input relocations for chrome (no debug information)
 R_X86_64_PLT32: 167558
 R_X86_64_64: 381017
@@ -106,7 +106,7 @@ Below I will compare lld 13.0.1 with mold 1.0.1. mold's build system uses mimall
 50
 51
 
-	
+    
 % hyperfine --warmup 2 --min-runs 16 "numactl -C 20-20 "{/tmp/link-with-lld,/tmp/link-with-mold}" --threads=1"
 Benchmark 1: numactl -C 20-20 /tmp/link-with-lld --threads=1
   Time (mean ± σ):      8.314 s ±  0.007 s    [User: 6.118 s, System: 2.190 s]
@@ -195,7 +195,7 @@ Let's examine the time spent on each pass of ld.lld. I measured the following wi
 30
 31
 
-	
+    
 8.143089 Total ExecuteLinker
 8.055836 Total Link
 3.172682 Total Parse input files
@@ -254,7 +254,7 @@ In -DCMAKE_BUILD_TYPE=RelWithDebInfo build of Clang, (circa Dec 2021) there are 
 5
 6
 
-	
+    
 # Input relocations for no-pie RelWithDebInfo clang
 R_X86_64_64: 1253965
 R_X86_64_32: 1203807
@@ -346,7 +346,7 @@ The non-local part consists of STB_GLOBAL, STB_WEAK, and (GCC specific) STB_GNU_
 29
 30
 
-	
+    
 template <class ELFT> void ObjFile<ELFT>::initializeSymbols() {
   ArrayRef<Elf_Sym> eSyms = this->getELFSyms<ELFT>();
   // firstGlobal == sh_info of SHT_SYMTAB, the number of local symbols.
@@ -413,7 +413,7 @@ A shared object contributes just symbols to the link process. For a shared objec
 29
 30
 
-	
+    
 template <class ELFT> void SharedFile::parse() {
   ArrayRef<Elf_Sym> syms = this->getGlobalELFSyms<ELFT>();
   for (size_t i = 0, e = syms.size(); i != e; ++i) {
@@ -534,7 +534,7 @@ I previously mentioned that the resolution of archive symbols is not associative
 18
 19
 
-	
+    
 # RUN: rm -rf %t && split-file %s %t
 # RUN: llvm-mc -filetype=obj -triple=x86_64 %t/a.s -o %t/a.o
 # RUN: llvm-mc -filetype=obj -triple=x86_64 %t/b.s -o %t/b.o
@@ -679,7 +679,7 @@ ld.lld splits the section content into pieces, collects pieces from all sections
 23
 24
 
-	
+    
 size_t concurrency = PowerOf2Floor(numThreads, 32);
 for each thread {
   for (MergeInputSection *sec : sections)
@@ -751,7 +751,7 @@ ld.lld iterates over output sections and parallelizes input sections for each ou
 21
 22
 
-	
+    
 template <class ELFT> void Writer<ELFT>::writeSections() {
   ...
   // In -r or --emit-relocs mode, write the relocation sections first as in
@@ -819,7 +819,7 @@ The lld codebase has make<XXX> for types which need a dedicated BumpPtrAllocator
 8
 9
 
-	
+    
 Configuration *elf::config;
 
 bool elf::link(...) {

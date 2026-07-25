@@ -219,16 +219,16 @@ All of these position decisions were heavily tested to be optimal. I should note
 
 Speaking of theoretical performance we can now calculate that value. In the main loop, we need to take the total number of FFMA instructions (512) and divide that by the total sum of all the clock consuming instructions (dual issues are free). Here's the breakdown:
 
-Op	Count
-FFMA	512
-LDS	32 dual issued
-STS	4 dual issued
-TLD	4 dual issued
-IADD	4
-XOR	3
-SETP	1
-BAR	1 dual issued
-BRA	1 dual issued
+Op    Count
+FFMA    512
+LDS    32 dual issued
+STS    4 dual issued
+TLD    4 dual issued
+IADD    4
+XOR    3
+SETP    1
+BAR    1 dual issued
+BRA    1 dual issued
 
 That's a total of 520 clock consuming instructions. So the upper bound on the kernel efficiency is 512/520 or 98.5%. For large matrices our actual performance is very close to that value. It's 98% on GM107, but 96% on GM204. I'm not sure where we lose our performance on GM204 but looking at nvprof stats from synthetic benchmarks with no memory operations seems to imply that it's not within the kernel. Maybe a driver update will fix this, or maybe it's just some internal cost of having many more SMs.
 

@@ -109,13 +109,13 @@ The location of the exception directory can be retrieved by parsing the optional
 Each entry contains a begin address, end address, and the offset of an UNWIND_INFO structure. The begin/end addresses specify the region of code that the given entry provides information for. The UNWIND_INFO structure is represented by the following:
 
 typedef struct _UNWIND_INFO {
-	unsigned char Version : 3;
-	unsigned char Flags : 5;
-	unsigned char SizeOfProlog;
-	unsigned char CountOfCodes;
-	unsigned char FrameRegister : 4;
-	unsigned char FrameOffset : 4;
-	UNWIND_CODE UnwindCode[1];
+    unsigned char Version : 3;
+    unsigned char Flags : 5;
+    unsigned char SizeOfProlog;
+    unsigned char CountOfCodes;
+    unsigned char FrameRegister : 4;
+    unsigned char FrameOffset : 4;
+    UNWIND_CODE UnwindCode[1];
 /*  UNWIND_CODE MoreUnwindCode[((CountOfCodes+1)&~1)-1];
  *  union {
  *      OPTIONAL unsigned long ExceptionHandler;
@@ -139,7 +139,7 @@ We can tell if a given function contains an exception handler by checking if the
 The structure's dynamic UNWIND_CODE array represents the operations needed to "unwind"/undo the changes a given function's prolog has made to the stack. We will talk about these operations in a later section when they become relevant.
 
 typedef struct _UNWIND_INFO {
-	...
+    ...
 /*  UNWIND_CODE MoreUnwindCode[((CountOfCodes+1)&~1)-1];
  *  union {
  *      OPTIONAL unsigned long ExceptionHandler;
@@ -171,12 +171,12 @@ typedef struct _SCOPE_TABLE_AMD64 {
 The __C_specific_handler handler for C/C++ leverages the ExceptionData field to store a SCOPE_TABLE structure. Like the IMAGE_RUNTIME_FUNCTION_ENTRY parent structure, each ScopeRecord has a begin/end address, but this time we have a handler and jump target as well. The begin/end address specifies the scope or "region of code" to "protect". The last two fields store offsets to your SEH exception filter and exception handler.
 
 int main() {
-	__try {
-		*(int*)0 = 0xDEADBEEF;
-	} __except(MyExceptionFilter()) {
-		printf("My exception handler!\n");
-	}
-	return 0;
+    __try {
+        *(int*)0 = 0xDEADBEEF;
+    } __except(MyExceptionFilter()) {
+        printf("My exception handler!\n");
+    }
+    return 0;
 }
 
 Exception filters go inside the parenthesis for your __except block. In this example, MyExceptionFilter is responsible for determining whether the __except handler block should be called for a given exception. Exception filters often perform conditional checks, such as whether the exception code matches something specific. Filters can return the following results:
@@ -216,20 +216,20 @@ We've explored the existing mitigations against stack-based attacks and how Stru
 Bypassing Security Cookies
 Example
 void GetString() {
-	char tempBuffer[16];
+    char tempBuffer[16];
 
-	scanf("%s", tempBuffer);
-	printf(tempBuffer);
+    scanf("%s", tempBuffer);
+    printf(tempBuffer);
 }
 
 int main() {
-	__try {
-		GetString();
-	}
-	__except (EXCEPTION_EXECUTE_HANDLER) {
-		printf("Something bad happened!\n");
-	}
-	return 0;
+    __try {
+        GetString();
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        printf("Something bad happened!\n");
+    }
+    return 0;
 }
 
 Let's start with an example of a simple vulnerable application I've compiled using Clang/LLVM in Visual Studio. The buffer overflow is simple, scanf reads a string into the tempBuffer stack variable without any bound checks.
@@ -241,13 +241,13 @@ What can we do? Existing approaches to these scenarios include all of the method
 This is where our new methodology can start to shine. Our exploit fails if we corrupt the return address and hit the __security_cookie_check. What if we... corrupted the stack and triggered an exception (i.e with a bad format string)?
 
 int main() {
-	__try {
-		GetString();
-	}
-	__except (EXCEPTION_EXECUTE_HANDLER) {
-		printf("Something bad happened!\n");
-	}
-	return 0;
+    __try {
+        GetString();
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        printf("Something bad happened!\n");
+    }
+    return 0;
 }
 
 Since main has a "catch-all" exception handler, the program would print Something bad happened! and return. The security cookie check would never be reached because the exception redirected execution to the handler! Also, because main does not have any stack variables itself, it has no security cookie check. If we used our overflow to corrupt the return address of main rather than GetString, once main returns after the exception is handled, we'd gain control over what code is executed!
@@ -266,28 +266,28 @@ Finding these "desirable" handlers can be easier than it may seem. For example, 
 
 [RUNTIME_FUNCTION]
 ... 
-	[UNWIND_INFO]
-	...  
-	Flags: UNW_FLAG_EHANDLER
-	Unwind codes: .ALLOCSTACK 0x18
-		[SCOPE_TABLE]
-		Scope 0
-		BeginAddress:                  0x16cb
-		EndAddress:                    0x1755
-		HandlerAddress:                0x10314
-			push rbp
-			mov rbp, rdx
-			mov rax, qword ptr [rcx]
-			xor ecx, ecx
-			cmp dword ptr [rax], 0xc0000005
-			sete cl
-			mov eax, ecx
-			pop rbp
-			ret 
-		JumpTarget:                    0x1755
-			xor al, al
-			add rsp, 0x18
-			ret 
+    [UNWIND_INFO]
+    ...  
+    Flags: UNW_FLAG_EHANDLER
+    Unwind codes: .ALLOCSTACK 0x18
+        [SCOPE_TABLE]
+        Scope 0
+        BeginAddress:                  0x16cb
+        EndAddress:                    0x1755
+        HandlerAddress:                0x10314
+            push rbp
+            mov rbp, rdx
+            mov rax, qword ptr [rcx]
+            xor ecx, ecx
+            cmp dword ptr [rax], 0xc0000005
+            sete cl
+            mov eax, ecx
+            pop rbp
+            ret 
+        JumpTarget:                    0x1755
+            xor al, al
+            add rsp, 0x18
+            ret 
 
 Above is an excerpt from a tool I wrote to dump C-specific exception handlers. These structures correspond to the __scrt_is_nonwritable_in_current_image function in the MSVCRT. Look at the exception filter's disassembly. If we can generate an access violation exception (i.e. by reading/writing an invalid pointer), the exception handler (jump target) would be executed, returning to any address of our choice.
 
@@ -330,10 +330,10 @@ Taking a look at the functions that __GSHandlerCheck and __GSHandlerCheck_SEH we
 
 MSVC Mitigation
 void GetString() {
-	char tempBuffer[16];
+    char tempBuffer[16];
 
-	scanf("%s", tempBuffer);
-	printf(tempBuffer);
+    scanf("%s", tempBuffer);
+    printf(tempBuffer);
 }
 
 This was a smart mitigation by Microsoft. The purpose behind these exception handlers is to prevent attackers from being able to escape a security cookie check by causing an exception. For example, take a look at what happens when I compile the previous GetString function using the MSVC++ compiler:
@@ -384,13 +384,13 @@ An Alternative to ROP
 Background
 Unwind Operations
 typedef struct _UNWIND_INFO {
-	unsigned char Version : 3;
-	unsigned char Flags : 5;
-	unsigned char SizeOfProlog;
-	unsigned char CountOfCodes;
-	unsigned char FrameRegister : 4;
-	unsigned char FrameOffset : 4;
-	UNWIND_CODE UnwindCode[1];
+    unsigned char Version : 3;
+    unsigned char Flags : 5;
+    unsigned char SizeOfProlog;
+    unsigned char CountOfCodes;
+    unsigned char FrameRegister : 4;
+    unsigned char FrameOffset : 4;
+    UNWIND_CODE UnwindCode[1];
 /*  UNWIND_CODE MoreUnwindCode[((CountOfCodes+1)&~1)-1];
  *  union {
  *      OPTIONAL unsigned long ExceptionHandler;
@@ -403,12 +403,12 @@ typedef struct _UNWIND_INFO {
 In an earlier section about the exception directory and unwind info structure, we skipped over the UNWIND_CODE structure as it was irrelevant at the time.
 
 typedef union _UNWIND_CODE {
-	struct {
-		unsigned char CodeOffset;
-		unsigned char UnwindOp : 4;
-		unsigned char OpInfo : 4;
-	};
-	unsigned short FrameOffset;
+    struct {
+        unsigned char CodeOffset;
+        unsigned char UnwindOp : 4;
+        unsigned char OpInfo : 4;
+    };
+    unsigned short FrameOffset;
 } UNWIND_CODE, *PUNWIND_CODE;
 
 UNWIND_CODE entries specify the operations required to "unwind" (or undo) the changes a given function's prolog has made to registers or the stack. Here are the various documented operations an UNWIND_CODE structure can contain:
@@ -465,14 +465,14 @@ mov     rcx, [rsp+0A8h+var_48]
 xor     rcx, rsp        ; StackCookie
 call    __security_check_cookie
 ; EPILOG
-add     rsp, 70h			; .ALLOCSTACK 0x70
-pop     r15				; .PUSHREG R15
-pop     r14				; .PUSHREG R14
-pop     r13				; .PUSHREG R13
-pop     r12				; .PUSHREG R12
-pop     rdi				; .PUSHREG RDI
-pop     rsi				; .PUSHREG RSI
-pop     rbx				; .PUSHREG RBX
+add     rsp, 70h            ; .ALLOCSTACK 0x70
+pop     r15                ; .PUSHREG R15
+pop     r14                ; .PUSHREG R14
+pop     r13                ; .PUSHREG R13
+pop     r12                ; .PUSHREG R12
+pop     rdi                ; .PUSHREG RDI
+pop     rsi                ; .PUSHREG RSI
+pop     rbx                ; .PUSHREG RBX
 retn
 ; }
 RtlQueryAtomInAtomTable endp
@@ -595,12 +595,12 @@ As you can see, these operations provide powerful primitives to modify the state
 Another side effect to worry about is "what if I only want to replace a few registers, but my unwind info structure contains operations I don't want?". Fortunately, there is a trick we can use to get around this.
 
 typedef union _UNWIND_CODE {
-	struct {
-		unsigned char CodeOffset;
-		unsigned char UnwindOp : 4;
-		unsigned char OpInfo : 4;
-	};
-	unsigned short FrameOffset;
+    struct {
+        unsigned char CodeOffset;
+        unsigned char UnwindOp : 4;
+        unsigned char OpInfo : 4;
+    };
+    unsigned short FrameOffset;
 } UNWIND_CODE, *PUNWIND_CODE;
 
 When unwind operations are enumerated, it's not as simple as "just enumerate every operation if the exception address is in this function". For example, what happens if an exception occurs in the prolog?
@@ -609,16 +609,16 @@ To account for this exists the CodeOffset field of each UNWIND_CODE (unwind oper
 
 This functionality is helpful because we can specify which unwind operation we want to start with!
 
-	[UNWIND_INFO]
-	Unwind codes:
-		0x10: .ALLOCSTACK 0x70
-		0xc: .PUSHREG R15
-		0xa: .PUSHREG R14
-		0x8: .PUSHREG R13
-		0x6: .PUSHREG R12
-		0x4: .PUSHREG RDI
-		0x3: .PUSHREG RSI
-		0x2: .PUSHREG RBX
+    [UNWIND_INFO]
+    Unwind codes:
+        0x10: .ALLOCSTACK 0x70
+        0xc: .PUSHREG R15
+        0xa: .PUSHREG R14
+        0x8: .PUSHREG R13
+        0x6: .PUSHREG R12
+        0x4: .PUSHREG RDI
+        0x3: .PUSHREG RSI
+        0x2: .PUSHREG RBX
 
 For example, above, the unwind operations for ntdll!RtlQueryAtomInAtomTable are prepended with their CodeOffset fields. If we wanted to only replace the value of RBX, we place the address of RtlQueryAtomInAtomTable + 0x2 on the stack. This works because RtlpUnwindPrologue will assume an exception occurred at the PUSH RBX instruction, thus only process that unwind operation.
 
@@ -753,7 +753,7 @@ If this was true, knowing that RtlpUnwindHandler grabs the DISPATCHER_CONTEXT st
         EstablisherFrame = DispatcherContext.EstablisherFrame;
         RtlpCopyContext(&ContextRecord1,
         DispatcherContext.ContextRecord);
-		
+        
         RtlVirtualUnwind(UNW_FLAG_EHANDLER,
                          ImageBase,
                          ControlPc,
@@ -853,13 +853,13 @@ A frustrating challenge I faced while writing an exploit was that any exception 
                 if (Value < 0) {
                     return ExceptionContinueExecution;
                 } else if (Value > 0) {
-	                // RtlUnwind is called.
-	                ...
-	            }
-		        // Loop continues.
-	...
-	// Eventually, ExceptionContinueSearch is returned.
-	return ExceptionContinueSearch;
+                    // RtlUnwind is called.
+                    ...
+                }
+                // Loop continues.
+    ...
+    // Eventually, ExceptionContinueSearch is returned.
+    return ExceptionContinueSearch;
 
 While reading the code for the __C_specific_handler, which is included with the MSVCRT (C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\crt\src\amd64\chandler.c), I discovered that if the exception filter it called returned zero, it will continue enumerating the scope table.
 

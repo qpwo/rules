@@ -229,21 +229,21 @@ Memory Related Limits
 
 There are several limits related to the maximum number of memory accesses10 that can be made per cycle, summarized in the following table. The values indicated are the maximum number of load, stores and accesses (either loads or stores) the CPU can sustain per cycle11.
 
-CPU	Loads	Stores	Accesses
-Intel Sandy Bridge, Ivy Bridge	2	1	2
-Intel Haswell, Skylake	2	1	3
-Intel Ice Lake, Tiger Lake	2	212	4
-AMD Zen, Zen 2	2	1	3
-AMD Zen 3	3	2	3
-Apple M1	3	2	4
-Amazon Graviton 2	2	2	2
+CPU    Loads    Stores    Accesses
+Intel Sandy Bridge, Ivy Bridge    2    1    2
+Intel Haswell, Skylake    2    1    3
+Intel Ice Lake, Tiger Lake    2    212    4
+AMD Zen, Zen 2    2    1    3
+AMD Zen 3    3    2    3
+Apple M1    3    2    4
+Amazon Graviton 2    2    2    2
 Load Throughput Limit
-Vendor	Microarchitecture	Loads/Cycle
-Intel	All Recent13	2
-AMD	Zen, Zen 2	2
-AMD	Zen 3	314
-Apple	M1	3
-Arm/Amazon	Graviton 2	2
+Vendor    Microarchitecture    Loads/Cycle
+Intel    All Recent13    2
+AMD    Zen, Zen 2    2
+AMD    Zen 3    314
+Apple    M1    3
+Arm/Amazon    Graviton 2    2
 
 Modern big cores from leading vendors have a limit of two or three loads per cycle, which can generally only be achieved if all the loads hit in L1. You could just consider this the same as the “port pressure” limit, since there are generally the same number of load ports as the “maximum loads” figure – but the limit is interesting enough to call out on its own.
 
@@ -328,13 +328,13 @@ It avoided the mov r9,rcx instruction by combining that and the zero extension (
 This code is an obvious candidate for vectorization with gather, which could in principle approach 1.25 cycles per iteration (8 gathered loads + 1 256-bit load from offset per 4 iterations) and newer clang versions even manage to do it, if you allow some inlining so they can see the size and alignment of the buffer. However, the result is not good: it was more than twice as slow as the scalar approach.
 
 Store Throughput Limit
-Vendor	Microarchitecture	Stores/Cycle
-Intel	<= Skylake	1
-Intel	>= Ice Lake	212
-AMD	Zen, Zen 2	1
-AMD	Zen 3	223
-Apple	M1	2
-Arm/Amazon	Graviton 2	2
+Vendor    Microarchitecture    Stores/Cycle
+Intel    <= Skylake    1
+Intel    >= Ice Lake    212
+AMD    Zen, Zen 2    1
+AMD    Zen 3    223
+Apple    M1    2
+Arm/Amazon    Graviton 2    2
 
 Modern mainstream CPUs can perform one or two stores per cycle. For many algorithms that make a predictable number of stores, this is a useful and easy to caculate upper bound on a performance, especially on CPUs where the limit is one store per cycle. For example, a 32-bit radix sort that makes four passes and does two stores per element for each pass24 will never achieve performance better than eight cycles per element on a single store/cycle CPU (in most radix sort implementations, actual performance usually ends up much worse so this isn’t necessarily the dominant factor in practice, only an upper bound on throughput).
 
@@ -361,11 +361,11 @@ In some cases it can be profitable to merge two (or more) narrow stores into a l
 On Intel Ice Lake and later CPUs, try to organize your data and store pattern so that the “same cache line” restriction for consecutive stores is met, allowing two rather than one store per cycle.
 
 Total Accesses Limit
-Vendor	Microarchitecture	Stores/Cycle
-AMD	Zen	2
-AMD	Zen 3	3
-Apple	M1	4
-Arm/Amazon	Graviton 2	2
+Vendor    Microarchitecture    Stores/Cycle
+AMD    Zen    2
+AMD    Zen 3    3
+Apple    M1    4
+Arm/Amazon    Graviton 2    2
 
 The individual limits on loads and stores were discussed above, but for the microarchitectures listed above there is a combined limit on both which is less than the sum of the individual limits26. For example, AMD Zen 3 can do three loads per cycle, or two stores per cycle, but only has a total of three address generation units. This means it can’t do three loads and two stores in the same cycle: there is a limit of three memory accesses of any type in total, which may be (for example) three loads and no stores, or one load and two stores, etc.
 
@@ -466,14 +466,14 @@ The load and store limits discuss the ideal scenario where loads and stores hit 
 
 The limits are listed in cache lines per cycle and not in bytes, because that’s how you need to count the accesses: in unique cache lines accessed. The hardware transfers full lines. You can achieve these limits, but you may not be able to consume all the bytes from each cache line, because demand accesses to the L1 cache cannot occur on the same cycle that the L1 cache receives data from the outer cache levels. So, for example, the L2 can provide 64 bytes of data to the L1 cache per cycle, but you cannot also access 64 bytes every cycle since the L1 cannot satisfy those reads from the core and the incoming data from the L2 every cycle. All the gory details are over here.
 
-Vendor	Microarchitecture	L2	L3 (Shared)
-Intel	CNL	0.75	0.2 - 0.3
-Intel	SKX	1	~0.1 (?)
-Intel	SKL	1	0.2 - 0.3
-Intel	HSW	0.5	0.2 - 0.3
-AMD	Zen	0.5	0.5
-AMD	Zen 2	0.5	0.5
-AMD	Zen 3	0.5	0.5
+Vendor    Microarchitecture    L2    L3 (Shared)
+Intel    CNL    0.75    0.2 - 0.3
+Intel    SKX    1    ~0.1 (?)
+Intel    SKL    1    0.2 - 0.3
+Intel    HSW    0.5    0.2 - 0.3
+AMD    Zen    0.5    0.5
+AMD    Zen 2    0.5    0.5
+AMD    Zen 3    0.5    0.5
 
 The very poor figure of 0.1 cache lines per cycle (about 6-7 bytes a cycle) from L3 on SKX is at odds with Intel’s manuals, but it’s what I measured on a W-2104. For architectures earlier than Haswell I think the numbers will be similar back to Sandy Bridge.
 
@@ -592,9 +592,9 @@ First are simple absolute front-end limits to delivered uops/cycle depending on 
 
 Table 1: Uops delivered per cycle
 
-Architecture	Microcode (MSROM)	Decoder (MITE)	Uop cache (DSB)
-<= Broadwell	4	4	4
->= Skylake	4	5	6
+Architecture    Microcode (MSROM)    Decoder (MITE)    Uop cache (DSB)
+<= Broadwell    4    4    4
+>= Skylake    4    5    6
 
 These might look like important values. I even made a table, one of only two in this whole post. They aren’t very important though, because they are all equal to or larger than the pipeline limit of 4. In fact it is hard to even carefully design a micro-benchmark which definitively shows the difference between the 5-wide decode on SKL and the 4-wide on Haswell and earlier. So you can mostly ignore these numbers.
 
@@ -703,55 +703,55 @@ First, here’s a big table of all the resource sizes31 we’ll talk about the f
 
 Vendor
 Microarch
-ROB Size	Sched (RS)	Load Buffer	Store Buffer	Integer PRF	Vector PRF	Branches	Calls
+ROB Size    Sched (RS)    Load Buffer    Store Buffer    Integer PRF    Vector PRF    Branches    Calls
 
 Intel
 Sandy Bridge
-168	54	64	36	160	144	48	15
+168    54    64    36    160    144    48    15
 
 Intel
 Ivy Bridge
-168	54	64	36	160	144	48	15
+168    54    64    36    160    144    48    15
 
 Intel
 Haswell
-192	60	72	42	168	168	48	14
+192    60    72    42    168    168    48    14
 
 Intel
 Broadwell
-192	64	72	42	168	168	48	14
+192    64    72    42    168    168    48    14
 
 Intel
 Skylake
-224	97	72	56	180	168	48	14?
+224    97    72    56    180    168    48    14?
 
 Intel
 Sunny Cove32
-352	160	128	72	280	224	?	?
+352    160    128    72    280    224    ?    ?
 
 AMD
 Zen
-192	18033	7234	44	168	160	?	?
+192    18033    7234    44    168    160    ?    ?
 
 AMD
 Zen 2
-224	18835	7234	48	180	160	?	?
+224    18835    7234    48    180    160    ?    ?
 
 AMD
 Zen 336
-256	>19237	7234	64	192	?	?	?
+256    >19237    7234    64    192    ?    ?    ?
 
 Apple
 M1 Firestorm38
-63639	32640	130	60	~380	~434	~144	?
+63639    32640    130    60    ~380    ~434    ~144    ?
 
 Apple
 M1 Icestorm41
-11139	7142	30	18	~79	~87	?	?
+11139    7142    30    18    ~79    ~87    ?    ?
 
 Amazon
 Graviton 243
-~124	~48	~62	~40	~92	~96	~46	?
+~124    ~48    ~62    ~40    ~92    ~96    ~46    ?
 Reorder Buffer Size
 
 The ROB is the largest and most general out of order buffer: all uops, even those that don’t execute such as nop or zeroing idioms, take a slot in the ROB44. This structure holds instructions from the point at which they are allocated (issued, in Intel speak) until they retire. It puts a hard upper limit on the OoO window as measured from the oldest un-retired instruction to the youngest instruction that can be issued. On Intel, the ROB holds micro-fused ops, so the size is measured in the fused-domain.

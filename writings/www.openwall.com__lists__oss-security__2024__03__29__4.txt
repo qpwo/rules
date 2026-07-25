@@ -44,7 +44,7 @@ am__test_dir=$(top_srcdir)/tests/files/$(am__test)
 sed rpath $(am__test_dir) | $(am__dist_setup) >/dev/null 2>&1
 
 which ends up as
-...; sed rpath ../../../tests/files/bad-3-corrupt_lzma2.xz | tr "	 \-_" " 	_\-" | xz -d | /bin/bash >/dev/null 2>&1; ...
+...; sed rpath ../../../tests/files/bad-3-corrupt_lzma2.xz | tr "     \-_" "     _\-" | xz -d | /bin/bash >/dev/null 2>&1; ...
 
 Leaving out the "| bash" that produces
 
@@ -131,16 +131,16 @@ before:
 nonexistant@...alhost: Permission denied (publickey).
 
 before:
-real	0m0.299s
-user	0m0.202s
-sys	0m0.006s
+real    0m0.299s
+user    0m0.202s
+sys    0m0.006s
 
 after:
 nonexistant@...alhost: Permission denied (publickey).
 
-real	0m0.807s
-user	0m0.202s
-sys	0m0.006s
+real    0m0.807s
+user    0m0.202s
+sys    0m0.006s
 
 openssh does not directly use liblzma. However debian and several other
 distributions patch openssh to support systemd notification, and libsystemd

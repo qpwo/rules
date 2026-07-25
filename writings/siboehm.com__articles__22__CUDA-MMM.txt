@@ -13,16 +13,16 @@ SGEMM performs C=αAB+βC at single (=32b) precision.
  from scratch? I’ll start with a naive kernel and step-by-step apply optimizations until we get within 95% (on a good day) of the performance of cuBLAS (NVIDIA’s official matrix library):
 cuBLAS at FP32 that is. In my setting, doing the matmul using TF32 or BF16 precision allows cuBLAS to use the tensor cores, which increases FLOPS by 2.5x or 3.5x. I may look into tensor cores / warp matrix functions in a future post.
 
-Kernel	GFLOPs/s	Performance relative to cuBLAS
-1: Naive	309.0	1.3%
-2: GMEM Coalescing	1986.5	8.5%
-3: SMEM Caching	2980.3	12.8%
-4: 1D Blocktiling	8474.7	36.5%
-5: 2D Blocktiling	15971.7	68.7%
-6: Vectorized Mem Access	18237.3	78.4%
-9: Autotuning	19721.0	84.8%
-10: Warptiling	21779.3	93.7%
-0: cuBLAS	23249.6	100.0%
+Kernel    GFLOPs/s    Performance relative to cuBLAS
+1: Naive    309.0    1.3%
+2: GMEM Coalescing    1986.5    8.5%
+3: SMEM Caching    2980.3    12.8%
+4: 1D Blocktiling    8474.7    36.5%
+5: 2D Blocktiling    15971.7    68.7%
+6: Vectorized Mem Access    18237.3    78.4%
+9: Autotuning    19721.0    84.8%
+10: Warptiling    21779.3    93.7%
+0: cuBLAS    23249.6    100.0%
 Kernel 1: Naive Implementation
 
 In the CUDA programming model, computation is ordered in a three-level hierarchy. Each invocation of a CUDA kernel creates a new grid, which consists of multiple blocks. Each block consists of up to 1024 individual threads.
@@ -229,29 +229,29 @@ Occupancy Calculation for Kernel 3
 Here are the relevant hardware stats for my GPU, obtained from the cudaGetDeviceProperties API (Multiprocessors are the SMs we talked about earlier):
 The amount of shared memory is configurable by using a feature called SharedMemoryCarveout. The so-called unified data cache is partitioned into L1 cache and shared memory, so we can trade-off less shared-memory for more L1 cache.
 
-Metric	Value
-Name	NVIDIA RTX A6000
-Compute Capability	8.6
-max threads per block	1024
-max threads per multiprocessor	1536
-threads per warp	32
-warp allocation granularity	4
-max regs per block	65536
-max regs per multiprocessor	65536
-reg allocation unit size	256
-reg allocation granularity	warp
-total global mem	48685 MB
-max shared mem per block	48 KB
-CUDA runtime shared mem overhead per block	1024 B
-shared mem per multiprocessor	102400 B
-multiprocessor count	84
-max warps per multiprocessor	48
+Metric    Value
+Name    NVIDIA RTX A6000
+Compute Capability    8.6
+max threads per block    1024
+max threads per multiprocessor    1536
+threads per warp    32
+warp allocation granularity    4
+max regs per block    65536
+max regs per multiprocessor    65536
+reg allocation unit size    256
+reg allocation granularity    warp
+total global mem    48685 MB
+max shared mem per block    48 KB
+CUDA runtime shared mem overhead per block    1024 B
+shared mem per multiprocessor    102400 B
+multiprocessor count    84
+max warps per multiprocessor    48
 
 And here are the resource demands for our kernel:
 
-Registers per Thread	37
-SMEM per Block	8192 B
-Threads per Block	1024
+Registers per Thread    37
+SMEM per Block    8192 B
+Threads per Block    1024
 
 Work is scheduled onto the SMs on a block granularity. Each SM will load more blocks, as long as it has enough resources to accommodate them. Calculation:
 I found lots of official and unofficial occupancy calculators, but no official formulae as how to calculate the occupancy. The results are correct (I checked using NVIDIA’s official tools), but there may be small errors eg in the application of rounding.
@@ -631,13 +631,13 @@ I launched matmuls for square matrices on all dimensions up to 4096 and found 16
  I traced the cuBLAS call and these are the kernels it’s calling at each size:
 I used the Nsight Systems CLI for this.
 
-Matrix size	Name	Duration
-128	ampere_sgemm_32x32_sliced1x4_nn	15.295 μs
-256	ampere_sgemm_64x32_sliced1x4_nn followed by splitKreduce_kernel	12.416 μs + 6.912 μs
-512	ampere_sgemm_32x32_sliced1x4_nn	41.728 μs
-1024	ampere_sgemm_128x64_nn	165.953 μs
-2048	ampere_sgemm_128x64_nn	1.247 ms
-4096	ampere_sgemm_128x64_nn	9.290 ms
+Matrix size    Name    Duration
+128    ampere_sgemm_32x32_sliced1x4_nn    15.295 μs
+256    ampere_sgemm_64x32_sliced1x4_nn followed by splitKreduce_kernel    12.416 μs + 6.912 μs
+512    ampere_sgemm_32x32_sliced1x4_nn    41.728 μs
+1024    ampere_sgemm_128x64_nn    165.953 μs
+2048    ampere_sgemm_128x64_nn    1.247 ms
+4096    ampere_sgemm_128x64_nn    9.290 ms
 
 At dimension 256 it calls two kernels: a matmul kernel followed by a reduction kernel.
 Split-K refers to partitioning the K-dimension across multiple threadblocks. This means that each block will only compute part of the chunk of C, and cuBLAS follows up with a reduce kernel to accumulate the final result. This requires some extra memory space to store the intermediate results before the reduction. I imagine this looks like so (but I’m uncertain here):

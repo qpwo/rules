@@ -260,7 +260,7 @@ Cycle/pattern   |   5.25    6.50    7.25    7.25 :   5.25   6.25    6.75    7.25
                 |                                :                                 | 
                 +--------------------------------+---------------------------------+
 
-Figure 1:	Working sets fit in L1 or L2 (16 to 256 KB)
+Figure 1:    Working sets fit in L1 or L2 (16 to 256 KB)
                 +--------------------------------+---------------------------------+ 
                 |           4K pages             :          2M pages               | 
                 |    0     0-3    0-3-7  0-3-7-8 :   0      0-3    0-3-7   0-3-7-8 | 
@@ -290,7 +290,7 @@ Cycle/pattern   |  11.00   13.00   15.50   17.25 :   5.00   6.75    7.75   10.00
                 |                                :                                 | 
                 +--------------------------------+---------------------------------+
 
-Figure 2:	Working sets fit in L3 and in huge TLB, but not always in regular TLB
+Figure 2:    Working sets fit in L3 and in huge TLB, but not always in regular TLB
                 +--------------------------------+---------------------------------+ 
                 |           4K pages             :          2M pages               | 
                 |    0     0-3    0-3-7  0-3-7-8 :   0      0-3    0-3-7   0-3-7-8 | 
@@ -314,7 +314,7 @@ Cycle/pattern   |  26.00   29.25   36.75   39.75 :  16.75  18.25   24.25   30.75
                 |                                :                                 | 
                 +--------------------------------+---------------------------------+
 
-Figure 3:	Working sets exceed L3, but still fit in huge TLB
+Figure 3:    Working sets exceed L3, but still fit in huge TLB
                 +--------------------------------+---------------------------------+ 
                 |           4K pages             :          2M pages               | 
                 |    0     0-3    0-3-7  0-3-7-8 :   0      0-3    0-3-7   0-3-7-8 | 
@@ -338,4 +338,4 @@ Cycle/pattern   |  37.25   41.50   52.00   55.25 :  22.00  24.75   30.50   37.00
                 |                                :                                 | 
                 +--------------------------------+---------------------------------+
 
-Figure 4:	Working sets exceed caches and TLBs
+Figure 4:    Working sets exceed caches and TLBs

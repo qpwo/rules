@@ -38,7 +38,7 @@ Python does not natively have a concept of SIMD. However, libraries like NumPy e
 4
 5
 6
-	
+    
 import numpy as np
 
 a = np.array([1, 2, 3, 4])
@@ -69,10 +69,10 @@ SIMD over booleans might sound esoteric, but it's an idea we can immediately put
 1
 2
 3
-	
+    
 def xor_bytes(a: bytes, b: bytes) -> bytes:
-	assert(len(a) == len(b))
-	return bytes(x ^ y for x, y in zip(a, b))
+    assert(len(a) == len(b))
+    return bytes(x ^ y for x, y in zip(a, b))
 
 This takes each individual byte (as an integer between 0 and 255) in a and b, applies the xor operator to each, and constructs a new bytes object from the results. Arguably, we are already using the boolean-SIMD concept here; each of the 8 bits in a byte are getting XORed in parallel. But we can do better than that:
 
@@ -81,12 +81,12 @@ This takes each individual byte (as an integer between 0 and 255) in a and b, ap
 3
 4
 5
-	
+    
 def xor_bytes_simd(a: bytes, b: bytes) -> bytes:
-	assert(len(a) == len(b))
-	return (
-		int.from_bytes(a, "little") ^ int.from_bytes(b, "little")
-	).to_bytes(len(a), "little")
+    assert(len(a) == len(b))
+    return (
+        int.from_bytes(a, "little") ^ int.from_bytes(b, "little")
+    ).to_bytes(len(a), "little")
 
 This might look a bit ridiculous, and that's because it is. We convert each bytes object into an arbitrary-precision integer, XOR those two integers together, and then convert the resulting integer back to bytes. The python ^ operator only gets executed once, processing all the data in one step (or more explicitly, one CPython VM operation). I'm going to call this approach "pseudo-SIMD". But with all this conversion between bytes and integers, surely it must be slower overall? Let's benchmark it.
 
@@ -142,7 +142,7 @@ Let's take a closer look. Here's the inner loop of the code for XORing together 
 
 1
 2
-	
+    
 for (i = 0; i < size_b; ++i)
     z->ob_digit[i] = a->ob_digit[i] ^ b->ob_digit[i];
 
@@ -210,22 +210,22 @@ If you're not a reverse engineer, or even if you are, you're probably thinking "
 13
 14
 15
-	
+    
 i = 0
 words_left_to_xor = size_b
 while words_left_to_xor > 3:
-	# xor 4 words (16 bytes) concurrently using q0, q1 registers
-	z[i:i+4] = a[i:i+4] ^ b[i:i+4]
-	i += 4
-	words_left_to_xor -= 4
+    # xor 4 words (16 bytes) concurrently using q0, q1 registers
+    z[i:i+4] = a[i:i+4] ^ b[i:i+4]
+    i += 4
+    words_left_to_xor -= 4
 
 # deal with remaining 32-bit words individually
 if words_left_to_xor > 0:
-	z[i] = a[i] ^ b[i]
+    z[i] = a[i] ^ b[i]
 if words_left_to_xor > 1:
-	z[i+1] = a[i+1] ^ b[i+1]
+    z[i+1] = a[i+1] ^ b[i+1]
 if words_left_to_xor > 2:
-	z[i+2] = a[i+2] ^ b[i+2]
+    z[i+2] = a[i+2] ^ b[i+2]
 
 The main loop operates using the q0 and q1 registers, which according to ARM docs are 128-bit wide NEON registers. As far as I can tell, NEON doesn't stand for anything in particular, but it's what ARM calls its SIMD features (by the way, their "next-gen" SIMD instruction set is called SVE).
 
@@ -266,7 +266,7 @@ We can use Python integers for more than just parallel bitwise operations. We ca
 13
 14
 15
-	
+    
 a = 0x4567 # this represents four 4-bit unsigned integers, [4, 5, 6, 7]
 b = 0x6789 # as does this: [6, 7, 8, 9]
 
@@ -316,7 +316,7 @@ The "obvious" implementation of the inner loop of the GoL algorithm looks someth
 13
 14
 15
-	
+    
 for y in range(1, height + 1):
     for x in range(width):
         neighbor_count = sum(
@@ -363,7 +363,7 @@ Although it isn't made explicit in the snippet above, the state of the cells is 
 24
 25
 26
-	
+    
 # count neighbors
 summed = state
 summed += (summed >> 4) + (summed << 4)
@@ -452,7 +452,7 @@ We still haven't hit the 60fps target, and to get there I added some paralleliza
 37
 38
 39
-	
+    
 """
 
 ┌───────────┐             Graphics Process

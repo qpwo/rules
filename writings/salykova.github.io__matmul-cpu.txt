@@ -275,19 +275,19 @@ gcc -O3 -mno-avx512f -march=native matmul_kernel.c -S
 
 // matmul_kernel.s
 ...
-vfmadd231ps	%ymm14, %ymm1, %ymm13
-vfmadd231ps	%ymm14, %ymm0, %ymm12
-vmovaps	%ymm13, 32(%rsp)
-vmovaps	%ymm12, 64(%rsp)
-vbroadcastss	(%rax,%r9), %ymm14
-vfmadd231ps	%ymm14, %ymm1, %ymm10
-vfmadd231ps	%ymm14, %ymm0, %ymm11
-vmovaps	%ymm10, 96(%rsp)
-vmovaps	%ymm11, 128(%rsp)
-vbroadcastss	(%rax,%r9,2), %ymm14
-addq	$4, %rax
-vfmadd231ps	%ymm14, %ymm1, %ymm2
-vfmadd231ps	%ymm14, %ymm0, %ymm3
+vfmadd231ps    %ymm14, %ymm1, %ymm13
+vfmadd231ps    %ymm14, %ymm0, %ymm12
+vmovaps    %ymm13, 32(%rsp)
+vmovaps    %ymm12, 64(%rsp)
+vbroadcastss    (%rax,%r9), %ymm14
+vfmadd231ps    %ymm14, %ymm1, %ymm10
+vfmadd231ps    %ymm14, %ymm0, %ymm11
+vmovaps    %ymm10, 96(%rsp)
+vmovaps    %ymm11, 128(%rsp)
+vbroadcastss    (%rax,%r9,2), %ymm14
+addq    $4, %rax
+vfmadd231ps    %ymm14, %ymm1, %ymm2
+vfmadd231ps    %ymm14, %ymm0, %ymm3
 ...
 
 6. Padding

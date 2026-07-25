@@ -36,7 +36,7 @@ Lets start with the code:
 25
 26
 27
-	
+    
 template<typename It, typename T, typename Cmp>
 It branchless_lower_bound(It begin, It end, const T & value, Cmp && compare)
 {
@@ -104,20 +104,20 @@ But that means if we compare the Clang version of std::lower_bound against the G
 
 The branchless version of branchless_lower_bound is faster than the branchless version of std::lower_bound. On the left half of the graph, where the arrays are smaller, it’s 1.5x as fast on average. Why? Mainly because the inner loop is so tight. Here is the assembly for the two:
 
-inner loop of std::lower_bound	inner loop of branchless_lower_bound
-loop: mov %rcx,%rsi	loop: lea (%rdx,%rax,4),%rcx
-mov %rbx,%rdx	cmp (%rcx),%esi
-shr %rdx	cmovg %rcx,%rdx
-mov %rdx,%rdi	shr %rax
-not %rdi	jne loop
-add %rbx,%rdi	
-cmp %eax,(%rcx,%rdx,4)	
-lea 0x4(%rcx,%rdx,4),%rcx	
-cmovge %rsi,%rcx	
-cmovge %rdx,%rdi	
-mov %rdi,%rbx	
-test %rdi,%rdi	
-jg loop	
+inner loop of std::lower_bound    inner loop of branchless_lower_bound
+loop: mov %rcx,%rsi    loop: lea (%rdx,%rax,4),%rcx
+mov %rbx,%rdx    cmp (%rcx),%esi
+shr %rdx    cmovg %rcx,%rdx
+mov %rdx,%rdi    shr %rax
+not %rdi    jne loop
+add %rbx,%rdi    
+cmp %eax,(%rcx,%rdx,4)    
+lea 0x4(%rcx,%rdx,4),%rcx    
+cmovge %rsi,%rcx    
+cmovge %rdx,%rdi    
+mov %rdi,%rbx    
+test %rdi,%rdi    
+jg loop    
 
 These are all pretty cheap operations with only a little bit of instruction-level-parallelism, (each loop iteration depends on the previous, so instructions-per-clock are low for both of these) so we can estimate their cost just by counting them. 13 vs 5 is a big decrease. Specifically two differences matter:
 
@@ -130,12 +130,12 @@ MORE COMPARISONS
 
 Why is it slower for strings? Because this does more comparisons than std::lower_bound. Splitting into powers of two is actually not ideal. For example if the input is the array [0, 1, 2, 3, 4] and we’re looking for the middle, element 2, this behaves pretty badly:
 
-std::lower_bound	branchless_lower_bound
-compare at index 2, not less	compare at index 4, not less
-compare at index 1, less	compare at index 2, not less
-done, found at index 2	compare at index 1, less
-	compare at index 1, less
-	done, found at index 2
+std::lower_bound    branchless_lower_bound
+compare at index 2, not less    compare at index 4, not less
+compare at index 1, less    compare at index 2, not less
+done, found at index 2    compare at index 1, less
+    compare at index 1, less
+    done, found at index 2
 
 So we’re doing four comparisons here where std::lower_bound only needs two. I picked an example where it’s particularly clumsy, starting far from the middle and comparing the same index twice. It seems like you should be able to clean this up, but when I tried I always ended up making it slower.
 

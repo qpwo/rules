@@ -26,11 +26,11 @@ Atomicity and atomic operations
 
 A crucial building block for all of this are atomic operations. This has nothing to do with nuclear physics and everything to do with the root of the word atom, the Ancient Greek “ἄτομος” (atomos, “indivisible”). An atomic operation is one that cannot by divided into any smaller parts, or appears to be for the purposes of other cores in the system. To see why this matters, consider what happens when two cores both try to increment a counter at almost the same type, running the equivalent of the C statement counter++;:
 
-CYCLE #	CORE 1	CORE 2
-0	reg = load(&counter);	
-1	reg = reg + 1;	reg = load(&counter);
-2	store(&counter, reg);	reg = reg + 1;
-3		store(&counter, reg);
+CYCLE #    CORE 1    CORE 2
+0    reg = load(&counter);    
+1    reg = reg + 1;    reg = load(&counter);
+2    store(&counter, reg);    reg = reg + 1;
+3        store(&counter, reg);
 
 In compiled code, this single turns into a load operation, a register increment, and finally a store operation (here written in C-esque pseudocode). These three steps are distinct and will execute in sequence (note that on the micro-architectural level, this is true on x86 as well, even though the instruction set architecture actually features a read-modify-write add [memory], value instruction). And because of this splitting into multiple cycles, it’s possible for Core 2 to read counter after Core 1 has read it (and started incrementing it), but before it has written the result back. The end result is that, even though both cores ran code to increment the counter, the final value of the counter is only incremented by 1; one of the two increment operations was “lost”.
 

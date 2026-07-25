@@ -29,7 +29,7 @@ Here is the fast path before three recent changes:
 15
 16
 
-	
+    
 __attribute__((returns_nonnull)) void *Allocate(size_t Size, Align Alignment) {
   BytesAllocated += Size;                               // (3) accounting RMW
   uintptr_t AlignedPtr = alignAddr(CurPtr, Alignment);  // (1) always realign
@@ -61,7 +61,7 @@ alignAddr(CurPtr, Alignment) is wasteful: a freshly-bumped pointer is usually al
 6
 7
 
-	
+    
 // Optimized to a constant
 SizeToAllocate = alignToPowerOf2(SizeToAllocate, MinAlign);
 
@@ -85,7 +85,7 @@ T may be incomplete where the allocator is declared — e.g. a class member Spec
 7
 8
 
-	
+    
 using BumpPtrAllocatorTy =
     BumpPtrAllocatorImpl<MallocAllocator, 4096, 4096, 128, /*MinAlign=*/1>;
 
@@ -107,7 +107,7 @@ I tried
 2
 3
 
-	
+    
 // Fast path check. The condition also fails for a fresh allocator (End ==
 // nullptr) to avoid a separate null check.
 if (LLVM_LIKELY(AlignedPtr + SizeToAllocate - 1 < uintptr_t(End))) { ... }
@@ -116,7 +116,7 @@ but then adopted aengelke's suggestion. Storing the end as a sentinel one past t
 
 1
 
-	
+    
 if (LLVM_LIKELY(AllocEndPtr < EndSentinel)) { ... }
 
 An empty allocator has EndSentinel == 0, so AllocEndPtr < 0 is always false and the null case falls through to the slow path with no separate branch.
@@ -147,7 +147,7 @@ Combined, the fast path becomes:
 16
 17
 
-	
+    
 void *Allocate(size_t Size, Align Alignment) {
   size_t SizeToAllocate = Size;
 #if LLVM_ADDRESS_SANITIZER_BUILD && LLVM_ENABLE_ABI_BREAKING_CHECKS
@@ -177,7 +177,7 @@ Allocating a typical arena object — a 24-byte, 8-aligned node via Allocate<T>(
 5
 6
 
-	
+    
 mov  rax, [rdi]        # CurPtr (also the return value)
 lea  rcx, [rax + 0x18] # new = CurPtr + 24
 cmp  rcx, [rdi + 0x8]  # vs EndSentinel
@@ -197,15 +197,15 @@ Reverting all three on top of main isolates their combined effect (compare):
 
 Significant (≥3σ vs. measured noise): 🟢 improvement. Unmarked = within noise.
 
-Configuration	instructions:u	max-rss
-stage1-O3	−0.04%	+0.04%
-stage1-ReleaseThinLTO	−0.04%	−0.01%
-stage1-ReleaseLTO-g	−0.04%	+0.06%
-stage1-O0-g	🟢 −0.09%	+0.25%
-stage1-aarch64-O3	−0.04%	+0.04%
-stage1-aarch64-O0-g	🟢 −0.12%	−0.01%
-stage2-O3	🟢 −0.14%	−0.15%
-stage2-O0-g	🟢 −0.36%	−0.06%
+Configuration    instructions:u    max-rss
+stage1-O3    −0.04%    +0.04%
+stage1-ReleaseThinLTO    −0.04%    −0.01%
+stage1-ReleaseLTO-g    −0.04%    +0.06%
+stage1-O0-g    🟢 −0.09%    +0.25%
+stage1-aarch64-O3    −0.04%    +0.04%
+stage1-aarch64-O0-g    🟢 −0.12%    −0.01%
+stage2-O3    🟢 −0.14%    −0.15%
+stage2-O0-g    🟢 −0.36%    −0.06%
 Takeaways
 A bump allocator's fast path is a few instructions of real work wrapped in a realign and accounting; each can be hoisted out of the common case.
 Encoding "empty" as a 0 sentinel folds a null check into the bound compare.

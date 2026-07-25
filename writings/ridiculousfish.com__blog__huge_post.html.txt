@@ -74,10 +74,10 @@ A little microbenchmark: create a sequence of 16k random dividend/divisor pairs,
 
 x86-64 has a narrowing divide instruction divq and we throw that into the mix. Times are nanoseconds per divide, lower is better.
 
-CPU	Hackers Delight	libdivide mul	libdivide sub	libdivide sub branchless	hardware divq
-Intel i7-8700	23.5	18.6	21.2	18.2	19.7
-Intel Xeon 8375C	17.2	10.0	14.2	11.5	2.9
-Apple M1 Mac Mini	10.4	4.7	9.6	5.4	N/A
+CPU    Hackers Delight    libdivide mul    libdivide sub    libdivide sub branchless    hardware divq
+Intel i7-8700    23.5    18.6    21.2    18.2    19.7
+Intel Xeon 8375C    17.2    10.0    14.2    11.5    2.9
+Apple M1 Mac Mini    10.4    4.7    9.6    5.4    N/A
 
 Sadly no real speedup from this technique.
 
@@ -150,9 +150,9 @@ Intel Xeon 3.0 GHz (8275CL)
 
 Times are nanoseconds per divide, and a percentage improvement compared to hardware (i.e. udiv instruction). Lower is better.
 
-width	hardware	libdivide scalar	libdivide SSE2	libdivide AVX2	libdivide AVX512
-u32	2.298	0.872 (-62%)	0.355 (-84%)	0.219 (-90%)	0.210 (-91%)
-u64	6.998	0.891 (-87%)	1.058 (-85%)	0.574 (-92%)	0.492 (-93%)
+width    hardware    libdivide scalar    libdivide SSE2    libdivide AVX2    libdivide AVX512
+u32    2.298    0.872 (-62%)    0.355 (-84%)    0.219 (-90%)    0.210 (-91%)
+u64    6.998    0.891 (-87%)    1.058 (-85%)    0.574 (-92%)    0.492 (-93%)
 
 The three vector ISAs are similar except for width: 128, 256, 512 bits.
 
@@ -164,9 +164,9 @@ Apple M1 3.2 GHz (Mac Mini)
 
 Times are nanoseconds per divide; lower is better.
 
-width	hardware	libdivide scalar	libdivide NEON
-u32	0.624	0.351 (-43%)	0.158 (-75%)
-u64	0.623	0.315 (-49%)	0.555 (-11%)
+width    hardware    libdivide scalar    libdivide NEON
+u32    0.624    0.351 (-43%)    0.158 (-75%)
+u64    0.623    0.315 (-49%)    0.555 (-11%)
 
 The M1 is 10x faster than the Xeon at 64 bit divides. It’s…just wow.
 
@@ -1407,7 +1407,7 @@ _sevens:
   shrl  $2, %ecx
   movl  %ecx, %eax
   ret
-	Distributive
+    Distributive
 _sevens:
 
   movl  $1227133513, %eax
@@ -1419,7 +1419,7 @@ _sevens:
   shrl  %edx
   movl  %edx, %eax
   ret
-	Saturating Increment
+    Saturating Increment
 _sevens:
   movl  4(%esp), %eax
   addl  $1, %eax
@@ -1487,7 +1487,7 @@ LBB1_3:
   popl  %ebx
   popl  %ebp
   ret
-	Distributive (hand tweaked)
+    Distributive (hand tweaked)
 _divide_7:
   pushl  %ebp
   movl  %esp, %ebp
@@ -1520,7 +1520,7 @@ LBB0_3:
   popl  %ebx
   popl  %ebp
   ret
-	Saturating Increment
+    Saturating Increment
 _divide_7:
   pushl  %ebp
   movl  %esp, %ebp
@@ -1558,973 +1558,973 @@ A simple test harness was constructed and the above functions were benchmarked t
 
 Nanoseconds Per Divide
 
-	
+    
 
 Divisor
 
-		
+        
 
 Round Up
 
-		
+        
 
 Saturating Increment
 
-		
+        
 
 Distribute (as generated)
 
-		
+        
 
 Distribute (hand tweaked)
 
 i386
 
-	
+    
 
 7
 
-		
+        
 
 1.632
 
-		
+        
 
 1.484
 
-	
+    
 
 9.1%
 
-		
+        
 
 1.488
 
-	
+    
 
 8.9%
 
-		
+        
 
 1.433
 
-	
+    
 
 12.2%
 
 uint32
 
-	
+    
 
 37
 
-		
+        
 
 1.631
 
-		
+        
 
 1.483
 
-	
+    
 
 9.1%
 
-		
+        
 
 1.486
 
-	
+    
 
 8.9%
 
-		
+        
 
 1.433
 
-	
+    
 
 12.1%
 
-	
+    
 
 123
 
-		
+        
 
 1.633
 
-		
+        
 
 1.484
 
-	
+    
 
 9.1%
 
-		
+        
 
 1.488
 
-	
+    
 
 8.9%
 
-		
+        
 
 1.432
 
-	
+    
 
 12.3%
 
-	
+    
 
 763
 
-		
+        
 
 1.632
 
-		
+        
 
 1.483
 
-	
+    
 
 9.1%
 
-		
+        
 
 1.487
 
-	
+    
 
 8.9%
 
-		
+        
 
 1.432
 
-	
+    
 
 12.2%
 
-	
+    
 
 1247
 
-		
+        
 
 1.633
 
-		
+        
 
 1.484
 
-	
+    
 
 9.1%
 
-		
+        
 
 1.491
 
-	
+    
 
 8.7%
 
-		
+        
 
 1.433
 
-	
+    
 
 12.2%
 
-	
+    
 
 9305
 
-		
+        
 
 1.631
 
-		
+        
 
 1.484
 
-	
+    
 
 9.0%
 
-		
+        
 
 1.491
 
-	
+    
 
 8.6%
 
-		
+        
 
 1.439
 
-	
+    
 
 11.7%
 
-	
+    
 
 13307
 
-		
+        
 
 1.632
 
-		
+        
 
 1.483
 
-	
+    
 
 9.1%
 
-		
+        
 
 1.489
 
-	
+    
 
 8.7%
 
-		
+        
 
 1.437
 
-	
+    
 
 11.9%
 
-	
+    
 
 52513
 
-		
+        
 
 1.631
 
-		
+        
 
 1.483
 
-	
+    
 
 9.1%
 
-		
+        
 
 1.490
 
-	
+    
 
 8.7%
 
-		
+        
 
 1.432
 
-	
+    
 
 12.2%
 
-	
+    
 
 60978747
 
-		
+        
 
 1.631
 
-		
+        
 
 1.484
 
-	
+    
 
 9.0%
 
-		
+        
 
 1.488
 
-	
+    
 
 8.8%
 
-		
+        
 
 1.434
 
-	
+    
 
 12.1%
 
-	
+    
 
 106956295
 
-		
+        
 
 1.631
 
-		
+        
 
 1.484
 
-	
+    
 
 9.0%
 
-		
+        
 
 1.489
 
-	
+    
 
 8.7%
 
-		
+        
 
 1.433
 
-	
+    
 
 12.1%
 
-												
+                                                
 
 x86_64
 
-	
+    
 
 7
 
-		
+        
 
 1.537
 
-		
+        
 
 1.307
 
-	
+    
 
 14.9%
 
-		
+        
 
 1.548
 
-	
+    
 
 -0.7%
 
-		
+        
 
 1.362
 
-	
+    
 
 11.4%
 
 uint32
 
-	
+    
 
 37
 
-		
+        
 
 1.538
 
-		
+        
 
 1.307
 
-	
+    
 
 15.0%
 
-		
+        
 
 1.548
 
-	
+    
 
 -0.7%
 
-		
+        
 
 1.362
 
-	
+    
 
 11.4%
 
-	
+    
 
 123
 
-		
+        
 
 1.537
 
-		
+        
 
 1.319
 
-	
+    
 
 14.2%
 
-		
+        
 
 1.547
 
-	
+    
 
 -0.6%
 
-		
+        
 
 1.361
 
-	
+    
 
 11.5%
 
-	
+    
 
 763
 
-		
+        
 
 1.536
 
-		
+        
 
 1.306
 
-	
+    
 
 15.0%
 
-		
+        
 
 1.547
 
-	
+    
 
 -0.8%
 
-		
+        
 
 1.356
 
-	
+    
 
 11.7%
 
-	
+    
 
 1247
 
-		
+        
 
 1.538
 
-		
+        
 
 1.322
 
-	
+    
 
 14.1%
 
-		
+        
 
 1.549
 
-	
+    
 
 -0.7%
 
-		
+        
 
 1.358
 
-	
+    
 
 11.7%
 
-	
+    
 
 9305
 
-		
+        
 
 1.543
 
-		
+        
 
 1.322
 
-	
+    
 
 14.3%
 
-		
+        
 
 1.550
 
-	
+    
 
 -0.5%
 
-		
+        
 
 1.361
 
-	
+    
 
 11.8%
 
-	
+    
 
 13307
 
-		
+        
 
 1.545
 
-		
+        
 
 1.322
 
-	
+    
 
 14.4%
 
-		
+        
 
 1.550
 
-	
+    
 
 -0.3%
 
-		
+        
 
 1.357
 
-	
+    
 
 12.1%
 
-	
+    
 
 52513
 
-		
+        
 
 1.541
 
-		
+        
 
 1.307
 
-	
+    
 
 15.2%
 
-		
+        
 
 1.550
 
-	
+    
 
 -0.6%
 
-		
+        
 
 1.361
 
-	
+    
 
 11.7%
 
-	
+    
 
 60978747
 
-		
+        
 
 1.538
 
-		
+        
 
 1.322
 
-	
+    
 
 14.0%
 
-		
+        
 
 1.549
 
-	
+    
 
 -0.7%
 
-		
+        
 
 1.358
 
-	
+    
 
 11.7%
 
-	
+    
 
 106956295
 
-		
+        
 
 1.537
 
-		
+        
 
 1.322
 
-	
+    
 
 14.0%
 
-		
+        
 
 1.551
 
-	
+    
 
 -0.9%
 
-		
+        
 
 1.360
 
-	
+    
 
 11.5%
 
-												
+                                                
 
 x86_64
 
-	
+    
 
 7
 
-		
+        
 
 1.823
 
-		
+        
 
 1.588
 
-	
+    
 
 12.9%
 
-		
+        
 
 1.505
 
-	
+    
 
 17.4%
 
-		
+        
 
 n/a
 
-	
+    
 
 uint64
 
-	
+    
 
 39
 
-		
+        
 
 1.821
 
-		
+        
 
 1.589
 
-	
+    
 
 12.7%
 
-		
+        
 
 1.506
 
-	
+    
 
 17.3%
 
-		
+        
 
 n/a
 
-	
-	
+    
+    
 
 123
 
-		
+        
 
 1.821
 
-		
+        
 
 1.592
 
-	
+    
 
 12.6%
 
-		
+        
 
 1.506
 
-	
+    
 
 17.3%
 
-		
+        
 
 n/a
 
-	
-	
+    
+    
 
 763
 
-		
+        
 
 1.822
 
-		
+        
 
 1.592
 
-	
+    
 
 12.6%
 
-		
+        
 
 1.505
 
-	
+    
 
 17.4%
 
-		
+        
 
 n/a
 
-	
-	
+    
+    
 
 1249
 
-		
+        
 
 1.822
 
-		
+        
 
 1.589
 
-	
+    
 
 12.8%
 
-		
+        
 
 1.506
 
-	
+    
 
 17.4%
 
-		
+        
 
 n/a
 
-	
-	
+    
+    
 
 9311
 
-		
+        
 
 1.822
 
-		
+        
 
 1.587
 
-	
+    
 
 12.9%
 
-		
+        
 
 1.507
 
-	
+    
 
 17.3%
 
-		
+        
 
 n/a
 
-	
-	
+    
+    
 
 11315
 
-		
+        
 
 1.822
 
-		
+        
 
 1.588
 
-	
+    
 
 12.8%
 
-		
+        
 
 1.506
 
-	
+    
 
 17.4%
 
-		
+        
 
 n/a
 
-	
-	
+    
+    
 
 52513
 
-		
+        
 
 1.823
 
-		
+        
 
 1.591
 
-	
+    
 
 12.7%
 
-		
+        
 
 1.506
 
-	
+    
 
 17.4%
 
-		
+        
 
 n/a
 
-	
-	
+    
+    
 
 60978749
 
-		
+        
 
 1.822
 
-		
+        
 
 1.590
 
-	
+    
 
 12.7%
 
-		
+        
 
 1.507
 
-	
+    
 
 17.3%
 
-		
+        
 
 n/a
 
-	
-	
+    
+    
 
 106956297
 
-		
+        
 
 1.821
 
-		
+        
 
 1.588
 
-	
+    
 
 12.8%
 
-		
+        
 
 1.506
 
-	
+    
 
 17.3%
 
-		
+        
 
 n/a
 
-	
+    
 
 Microbenchmark results for tested division algorithms on a Core i7. The top group is for 32 bit division in a 32 bit binary, while the bottom two groups are 32 bit and 64 bit division (respectively) in a 64 bit binary.
 
@@ -2787,13 +2787,13 @@ int factorial(int x) {
    if (x > 1) return x * factorial(x-1);
    else return 1;
 }
-	
+    
 int factorial(int x) {
    int result = 1;
    while (x > 1) result *= x--;
    return result;
 }
-I think GCC does this	I think GCC cannot do this	I say this optimization is incorrect!
+I think GCC does this    I think GCC cannot do this    I say this optimization is incorrect!
 
 2. Loop-invariant strlen()
 
@@ -2806,7 +2806,7 @@ unsigned sum(const unsigned char *s) {
    }
    return result;
 }
-	
+    
 unsigned sum(const unsigned char *s) {
    unsigned result = 0;
    size_t length = strlen(s);
@@ -2815,7 +2815,7 @@ unsigned sum(const unsigned char *s) {
    }
    return result;
 }
-I think GCC does this	I think GCC cannot do this	I say this optimization is incorrect!
+I think GCC does this    I think GCC cannot do this    I say this optimization is incorrect!
 
 3. Multiplication by 2 to addition - integer
 
@@ -2824,11 +2824,11 @@ Will GCC transform an integer multiplication by 2 to addition?
 int double_it(int x) {
    return x * 2;
 }
-	
+    
 int double_it(int x) {
    return x + x;
 }
-I think GCC does this	I think GCC cannot do this	I say this optimization is incorrect!
+I think GCC does this    I think GCC cannot do this    I say this optimization is incorrect!
 
 4. Multiplication by 2 to addition - floating point
 
@@ -2837,11 +2837,11 @@ Will GCC transform a floating point multiplication by 2 to addition?
 float double_it(float x) {
    return x * 2.0f;
 }
-	
+    
 float double_it(float x) {
    return x + x;
 }
-I think GCC does this	I think GCC cannot do this	I say this optimization is incorrect!
+I think GCC does this    I think GCC cannot do this    I say this optimization is incorrect!
 
 5. Division by 2 to right shift
 
@@ -2850,11 +2850,11 @@ Will GCC transform an integer division by 2 to a right shift?
 int halve_it(int x) {
    return x / 2;
 }
-	
+    
 int halve_it(int x) {
    return x >> 1;
 }
-I think GCC does this	I think GCC cannot do this	I say this optimization is incorrect!
+I think GCC does this    I think GCC cannot do this    I say this optimization is incorrect!
 
 6. If-else chains to switch statements
 
@@ -2868,7 +2868,7 @@ void function(int x) {
    else if (x == 4) f4();
    else if (x == 5) f5();
 }
-	
+    
 void function(int x) {
    switch (x) {
       case 0: f0(); break;
@@ -2879,7 +2879,7 @@ void function(int x) {
       case 5: f5(); break;
    }
 }
-I think GCC does this	I think GCC cannot do this	I say this optimization is incorrect!
+I think GCC does this    I think GCC cannot do this    I say this optimization is incorrect!
 Summing up
 
 It is tempting to think of compiler optimizations as reducing the constant in your program's big-O complexity, and nothing else. They aren't supposed to be able to make your program asymptotically faster, or affect its output.
@@ -3207,11 +3207,11 @@ The moral is that you should avoid using operator[], the at() function, iterator
 #include <string>
 using std::string;
 int main(void) {
-	string the_base(1024 * 1024 * 10, 'x');
-	const_cast<const string &>(the_base)[0];
-	for (int i = 0; i < 100; i++) {
-		string the_copy = the_base;
-	}
+    string the_base(1024 * 1024 * 10, 'x');
+    const_cast<const string &>(the_base)[0];
+    for (int i = 0; i < 100; i++) {
+        string the_copy = the_base;
+    }
 }
 
 This hits the fast path too.
@@ -3288,51 +3288,51 @@ Click on the image to see the actual page.
 Notice that the corners of the boxes suffer. The problem is that the area around the corner cannot be drawn transparently - it needs to be over a fixed color. Browser specific extensions would be perfect if they weren't browser specific.
 
 But I like crazy backgrounds and overlapping boxes. So in a half-hearted effort for geek cred, here's how my roundy corners worked.
-This is a div:	
+This is a div:    
 
-This is a bordered div:	
+This is a bordered div:    
 
-This is a thickly bordered div:	
+This is a thickly bordered div:    
 
-This is a thickly bordered div with differently colored borders:	
+This is a thickly bordered div with differently colored borders:    
 
-This is a div bordered only on the left and right:	
+This is a div bordered only on the left and right:    
 
-This is a div bordered more thickly on the right:	
+This is a div bordered more thickly on the right:    
 
-Closer:	
+Closer:    
 
-Closer:	
+Closer:    
 
-Contact:	
+Contact:    
 
-This is a bunch of divs in a stack:	
+This is a bunch of divs in a stack:    
 
-This is a bunch of divs in a stack with different right border widths:	
+This is a bunch of divs in a stack with different right border widths:    
 
-This is a bunch of divs in a stack with different right border widths, set to float right:	
+This is a bunch of divs in a stack with different right border widths, set to float right:    
 
-Smaller:	
+Smaller:    
 
-Smaller:	
+Smaller:    
 
-One pixel high!	
+One pixel high!    
 
-Make the left border pastel red to soften the edge. Tweak the border widths to get the desired curve. Add a solid div on top:	
+Make the left border pastel red to soften the edge. Tweak the border widths to get the desired curve. Add a solid div on top:    
 
-Four corners:	
+Four corners:    
 
-Connect the top and bottom with one div each:	
+Connect the top and bottom with one div each:    
 
-Add a div in the center where stuff goes:	
+Add a div in the center where stuff goes:    
 
-And the stuff doth go:	
+And the stuff doth go:    
 Yo mama!
 
-Broken apart to show some of the pieces:	
+Broken apart to show some of the pieces:    
 Yo mama!
 
-These overlap nicely (at least in Safari, IE6, and Firefox), respect z-order, and work well with non-solid backgrounds. They do not require images, tables, or JavaScript.	
+These overlap nicely (at least in Safari, IE6, and Firefox), respect z-order, and work well with non-solid backgrounds. They do not require images, tables, or JavaScript.    
 Yo mama!
 No, yo mama!
 Touché!

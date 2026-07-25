@@ -80,7 +80,7 @@ ternary search over 32768 elements
 14
 15
 
-	
+    
 size_t t_15 (unsigned key, unsigned * vector)
 {
      unsigned * base = vector;
@@ -109,7 +109,7 @@ binary splitting step
 5
 6
 
-	
+    
 #define BARRIER do { __asm__ volatile("" ::: "memory"); } while (0)
 
 #define BINARY(I) do {                                          \
@@ -132,7 +132,7 @@ ternary splitting step with concurrent loads
 6
 7
 
-	
+    
 #define TERNARY(I, J) do {                                      \
                 unsigned * b1 = base+I, *b2 = base+J;           \
                 unsigned mid1 = *b1, mid2 = *b2;                \
@@ -152,7 +152,7 @@ ternary splitting step without useless loads
 6
 7
 
-	
+    
 #define TERNARY(I, J) do {                                      \
                 unsigned * b1 = base+I, *b2 = base+J;           \
                 b1 = (*b2 <= key)?b2:b1;                        \
@@ -189,7 +189,7 @@ quaternary search over 32768 elements
 21
 22
 
-	
+    
 #define QUATERNARY(I, J, K) do {                                        \
                 unsigned * b1 = base+I, *b2 = base+J, *b3 = base+K;     \
                 unsigned mid1 = *b1, mid2 = *b2, mid3 = *b3;            \
@@ -269,7 +269,7 @@ tabular hash functor for 32-bit unsigned
 23
 24
 
-	
+    
 struct hash_u32
 {
         size_t tables[256][8];

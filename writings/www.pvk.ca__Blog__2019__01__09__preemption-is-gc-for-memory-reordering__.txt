@@ -33,9 +33,9 @@ while True:
     with(mutex):
         read data
         if need to wait:
-	        WaitOnConditionVariable(cv, mutex)
-	    else:
-	        break Waiters must prevent writers from making changes to the data, otherwise the data change (and associated condition variable wake-up) could occur between checking the wait condition, and starting to wait on the condition variable.  The waiter would then have missed a wake-up and could end up sleeping forever, waiting for something that has already happened.
+            WaitOnConditionVariable(cv, mutex)
+        else:
+            break Waiters must prevent writers from making changes to the data, otherwise the data change (and associated condition variable wake-up) could occur between checking the wait condition, and starting to wait on the condition variable.  The waiter would then have missed a wake-up and could end up sleeping forever, waiting for something that has already happened.
 
 good condition waker:
 

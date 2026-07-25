@@ -30,11 +30,11 @@ It’s almost inevitable that this will be used to compare across hardware (“w
 
 Find below the details of the hardware used:
 
-Micro-architecture	ISA	Model	Tested Frequency	Cores	OS	Instance Type
-Skylake	x86	i7-6700HQ	2.6 GHz	4	Ubuntu 20.04	 
-Ice Lake	x86	i5-1035G4	3.3 GHz	4	Ubuntu 19.10	 
-Graviton	AArch64	Cortex-A72	2.3 GHz	16	Ubuntu 20.04	a1.4xlarge
-Graviton 2	AArch64	Neoverse N1	2.5 GHz	162	Ubuntu 20.04	c6g.4xlarge
+Micro-architecture    ISA    Model    Tested Frequency    Cores    OS    Instance Type
+Skylake    x86    i7-6700HQ    2.6 GHz    4    Ubuntu 20.04     
+Ice Lake    x86    i5-1035G4    3.3 GHz    4    Ubuntu 19.10     
+Graviton    AArch64    Cortex-A72    2.3 GHz    16    Ubuntu 20.04    a1.4xlarge
+Graviton 2    AArch64    Neoverse N1    2.5 GHz    162    Ubuntu 20.04    c6g.4xlarge
 Level 2: Contended Atomics
 
 You’d probably expect this hierarchy to be introduced from fast to slow, or vice-versa, but we’re all about defying expectations here and we are going to start in the middle and work our way outwards. The middle (rounding down) turns out to be level 2 and that’s where we will jump in.
@@ -332,15 +332,15 @@ The fastest implementations run in about 10 nanoseconds, which is 5x faster than
 
 The number overlaid on each bar is the number of atomic operations18 each implementation makes per increment. It is obvious that the performance is almost directly proportional to the number of atomic instructions. On the other hand, performance does not have much of a relationship with the total number of instructions of any type, which vary a lot even between algorithms with the same performance as the following table shows:
 
-Algorithm	Atomics	Instructions	Performance
-mutex add	2	64	~21 ns
-atomic add	1	4	~7 ns
-cas add	1	7	~12 ns
-ticket yield	1	13	~10 ns
-ticket blocking	3	107	~32 ns
-queued fifo	4	167	~45 ns
-ticket spin	1	13	~10 ns
-mutex3	2	17	~20 ns
+Algorithm    Atomics    Instructions    Performance
+mutex add    2    64    ~21 ns
+atomic add    1    4    ~7 ns
+cas add    1    7    ~12 ns
+ticket yield    1    13    ~10 ns
+ticket blocking    3    107    ~32 ns
+queued fifo    4    167    ~45 ns
+ticket spin    1    13    ~10 ns
+mutex3    2    17    ~20 ns
 
 In particular, note that mutex add has more than 9x the number of instructions compared to cas add yet still runs at half the speed, in line with the 2:1 ratio of atomics. Similarly, ticket yield and ticket spin have slightly better performance than cas add despite having about twice the number of instructions, in line with them all having a single atomic operation19.
 
@@ -529,10 +529,10 @@ That’s two nanoseconds per increment, regardless of the number of active cores
 
 Let’s take a look at the number of atomics, total instructions and performance for the three implementations in the last plot, for four threads:
 
-Algorithm	Atomics	Instructions	Performance
-atomic add	1	4	~ 110 ns
-cas multi	1	7	~ 12 ns
-tls add	0	12	~ 2 ns
+Algorithm    Atomics    Instructions    Performance
+atomic add    1    4    ~ 110 ns
+cas multi    1    7    ~ 12 ns
+tls add    0    12    ~ 2 ns
 
 This is a clear indication that the difference in performance has very little to do with the number of instructions: the ranking by instruction count is exactly the reverse of the ranking by performance! tls add has three times the number of instructions, yet is more than fifty times faster (so the IPC varies by a factor of more than 150x).
 
@@ -554,13 +554,13 @@ The Local column records whether the behavior of this level is core local. If ye
 
 The Key Characteristic tries to get across the idea of the level in one bit-sized chunk.
 
-Level	Name	~Cost (ns)	Perf Event	Local	Key Characteristic
-0	Vanilla	low	depends	Yes	No atomic instructions or contended accesses at all
-1	Uncontended Atomic	10	mem_inst_retired. lock_loads	Yes	Atomic instructions without contention
-2	True Sharing	40 - 400	mem_load_l3_hit_retired. xsnp_hitm	No	Contended atomics or locks
-3	Syscall	1,000	raw_syscalls:sys_enter	No	System call
-4	Context Switch	10,000	context-switches	No	Forced context switch
-5	Catastrophe	huge	depends	No	Stalls until quantum exhausted, or other sadness
+Level    Name    ~Cost (ns)    Perf Event    Local    Key Characteristic
+0    Vanilla    low    depends    Yes    No atomic instructions or contended accesses at all
+1    Uncontended Atomic    10    mem_inst_retired. lock_loads    Yes    Atomic instructions without contention
+2    True Sharing    40 - 400    mem_load_l3_hit_retired. xsnp_hitm    No    Contended atomics or locks
+3    Syscall    1,000    raw_syscalls:sys_enter    No    System call
+4    Context Switch    10,000    context-switches    No    Forced context switch
+5    Catastrophe    huge    depends    No    Stalls until quantum exhausted, or other sadness
 So What?
 
 What’s the point of all this?

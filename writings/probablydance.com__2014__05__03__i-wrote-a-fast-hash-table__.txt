@@ -23,23 +23,23 @@ I think those limitations are OK.
 
 But let’s get to performance tests. Since sherwood_map may have to move elements around when the map gets modified, that would suggest that sherwood_map may be slower than unordered_map for large objects. Because of that I ran all performance tests with a small, (sherwood_map<int, int>) a medium-sized, (sherwood_map<pair<int, string>, pair<int, string>>) and a large (sherwood_map<int, char[512]>) object.
 
-		Clang 3.4	GCC 4.8.2
-		sherwood_map	unordered_map	speedup	sherwood_map	unordered_map	speedup
-insert	small	113	134	16%	106	136	23%
-medium	124	150	17%	128	152	16%
-large	326	393	17%	286	387	26%
-reserve insert	small	72	119	39%	72	119	46%
-medium	80	131	39%	82	136	39%
-large	147	342	57%	114	335	66%
-erase	small	137	196	30%	149	199	25%
-medium	205	225	9%	205	231	11%
-large	347	361	4%	353	345	-2%
-lookup	small	228	361	37%	230	473	52%
-medium	243	436	44%	242	634	62%
-large	277	571	51%	263	709	63%
-modify	small	384	459	16%	388	508	24%
-medium	549	519	-6%	530	577	8%
-large	1120	724	-55%	1279	750	-71%
+        Clang 3.4    GCC 4.8.2
+        sherwood_map    unordered_map    speedup    sherwood_map    unordered_map    speedup
+insert    small    113    134    16%    106    136    23%
+medium    124    150    17%    128    152    16%
+large    326    393    17%    286    387    26%
+reserve insert    small    72    119    39%    72    119    46%
+medium    80    131    39%    82    136    39%
+large    147    342    57%    114    335    66%
+erase    small    137    196    30%    149    199    25%
+medium    205    225    9%    205    231    11%
+large    347    361    4%    353    345    -2%
+lookup    small    228    361    37%    230    473    52%
+medium    243    436    44%    242    634    62%
+large    277    571    51%    263    709    63%
+modify    small    384    459    16%    388    508    24%
+medium    549    519    -6%    530    577    8%
+large    1120    724    -55%    1279    750    -71%
 
 Explanations for the tests:
 

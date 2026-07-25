@@ -29,20 +29,20 @@ Let us consider an interesting test where you seek to scan a whole file (spannin
 
 On a Tiger Lake processor, with GCC 11, I get a 60% increase in the processing speed, expressed by the number of input bytes processed per second.
 
-simdjson (512-bit SIMD): new	7.4 GB/s
-simdjson (256-bit SIMD): old	4.6 GB/s
+simdjson (512-bit SIMD): new    7.4 GB/s
+simdjson (256-bit SIMD): old    4.6 GB/s
 
 The speed gain is so important because in this task we mostly just read the data, and we do relatively little secondary processing. We do not create a tree out of the JSON data, we do not create a data structure.
 
 The simdjson library has a minify function which just strips unnecessary spaces from the input. Maybe surprisingly, we are more than twice as fast as the previous baseline:
 
-simdjson (512-bit SIMD): new	12 GB/s
-simdjson (256-bit SIMD): old	4.3 GB/s
+simdjson (512-bit SIMD): new    12 GB/s
+simdjson (256-bit SIMD): old    4.3 GB/s
 
 Another reasonable benchmark is to fully parse the input into a DOM tree with full validation. Parsing a standard JSON file (twitter.json), I get nearly a 30% gain:
 
-simdjson (512-bit SIMD): new	3.6 GB/s
-simdjson (256-bit SIMD): old	2.8 GB/s
+simdjson (512-bit SIMD): new    3.6 GB/s
+simdjson (256-bit SIMD): old    2.8 GB/s
 
 While 30% may sound unexciting, we are starting from a fast baseline.
 

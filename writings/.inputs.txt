@@ -364,3 +364,40 @@ halp -y -h the help string should have one copypastable workingish example oneli
 git-acp .
 trash trash_py
 git-acp .
+echo which files most relevant to read. dont shell. dont modify. dont write. just answer directly. explain. THINK before answer.
+ls
+echo which files most relevant to read. dont shell. dont modify. dont write. just answer directly. explain. THINK before answer.
+head *
+clear
+echo which files most relevant to read. dont shell. dont modify. dont write. just answer directly. explain. THINK before answer.
+echo need to solve/obviate/sidestep/reduce/prevent/avoid/solve these problems. on 10tb of data. with a single node. with 128 cpu core. with 4 hdd and 4 ssd for this purpose.:; shuf needs.log;
+echo which files most relevant to read. dont shell. dont modify. dont write. just answer directly. explain. THINK before answer.
+ls
+echo need to solve/obviate/sidestep/reduce/prevent/avoid/solve these problems. on 10tb of data. with a single node. with 128 cpu core. with 4 hdd and 4 ssd for this purpose.:; shuf needs.log;
+echo which files most relevant to read. dont shell. dont modify. dont write. just answer directly. explain. THINK before answer.
+head *txt
+echo which files most relevant to read. dont shell. dont modify. dont write. just answer directly. explain. THINK before answer.
+halp -h
+while true; do echo DROP"ABOVE"; fakeinput echo improve one thing about lastdb.c; fakeinput echo going to obviate these:; fakeinput shuf things.log; fakeinput echo need to solve/obviate/sidestep/reduce/prevent/avoid/solve these problems. on 10tb of data. with a single node. with 128 cpu core. with 4 hdd and 4 ssd for this purpose.:; fakeinput shuf needs.log; fakeinput echo USE THIS KNOELDGE:; fakeinput cat $(shuf -n1 relevant.log ); fakeinput cat lastdb.c ; fakeinput echo just a myreplace thats all dont compile it. just like one myreplace lol; fakeinput myreplace -h; fakeinput echo less alloc is more and less syntax is more and less semantics is more and the query language must be miniscule and less code is more but we need to remember our knowledge as well and our needs.log as well... do one or tow or three or four myreplace...... you can assume db host will be linux only and latest only idfk fuck idfk ; fakeinput realtimeout 300 halp -y -h -55 -3 ; fakeinput git-acp lastdb.c; fakeinput sleep 5; done
+echo need to solve/obviate/sidestep/reduce/prevent/avoid/solve these problems. on 10tb of data. with a single node. with 128 cpu core. with 4 hdd and 4 ssd for this purpose.:; shuf needs.log;
+headtail -n20 *txt
+echo do you want to change your answer or not. dont shell. dont modify. dont write. just answer directly. explain.
+halp -h dont shell. dont modify. dont write. just answer directly. explain. THINK
+halp -h dont shell. dont modify. dont write. just answer directly. explain. THINK -NT
+cat relevant.log
+halp -y -h -NT update
+halp -y -h append/drop rows from relevant.log as needed
+halp -y -h append/drop rows from relevant.log as needed -NT
+git-acp relevant.log
+echo '!relevant.log' >> .gitignore
+git-acp relevant.log
+cat relevant.log
+headtail -n20 $(cat relevant.log )
+halp -y -h reduce relevant.log to 20 lines ie 20 files
+halp -y -h reduce relevant.log to 20 lines ie 20 files... you must keep rseq.txt and infinigram-mini.pdf.txt and lastdb.c
+clear
+while true; do echo DROP"ABOVE"; fakeinput echo improve one thing about lastdb.c; fakeinput echo going to obviate these:; fakeinput shuf things.log; fakeinput echo need to solve/obviate/sidestep/reduce/prevent/avoid/solve these problems. on 10tb of data. with a single node. with 128 cpu core. with 4 hdd and 4 ssd for this purpose.:; fakeinput shuf needs.log; fakeinput echo USE THIS KNOELDGE:; fakeinput cat $(shuf -n1 relevant.log ); fakeinput cat lastdb.c ; fakeinput echo just a myreplace thats all dont compile it. just like one myreplace lol; fakeinput myreplace -h; fakeinput echo less alloc is more and less syntax is more and less semantics is more and the query language must be miniscule and less code is more but we need to remember our knowledge as well and our needs.log as well... do one or tow or three or four myreplace...... you can assume db host will be linux only and latest only idfk fuck idfk... less bugs is better too ; fakeinput realtimeout 300 halp -y -h -55 -3 ; fakeinput git-acp lastdb.c; fakeinput sleep 5; done
+headtail -n20 $(cat relevant.log )
+halp -y -h if you are done then stop but if you can do better then do better
+sd -h
+halp -y -h replace tab in all txt with four spaces and commit and push all txt and relevant.log

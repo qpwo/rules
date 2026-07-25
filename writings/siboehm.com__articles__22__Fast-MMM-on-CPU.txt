@@ -75,14 +75,14 @@ Visualized with lstopo:
 The compiler I’m using is clang v14.0. Benchmarking is done through Google Benchmark.
 For sanity, after each benchmark, I compare the result to PyTorch’s MMM implementation to make sure my implementation is correct.
 
-implementation	time (ms)
-Naive Implementation (RCI)	4481
-Naive Implementation (RCI) + compiler flags	1621
-Naive Implementation (RCI) + flags + register accumulate	1512
-Cache-aware loop reorder (RIC)	89
-Loop reorder (RIC) + L1 tiling on I	70
-Loop reorder (RIC) + L1 tiling on I + multithreading on R&C	16
-Numpy (MKL)	8
+implementation    time (ms)
+Naive Implementation (RCI)    4481
+Naive Implementation (RCI) + compiler flags    1621
+Naive Implementation (RCI) + flags + register accumulate    1512
+Cache-aware loop reorder (RIC)    89
+Loop reorder (RIC) + L1 tiling on I    70
+Loop reorder (RIC) + L1 tiling on I + multithreading on R&C    16
+Numpy (MKL)    8
 Naive implementation
 
 Let’s start with a basic nested for-loop:

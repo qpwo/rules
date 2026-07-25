@@ -43,7 +43,7 @@ Now VReng is at last compatible with OpenGL, and I managed to patch TinyGL so th
 
 Since TinyGL may be useful for some people, especially in the world of embedded designs, I decided to release it 'as is', otherwise, it would have been lost on my hard disk !
 
-		
+        
 * OpenGL(R) is a registered trademark of Silicon Graphics, Inc. 
 Fabrice Bellard - https://bellard.org/
 last update: Mar 5, 2022
