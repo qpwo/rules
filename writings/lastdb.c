@@ -2097,16 +2097,15 @@ static inline int srv_read_lock_func(const char *db_path) {
     if (cpu < 0 || cpu >= 256) cpu = 0;
     pthread_rwlock_rdlock(&srv_rwlocks[cpu].rw);
     struct stat st, fd_st;
-    int needs_reopen = (srv_db_fd < 0) || (!stat(db_path, &st) && !fstat(srv_db_fd, &fd_st) && st.st_ino != fd_st.st_ino);
+    int needs_reopen = (srv_db_fd < 0) || (!stat(db_path, &st) && (!fstat(srv_db_fd, &fd_st) && st.st_ino != fd_st.st_ino || st.st_size > (off_t)map_size));
     if (needs_reopen || ht_len != ht_sorted_len) {
         pthread_rwlock_unlock(&srv_rwlocks[cpu].rw);
         for (int i = 0; i < 256; i++) pthread_rwlock_wrlock(&srv_rwlocks[i].rw);
-        needs_reopen = (srv_db_fd < 0) || (!stat(db_path, &st) && !fstat(srv_db_fd, &fd_st) && st.st_ino != fd_st.st_ino);
+        needs_reopen = (srv_db_fd < 0) || (!stat(db_path, &st) && (!fstat(srv_db_fd, &fd_st) && st.st_ino != fd_st.st_ino || st.st_size > (off_t)map_size));
         if (needs_reopen) {
-            if (srv_db_fd >= 0) close(srv_db_fd);
-            srv_db_fd = -1;
+            if (srv_db_fd >= 0 && (!fstat(srv_db_fd, &fd_st) && st.st_ino != fd_st.st_ino)) { close(srv_db_fd); srv_db_fd = -1; }
             load_db(db_path);
-            srv_db_fd = open_append(db_path);
+            if (srv_db_fd < 0) srv_db_fd = open_append(db_path);
         }
         if (ht_len != ht_sorted_len) deduplicate_ht();
         for (int i = 256; i-- > 0; ) pthread_rwlock_unlock(&srv_rwlocks[i].rw);
@@ -2127,9 +2126,9 @@ static inline int srv_write_lock_func(const char *db_path) {
     if (srv_db_fd >= 0 && !stat(db_path, &st) && !fstat(srv_db_fd, &fd_st) && st.st_ino != fd_st.st_ino) {
         close(srv_db_fd); srv_db_fd = -1;
     }
-    if (srv_db_fd < 0) {
+    if (srv_db_fd < 0 || (!stat(db_path, &st) && st.st_size > (off_t)map_size)) {
         load_db(db_path);
-        srv_db_fd = open_append(db_path);
+        if (srv_db_fd < 0) srv_db_fd = open_append(db_path);
     }
     return 0;
 }

@@ -311,12 +311,12 @@ async function cli(client, a) {
     }
     if (a[0] === 'search' && a.length >= 4) {
         var th = Number(a[a.length - 1]);
-        if (!Number.isNaN(th) && th > 0 && th <= 1) {
+        if (!Number.isNaN(th) && th > 0) {
             return search(client, parseI32(a[1]), a[2], a.slice(3, -1), th);
         }
         var now = Number(a[a.length - 1]);
         var th2 = Number(a[a.length - 2]);
-        if (!Number.isNaN(now) && now > 1000000000 && !Number.isNaN(th2) && th2 > 0 && th2 <= 1) {
+        if (!Number.isNaN(now) && now > 1000000000 && !Number.isNaN(th2) && th2 > 0) {
             return search(client, parseI32(a[1]), a[2], a.slice(3, -2), th2, now);
         }
         return search(client, parseI32(a[1]), a[2], a.slice(3));
