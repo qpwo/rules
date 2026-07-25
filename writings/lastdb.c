@@ -1628,15 +1628,20 @@ static void send_response(int fd, int32_t cipherkey, int32_t status, const void 
 }
 
 static Chunk *chunk_freelist = NULL;
+static __thread Chunk *chunk_local = NULL;
+
 static inline void chunk_push(Chunk *chunk) {
-    #pragma omp critical (chunks)
-    {
-        *(Chunk **)chunk = chunk_freelist;
-        chunk_freelist = chunk;
-    }
+    *(Chunk **)chunk = chunk_local;
+    chunk_local = chunk;
 }
+
 static inline Chunk *chunk_pop(void) {
-    Chunk *chunk = NULL;
+    Chunk *chunk = chunk_local;
+    if (chunk) {
+        chunk_local = *(Chunk **)chunk;
+        return chunk;
+    }
+
     #pragma omp critical (chunks)
     {
         if (chunk_freelist) {
