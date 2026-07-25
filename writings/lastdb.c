@@ -986,6 +986,39 @@ static unsigned byte_rank(unsigned char c)
     return 4;
 }
 
+__attribute__((target("avx2")))
+static const void *memmem_pivot_scan_avx2(const unsigned char *hay, size_t hay_len, const unsigned char *need, size_t needle_len, size_t pivot)
+{
+    const unsigned char *p = hay + pivot;
+    const unsigned char *end = hay + hay_len - (needle_len - pivot) + 1;
+    __m256i pv = _mm256_set1_epi8((char)need[pivot]);
+
+    while (p + 32 <= end) {
+        uint32_t mask = (uint32_t)_mm256_movemask_epi8(_mm256_cmpeq_epi8(_mm256_loadu_si256((const __m256i *)(const void *)p), pv));
+        while (mask) {
+            uint32_t bit = (uint32_t)__builtin_ctz(mask);
+            const unsigned char *m = p + bit - pivot;
+            if (!memcmp(m, need, needle_len)) {
+                return m;
+            }
+            mask &= mask - 1;
+        }
+        p += 32;
+    }
+
+    while (p < end) {
+        p = memchr(p, need[pivot], end - p);
+        if (!p) {
+            return NULL;
+        }
+        if (!memcmp(p - pivot, need, needle_len)) {
+            return p - pivot;
+        }
+        p++;
+    }
+    return NULL;
+}
+
 static const void *memmem_pivot(const void *haystack, size_t hay_len, const void *needle, size_t needle_len)
 {
     const unsigned char *hay = haystack;
@@ -993,9 +1026,15 @@ static const void *memmem_pivot(const void *haystack, size_t hay_len, const void
     size_t pivot = 0;
     unsigned best = UINT_MAX;
 
-    if (!needle_len) return hay;
-    if (needle_len > hay_len) return NULL;
-    if (needle_len == 1) return memchr(hay, need[0], hay_len);
+    if (!needle_len) {
+        return hay;
+    }
+    if (needle_len > hay_len) {
+        return NULL;
+    }
+    if (needle_len == 1) {
+        return memchr(hay, need[0], hay_len);
+    }
 
     for (size_t i = 0; i < needle_len; i++) {
         unsigned rank = byte_rank(need[i]);
@@ -1005,15 +1044,7 @@ static const void *memmem_pivot(const void *haystack, size_t hay_len, const void
         }
     }
 
-    const unsigned char *p = hay + pivot;
-    const unsigned char *end = hay + hay_len - (needle_len - pivot) + 1;
-    while (p < end) {
-        p = memchr(p, need[pivot], end - p);
-        if (!p) return NULL;
-        if (!memcmp(p - pivot, need, needle_len)) return p - pivot;
-        p++;
-    }
-    return NULL;
+    return memmem_pivot_scan_avx2(hay, hay_len, need, needle_len, pivot);
 }
 
 static int rec_has_terms(Record *r, int argc, char **argv, size_t *lens, uint64_t *term_bfs)
