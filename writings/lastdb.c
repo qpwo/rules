@@ -1727,7 +1727,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             uint32_t kl = ntohl(*(uint32_t*)(buf + 24));
                             uint32_t vl = ntohl(*(uint32_t*)(buf + 28));
 
-                            if (32 + tl + kl + vl > len) { chunk_push(c); break; }
+                            if (tl > 200 || kl > UINT16_MAX || vl > len || 32 + tl + kl + vl > len) { chunk_push(c); break; }
 
                             char *t = (char*)buf + 32;
                             char *k = (char*)buf + 32 + tl;
@@ -1755,8 +1755,8 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             }
 
                             char full_tenant[65536];
-                            int ft_len = sprintf(full_tenant, "%d:", color);
-                            if (tl > 200) tl = 200;
+                            int ft_len = snprintf(full_tenant, sizeof(full_tenant), "%d:", color);
+                            if (ft_len <= 0 || ft_len + (int)tl >= (int)sizeof(full_tenant)) { chunk_push(c); break; }
                             memcpy(full_tenant + ft_len, t, tl);
                             ft_len += tl;
                             full_tenant[ft_len] = 0;
