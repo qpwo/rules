@@ -231,19 +231,19 @@ static void ht_put(uint64_t hash, uint64_t off)
 {
     if (ht_len >= ht_cap) {
         uint64_t ncap = ht_cap ? ht_cap * 2 : 4096;
+        size_t old_bytes = ht_cap * sizeof(*ht);
         size_t bytes = ncap * sizeof(*ht);
-        reserve_ram(bytes);
-#ifndef MAP_POPULATE
-#define MAP_POPULATE 0
-#endif
-        Node *nht = mmap(NULL, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
-        if (nht == MAP_FAILED) die("mmap nht");
-        madvise(nht, bytes, MADV_HUGEPAGE);
+        if (ncap < ht_cap || bytes / sizeof(*ht) != ncap) diex("ht too large");
+        reserve_ram(bytes - old_bytes);
         if (ht) {
-            memcpy(nht, ht, ht_len * sizeof(*ht));
-            munmap(ht, ht_cap * sizeof(*ht));
+            Node *nht = mremap(ht, old_bytes, bytes, MREMAP_MAYMOVE);
+            if (nht == MAP_FAILED) die("mremap ht");
+            ht = nht;
+        } else {
+            ht = mmap(NULL, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+            if (ht == MAP_FAILED) die("mmap ht");
         }
-        ht = nht;
+        madvise(ht, bytes, MADV_HUGEPAGE);
         ht_cap = ncap;
     }
     ht[ht_len++] = (Node){hash, off + 1};
