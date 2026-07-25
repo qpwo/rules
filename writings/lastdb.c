@@ -410,11 +410,13 @@ static int open_append(const char *path)
 
 static int do_write(const char *path, const char *t, const char *k, const char *v, uint8_t op)
 {
-    int fd = open(path, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0666);
-    if (fd < 0) die("open");
+    int lockfd = open_lockfile(path);
+    load_db(path);
+    int fd = open_append(path);
     append_fd(fd, t, k, v, op);
     sync_fd(fd);
     if (close(fd)) die("close");
+    close(lockfd);
     return 0;
 }
 
