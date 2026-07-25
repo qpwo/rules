@@ -1,0 +1,76 @@
+Skip to main content
+Login
+Join SNIA
+Main navigation
+About
+Data Focus Areas
+Technical Work
+Resources
+Membership
+Groups
+Events
+Newsroom
+A Brief History of the BSD Fast Filesystem
+
+Author(s)/Presenter(s):
+
+Dr. Marshall Kirk McKusick
+
+Library Content Type
+
+Presentation
+
+Library Release Date
+
+2013-09-17
+
+Focus Areas
+
+Abstract
+
+This talk provides a taxonomy of filesystem and storage development from 1979 to the present with the BSD Fast Filesystem as its focus. It describes the early performance work done by increasing the disk block size and by being aware of the disk geometry and using that knowledge to optimize rotational layout. With the abstraction of the geometry in the late 1980's and the ability of the hardware to cache and handle multiple requests, filesystems performance ceased trying to track geometry and instead sought to maximize performance by doing contiguous file layout. Small file performance was optimized through the use of techniques such as journaling and soft updates. By the late 1990's, filesystems had to be redesigned to handle the ever growing disk capacities. The addition of snapshots allowed for faster and more frequent backups. The increasingly harsh environment of the Internet required greater data protection provided by access-control lists and mandatory-access controls. The talk concludes with a discussion of the addition of symmetric multi-processing support needed to utilize all the CPUs found in the increasingly ubiquitous multi-core processors.
+
+Download
+SNIA
+
+SNIA: Experts on Data 
+
+SNIA develops and promotes architectures, standards, and education through vendor-neutral collaboration of experts on data technologies that lead the industry worldwide. Become a member today!
+Join SNIA
+Discover SNIA
+Discover SNIA
+About
+Technical Work
+Education
+Data Focus Areas
+News & Events
+Resources
+Membership
+Snia Blogs
+SNIA Blog
+SNIA: Experts on Data Blog
+SNIA Socials
+Site Map
+Contact Us
+Privacy Policy
+Chat provider: LiveChat
+Copyright © 2026 SNIA
+
+IMAGES
+https://www.snia.org/themes/custom/snia/images/calendarfavorite02.svg
+https://www.snia.org/themes/custom/snia/images/frame-769.svg
+https://www.snia.org/themes/custom/snia/images/vector.svg
+https://www.snia.org/themes/custom/snia/images/vector-1.svg
+https://www.snia.org/sites/default/files/SNIA_0.png
+https://www.snia.org/themes/custom/snia/images/login_hamburger.svg
+https://www.snia.org/themes/custom/snia/images/menu-hamburger.svg
+https://www.snia.org/themes/custom/snia/images/Frame_771_menu.svg
+https://www.snia.org/themes/custom/snia/images/Chevron%20Bottom%20Main%20Navigation.svg
+https://www.snia.org/themes/custom/snia/images/subtract@2x.png
+https://www.snia.org/themes/custom/snia/images/breadcrumb_home.svg
+https://www.snia.org/sites/default/files/2025-01/ed-library.png
+https://www.snia.org/sites/default/files/inline-images/Group.png
+https://www.snia.org/themes/custom/snia/images/x.svg
+https://www.snia.org/themes/custom/snia/images/linkedin.svg
+https://www.snia.org/themes/custom/snia/images/facebook.svg
+https://www.snia.org/themes/custom/snia/images/youtube.svg

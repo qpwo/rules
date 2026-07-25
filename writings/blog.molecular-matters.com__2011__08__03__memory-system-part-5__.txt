@@ -1,0 +1,888 @@
+Skip to primary content
+Molecular Musings
+Development blog of the Molecule Engine
+Search
+Main menu
+Home
+About
+Source code license
+Post navigation
+← Previous
+Next →
+Memory system – Part 5
+Posted on August 3, 2011
+
+This is the final installment in a series of posts about Molecule’s memory system. Today, we are going to look at the final piece of the puzzle, glueing together different things like raw memory allocation, bounds checking, memory tracking, and more.
+
+In the last post of the series, we identified a lot of different use cases for the memory system, and discussed its requirements. Specifically, one thing we want to be able is to arbitrarily combine different features into simple memory arenas. As you may have guessed already, policy-based design is a tremendously powerful instrument which helps in fulfilling this task.
+
+So, without further ado, here’s the solution I came up with as a base memory arena implementation in Molecule:
+
+template <class AllocationPolicy, class ThreadPolicy, class BoundsCheckingPolicy, class MemoryTrackingPolicy, class MemoryTaggingPolicy>
+class MemoryArena
+{
+public:
+    template <class AreaPolicy>
+    explicit MemoryArena(const AreaPolicy& area)
+        : m_allocator(area.GetStart(), area.GetEnd())
+    {
+    }
+
+    void* Allocate(size_t size, size_t alignment, const SourceInfo& sourceInfo)
+    {
+        m_threadGuard.Enter();
+
+        const size_t originalSize = size;
+        const size_t newSize = size + BoundsCheckingPolicy::SIZE_FRONT + BoundsCheckingPolicy::SIZE_BACK;
+
+        char* plainMemory = static_cast<char*>(m_allocator.Allocate(newSize, alignment, BoundsCheckingPolicy::SIZE_FRONT));
+
+        m_boundsChecker.GuardFront(plainMemory);
+        m_memoryTagger.TagAllocation(plainMemory + BoundsCheckingPolicy::SIZE_FRONT, originalSize);
+        m_boundsChecker.GuardBack(plainMemory + BoundsCheckingPolicy::SIZE_FRONT + originalSize);
+
+        m_memoryTracker.OnAllocation(plainMemory, newSize, alignment, sourceInfo);
+
+        m_threadGuard.Leave();
+
+        return (plainMemory + BoundsCheckingPolicy::SIZE_FRONT);
+    }
+
+    void Free(void* ptr)
+    {
+        m_threadGuard.Enter();
+
+        char* originalMemory = static_cast<char*>(ptr) - BoundsCheckingPolicy::SIZE_FRONT;
+        const size_t allocationSize = m_allocator.GetAllocationSize(originalMemory);
+
+        m_boundsChecker.CheckFront(originalMemory);
+        m_boundsChecker.CheckBack(originalMemory + allocationSize - BoundsCheckingPolicy::SIZE_BACK);
+
+        m_memoryTracker.OnDeallocation(originalMemory);
+        
+        m_memoryTagger.TagDeallocation(originalMemory, allocationSize);
+
+        m_allocator.Free(originalMemory);
+
+        m_threadGuard.Leave();
+    }
+
+private:
+ AllocationPolicy m_allocator;
+ ThreadPolicy m_threadGuard;
+ BoundsCheckingPolicy m_boundsChecker;
+ MemoryTrackingPolicy m_memoryTracker;
+ MemoryTaggingPolicy m_memoryTagger;
+};
+
+By being able to substitute different parts of the arena’s implementation using templates, the functionality is split into mutiple classes, each responsible only for one single thing. Additionally, we can combine whatever we want using a simple typedef, like in the following example:
+
+typedef MemoryArena<LinearAllocator, SingleThreadPolicy, NoBoundsChecking, NoMemoryTracking, NoMemoryTagging> SimpleArena;
+
+Remember that there’s absolutely no virtual function call overhead involved! By using different typedefs for certain build configurations (Debug, Release, Retail), you have all the benefits of debugging aids like bounds checking and memory tracking, while having blazingly-fast allocations in retail-builds. For example, Molecule’s application arena looks something like the following:
+
+#if ME_DEBUG || ME_RELEASE
+  typedef MemoryArena<LinearAllocator, SingleThreadPolicy, SimpleBoundsChecking, SimpleMemoryTracking, SimpleMemoryTagging> ApplicationArena;
+#else
+  typedef MemoryArena<LinearAllocator, SingleThreadPolicy, NoBoundsChecking, NoMemoryTracking, NoMemoryTagging> ApplicationArena;
+#endif
+
+In retail-builds, all the No*-implementations will be used, which contain nothing more than purely empty inline functions:
+
+class NoBoundsChecking
+{
+public:
+  static const size_t SIZE_FRONT = 0;
+  static const size_t SIZE_BACK = 0;
+
+  inline void GuardFront(void*) const {}
+  inline void GuardBack(void*) const {}
+
+  inline void CheckFront(const void*) const {}
+  inline void CheckBack(const void*) const {}
+};
+
+class NoMemoryTracking
+{
+public:
+  inline void OnAllocation(void*, size_t, size_t, const SourceInfo&) const {}
+  inline void OnDeallocation(void*) const {}
+};
+
+class NoMemoryTagging
+{
+public:
+  inline void TagAllocation(void*, size_t) const {}
+  inline void TagDeallocation(void*, size_t) const {}
+};
+
+Debugging
+
+By not relying on #if/#endif clauses buried deep within the source code itself, but rather using the compiler’s template mechanism in order to build our code, we can arbitrarily toggle different kinds of debugging aids using our typedefs, without even having access to the implementations’ source code.
+
+As an example, whenever a memory leak is found, the SimpleMemoryTracking implementation will tell me about it – it just increments/decrements a counter on each allocation/deallocation, respectively. As soon as I know that the code contains leaks, I can simply switch to the ExtendedMemoryTracking implementation in the typedef, and be informed exactly about the place the leak occured. This helps against debug-builds which can no longer be used because they use too much memory for tracking purposes, or are simply too slow because of all the overhead.
+
+Same for bounds checking – usable in debug builds, and the user can toggle between different implementations easily. Ever wanted to enable extended bounds checking in retail builds for those hard-to-find bugs only occuring in those builds? You can do that now!
+
+Thread-Safety
+
+As stated in the last post of the series, not every allocation needs to be thread-safe. For example, Molecule’s application arena is single-threaded by default, because there’s no loading-thread (or others) involved at that time – that’s what the level arena is for.
+
+Essentially, being single-threaded is zero overhead:
+
+class SingleThreadPolicy
+{
+public:
+  inline void Enter(void) const {}
+  inline void Leave(void) const {}
+};
+
+Other arenas certainly need their allocations to be thread-safe, which is were the MultiThreadPolicy comes into play:
+
+template <class SynchronizationPrimitive>
+class MultiThreadPolicy
+{
+public:
+  inline void Enter(void)
+  {
+    m_primitive.Enter();
+  }
+
+  inline void Leave(void)
+  {
+    m_primitive.Leave();
+  }
+
+private:
+  SynchronizationPrimitive m_primitive;
+};
+
+As you can see, the policy takes a template parameter as well, which provides the synchronization primitive to be used. This way, users can decide for themselves which primitive they need. Most of the time, this will either be a mutex or a critical section, but in those rare occasions where a spin-lock proved to be faster (e.g. for a linear allocator in a multi-threaded render queue), you can use exactly that, and not pay the overhead of more heavy-weight primitives.
+
+Memory areas
+
+Memory areas define where memory is being allocated from. The most common areas are the HeapArea and the StackArea. The first allocates memory directly from the OS, while the latter allocates memory on the stack using alloca(). Additionally, there could be areas for GPU memory (e.g. PS3), write-combined memory (Xbox360), external memory (Wii), etc.
+
+Again, all of them can be combined with any allocator and any kind of debugging aid needed.
+
+Extensibility
+
+The base memory arena implementation can easily be extended without having to touch the source code at all. For example, Molecule provides a facility for recording each and every allocation in an application, which can later be replayed in an external tool (so-called memory replays). This is made possible by simply piggy-backing one allocator onto another:
+
+template <class Arena>
+class RecordingArena
+{
+public:
+  void* Allocate(size_t size, size_t alignment, const SourceInfo& sourceInfo)
+  {
+    // send info via TCP/IP...
+    return m_arena.Allocate(size, alignment, sourceInfo);
+  }
+
+  void Free(void* ptr)
+  {
+    // send info via TCP/IP...
+    m_arena.Free(ptr);
+  }
+
+private:
+  Arena m_arena;
+};
+
+The RecordingArena is not concerned with how the memory is actually allocated – all it does is send information via TCP/IP to an external application, and use any arena (provided by the template parameter) as the actual Allocate()/Free() implementation.
+
+Usage
+
+Memory arenas and areas are really simple to use. Want to have a pool of objects allocated on the stack, confined to a single thread?
+
+typedef MemoryArena<PoolAllocator, SingleThreadPolicy, NoBoundsChecking, NoMemoryTracking, NoMemoryTagging> ST_PoolStackArena;
+
+void SomeFunction()
+{
+    char* stackArea[2048];
+    ST_PoolStackArena arena(stackArea);
+
+    MyObject* obj = ME_NEW(MyObject, arena);
+    // ...
+    ME_DELETE(obj, arena);
+}
+
+Want to have a multi-threaded stack-based allocator allocating from GPU memory?
+
+typedef MemoryArena<StackBasedAllocator, MultiThreadPolicy<CriticalSection>, NoBoundsChecking, NoMemoryTracking, NoMemoryTagging> MT_StackBasedArena;
+
+// ...
+GpuArea gpuArea(16*1024*1024);
+MT_StackBasedArena gpuArena(gpuArea);
+
+TextureData* data = ME_NEW(TextureData, gpuArena);
+// ...
+ME_DELETE(data , gpuArena);
+}
+
+A general-purpose, thread-safe allocator with all kinds of debugging bells and whistles ? A linear, lock-free allocator for temporary one-frame allocations? You get the idea, the possibilities are endless.
+
+Conclusion
+
+This concludes the mini-series about Molecule’s memory system. So far, I have been quite happy with the memory system for now: Leaks and memory overwrites can be found quite fast, fragmentation is kept to an absolute minimum (by using the right allocator for the job, application-wide and level-wide allocations have zero fragmentation, as well as many kinds of one-frame allocations, I/O allocations, and others), and it can easily be extended.
+
+SHARE THIS:
+ X Facebook LinkedIn Reddit
+Loading...
+This entry was posted in Core and tagged bounds checking, C++, game engine, memory system, memory tagging, memory tracking, policy based design by Stefan Reinalter. Bookmark the permalink.
+48 THOUGHTS ON “MEMORY SYSTEM – PART 5”
+Michael Herzog on November 27, 2011 at 9:13 pm said:
+
+Very exciting article series! Thank you for sharing this with us.
+But after implementing a similar approach based on this idea I’m wondering now what you meant with a “general purpose allocator”? Is this just an allocator which internally calls CRT malloc() and free() from the OS?
+If yes how you could give this general purpose allocator a memory area in the constructor?
+I think all your allocators only will allocate from a fixed size memory area so simply calling malloc() and free() isn’t possible, because this would break the rules.
+
+I also found another interesting article about this Topic from Niklas Frykholm and this guy has also implemented a HeapAllocator based on dlmalloc() I think => http://bitsquid.blogspot.com/2010/09/custom-memory-allocation-in-c.html.
+
+Reply ↓
+Stefan Reinalter
+on November 28, 2011 at 10:21 am said:
+
+You’re welcome, glad you liked the series!
+
+What I mean with “general purpose allocator” is simply an allocator which knows how to deal with vastly different allocation sizes and tries to keep fragmentation to a minimum. Such an allocator can be implemented in any way you like, but from the top of my head here’s some of the more well-known ones: nedmalloc, ptmalloc, tbbmalloc, dlmalloc, hoard, and a rather good one from Game Programming Gems 6/7 (can’t remember exactly).
+
+You cannot use malloc/free in one of the memory arenas because those routines are concerned about both how to get memory from the OS (via VirtualAlloc, for example) and how to hand space to the user (the allocation strategy itself). But that doesn’t keep you from using e.g. a slightly modified dlmalloc, which allocates from a given region of memory. That’s exactly what Molecule’s general-purpose allocator does. I like to be able to exactly specify where memory is coming from (heap, stack, write-combined, VRAM, console-specific areas, etc.), and arbitrarily combine that with any allocation strategy I want (linear, stack-based, general-purpose, etc.).
+
+The thing is, even if every allocator has to work in its own memory area, you can still do anything you could do with new/delete, but at a much finer granularity, configured the way you want it. Think about how new/delete work on a console: They *are* confined to a fixed amount of memory, simply because there’s a hard limit to how much memory there is!
+
+So, for example, if you want to use something similar to new/delete (a complete fire-and-forget approach which is not very memory friendly), you could allocate all available memory upfront from the heap (e.g. 480 MB), and use a memory-arena with a general-purpose allocator in that area.
+If you want to have more fine-grained allocations, do whatever you want with the 480 MB, split them up into application-lifetime arenas, level-lifetime arenas, I/O arenas, temporary arenas – you get the idea. How everything is split up is completely up to you.
+
+Furthermore, don’t forget that you are not confined to use the MemoryArena implementation I’ve given above – you can use any class you like as long as it offers an Allocate() and Free() method. The RecordingArena is an example of a completely different arena which doesn’t even allocate memory itself – so you could e.g. implement a GrowingMemoryArena which automatically tries to allocate more memory from the OS if there’s nothing left, if that floats your boat.
+
+Reply ↓
+Michael Herzog
+on November 28, 2011 at 8:09 pm said:
+
+Again… Thank you a lot for this great and well documented information on your “general purpose” allocator!
+I think I will first try to modify the dlmalloc() source code to fit our needs and later I will have a look at the GPG7 article about this “high performance malloc” implementation.
+But dlmalloc() I think will do the job very well, because we don’t need special multithreading optimizations like TLS and so on in a “general purpose” allocator.
+We only need one highly optimized lock-free allocator and that’s our OneFrameAllocator.
+
+In conclusion I think a well chosen memory allocation strategy is the base for a blazing fast 3D engine and makes our life as software developers more productive!
+
+Michael Herzog
+on November 28, 2011 at 10:14 pm said:
+
+When I started integrating dlmalloc() today in our engine I early realized that this is really a back-breaking task to get done and also I don’t like code that’s really a pain to read.
+So I’ve found another nice article which implements Doug Lea’s dlmalloc() by also using heap layers and easy human readable template code.
+This may be of interest to others…
+
+Memory Management Part 3: Memory Allocators Design
+
+It also nicely fits into your concept of memory arenas Stefan and you don’t have redundant dirty C code in your codebase! 😉
+
+Stefan Reinalter
+on November 28, 2011 at 10:34 pm said:
+
+I’m always happy to help others, so thanks for the kind feedback.
+And thanks for the link, that might indeed come in handy :).
+
+Daniel on December 10, 2011 at 10:59 pm said:
+
+Thanks for the articles Stefan, I really like the architecture you’re using here.
+
+For some reason I’m getting some strange behaviour when adding several allocations to a map, it seems to overwrite the last allocation or something: http://pastebin.com/NcZmhb6n
+
+If I use the regular new/delete, it returns 4.
+
+I posted my versions of HeapArea and LinearAllocator, since that’s the only difference to your code. I wouldn’t be suprised if there was something glaringly wrong, I haven’t coded at this level before 🙂
+
+Reply ↓
+Stefan Reinalter
+on December 11, 2011 at 12:02 am said:
+
+Thanks Daniel!
+
+I’ll have a look at the code once I have access to a compiler again.
+
+Reply ↓
+Stefan Reinalter
+on December 12, 2011 at 10:40 am said:
+
+I had a look at your code, doesn’t seem wrong to me. Did you change anything else in the implementation? You posted a LinearAllocator but seem to use a LinearArena.
+
+Regarding your problem, all you need to make sure is that these calls
+
+TestClass* test = ME_NEW(TestClass, linearArena)(4);
+TestClass* test2 = ME_NEW(TestClass, linearArena)(5);
+
+return two different addresses for test and test2. Guessing by the output you get, I’d say that somewhere in the allocation code you got one of the offsets (or similar) wrong, leading to the same address being returned twice.
+
+Reply ↓
+Daniel
+on December 12, 2011 at 6:07 pm said:
+
+Oops! My alignment define was returning zero. It’s working now, thanks 🙂
+
+Joseph Palmer (@Jet_Black) on February 26, 2012 at 12:32 am said:
+
+Hey,
+
+While implementing this, I ran into a problem that I find kinda interesting. Not sure how to handle it, maybe you can provide some perspective from what you’ve done in the molecular engine.
+
+I was trying to think about how my memory would be laid out when implementing an arena with a front guard and that allowed alignment. Where would you put the guard bytes. I was thinking you’d want them right before the user address. But in order to do that you’d have to calculate that into your alignment adjustment somehow. The address after those guard bytes needs to be aligned.
+
+{ adjustment bytes (adjustment-1 bytes) }{ adjustment size (1byte) }{ **front guard** }{ user_addr }{ back guard }
+
+How can you calculate the correct adjustment knowing that those front guard bytes will have to come right after your adjustment and before your user data address.
+
+Hopefully this all makes sense. The whole issue seems like it makes using a front guard really difficult. Either you put the guard bytes before the adjustment bytes and they are less effective or you put them after and have to do some kinda weird adjustment for those extra 4 bytes that need to come before the properly aligned address.
+
+What do you think? Thanks for the help.
+
+Reply ↓
+Stefan Reinalter
+on February 26, 2012 at 5:50 pm said:
+
+In the Molecule Engine, the bounds checking policies take care of adding guard bytes both at the front and the back of allocations. The guard bytes only make sense if they are put right before the memory address handed to the user.
+
+Having said that, it’s not too hard to calculate the offset you need for adding those extra bytes. What you have to do is increase the size of the allocation by the bytes you need (e.g. 4), round the size to the next multiple of the allocation size, align it, put the guard bytes at the front, and return the pointer.
+
+A simple example: Let’s assume we want 4 guard bytes, and want to allocate 10 bytes with 32-byte alignment. First, the size is increased to 10+4 = 14 bytes. Second, the size needs to be a multiple of 32 bytes (making it work for corner cases as well), so size becomes 32. Those 32 bytes are allocated, aligned, and returned to the user, after the guard bytes have been put at the front.
+
+That’s how you could make it work for completely generic allocations, but it can waste more memory than really needed. Because of that, each Allocate() function in the Molecule Engine takes three parameters: the size, the alignment, and an offset which tells the allocator that the returned memory + offset needs to be aligned.
+
+I.e. for a linear allocator, all you need to do is add the offset, align the address, and subtract the offset again, which creates less waste than the generic method. You can adjust your allocators to take care of the additional offset parameter, or just solve the problem in the abovementioned way.
+
+Hope that helps!
+
+Reply ↓
+Etienne on April 8, 2012 at 12:49 am said:
+
+Hello Stefan, your way of handling the memory allocation is by far the most elegant I’ve seen 🙂
+
+I tried to implement it myself with similar policy architecture. So far I got no real problems except for one part of the free from MemoryArena class. You put this :
+
+const size_t allocationSize = m_allocator.GetAllocationSize(originalMemory);
+
+How do you get the original Allocation Size ?
+
+For initializing my NonPOD test class (not an array) I need 16 byte of memory, and the only thing that I succeed to get from this function is the size of the pointer (which is 4 on my 32bit computer). Should I store the size of the allocation (16byte) somewhere for bringing it back ? I’m stuck on this problem as I wish to check the back guard with a SimpleBoundschecking policy. (I precise that I implemented only a linear allocation for the moment).
+
+Thank you for the whole blog, as every article you post are interesting and I follow your posting with great attention !
+
+Reply ↓
+Stefan Reinalter
+on April 8, 2012 at 11:44 am said:
+
+Thanks for the kind words, Etienne!
+
+Most of the time, I just store the allocation size next to the allocation itself, e.g. the layout could be like this:
+
+4 byte allocation size | 4 byte front guard | user memory | 4 byte back guard
+
+So, whenever a user wants to free memory, you know that the size of the allocation is stored at (ptr – 8). And by checking the front guard, you can make certain that the allocation size hasn’t been overwritten. Finally, at location (ptr + allocationSize), you can check if the back guard is still intact.
+
+It’s simple to implement, you just need to take care that the actual memory returned to the user is still properly aligned, but taking care of that is not too hard, and explained in one of the comments above.
+
+Reply ↓
+Daniele
+on March 24, 2015 at 5:44 pm said:
+
+Hi Stefan, excellent article as usual! I would like to point out a little thing if possible:
+
+I think that the MemoryArena code contains a minor bug, about bounds checking.
+If I understood well, when allocate with bound checking, the newSize is “decorated” with front and back bound sizes (and the allocator, obviously, doesn’t know nothing about that):
+
+const size_t newSize = size + BoundsCheckingPolicy::SIZE_FRONT + BoundsCheckingPolicy::SIZE_BACK;
+char* plainMemory = static_cast(m_allocator.Allocate(newSize, alignment, BoundsCheckingPolicy::SIZE_FRONT));
+
+So by calling m_allocator.GetAllocationSize I suspect that the returned value is equals to the above “newSize” that contains also the size of both bounds and, so the pointer given to ::CheckBack will point to a wrong position:
+
+const size_t allocationSize = m_allocator.GetAllocationSize(originalMemory);
+m_boundsChecker.CheckBack(originalMemory + BoundsCheckingPolicy::SIZE_FRONT + allocationSize);
+
+That’s why I think that the above call should be change to this one:
+
+m_boundsChecker.CheckBack(originalMemory + (allocationSize - BoundsCheckingPolicy::SIZE_BACK));
+
+I hope this can be of some help,
+let me know if I misunderstood! if this is the case my apologies 😀
+
+– DC
+
+Stefan Reinalter
+on March 30, 2015 at 12:12 pm said:
+
+Yes, you are right. This was a bug in the original implementation that has been fixed, but the post has not been updated.
+Thanks for pointing it out, the post will be updated!
+
+Cal on April 21, 2012 at 2:09 am said:
+
+Hi, Stefan.
+
+I just wanted to ask a small question regarding your allocator usage in the engine. Before I do that, though, thank you for a very informative and enlightening read… and that goes for your entire site, not just your memory manager posts. 🙂
+
+As for my question, I am curious to know how you use your allocators beyond the scope they are created in. Do you limit allocators to being on the stack only, or do you have some that are globals, or maybe allocated dynamically within another heap?
+
+Aside from maybe a page and/or heap allocator, having global allocators doesn’t sound appealing to me, but which method do you use for providing allocators to other areas within your engine? As a function parameter?
+
+Assuming your allocator ‘area’ sizes are not hard-coded as in your examples above, how do configure your allocation area sizes?
+
+With the above said, you’ll have to forgive me if my questions are a little broad, or, perhaps even ‘sub-par’. Ha! At the moment I’m merely an amateur programmer looking to learn. I consider myself fairly competent at C++ and of code implications on d/i cache usage, amongst other performance-related areas, etc. It’s just I feel my skill-set may be lacking when it comes to ‘ideal’ code design, though, especially relating to piecing together neat and loosely coupled systems within a game.
+
+Thank you very much for your time, and doubly so if you’re willing to reply. I appreciate it a tonne. 🙂 Regards.
+
+Reply ↓
+Cal
+on April 21, 2012 at 2:12 am said:
+
+Well, when I said “… a small question…”, I really meant several not-so-small ones.
+
+Ha! 🙂 Thanks again.
+
+Reply ↓
+Stefan Reinalter
+on April 21, 2012 at 5:39 pm said:
+
+Well, I guess the answer is (once again) “it depends”.
+
+Some of my allocators live on the stack, e.g. in WinMain, and are then passed to engine parts or other systems as function parameters. Some allocators are members of subsystems, and one allocator is global (for debugging purposes, the fallback allocator so to say).
+
+Regarding area sizes: Almost everything is configurable via config-files, so in reality those sizes are not hardcoded. During development, the allocators respect those configured sizes, but in addition they know about the fallback allocator from which they allocate whenever there’s no more memory left (they also print a warning whenever they are about 90% full). This allows me to work on stuff without having to re-configure area sizes all the time, but still makes sure that memory limitations are dealt with. Having the fallback allocator is optional to a memory arena, but during development it’s often nice to have.
+
+Having said that, I mostly worry about different memory arenas, fragmentation, etc. in run-time code. For example, some Windows-only tools (e.g. texture baking) just use a fire-and-forget approach.
+
+Cal on April 21, 2012 at 9:19 pm said:
+
+When it comes to implementation details, I knew it was going to be one of those “it depends” things, so thanks for shooting some examples of your own usage at me. It’s very insightful.
+
+Based on the quality of your site post, I really do look forward to reading more from you. Thank you the prompt reply too. All the best 🙂
+
+Reply ↓
+
+Pingback: Memory allocation strategies: a linear allocator | Molecular Musings
+
+Craig Bishop on September 20, 2012 at 9:00 am said:
+
+I know it’s an implementation detail, but is stackArea(..) a macro that calls alloca(..) in the current scope? I cannot figure out how else to keep the syntax you list.
+
+Reply ↓
+Stefan Reinalter
+on September 20, 2012 at 10:29 am said:
+
+You’re right, that would be the only way to make it work. The syntax I posted was an oversimplification, too much I guess.
+
+Personally, I’d use either one of the following:
+char* stackArea[compile-time constant size];
+void* stackArea = alloca(size);
+
+Thanks for pointing it out, I’ll update the post accordingly.
+
+Reply ↓
+Aaron on January 24, 2013 at 5:42 am said:
+
+Hi Stefan,
+
+Just like to say great articles and a great blog!
+
+I have a small question regarding alignment. Going through the articles it would seem that at the beginning there isn’t any mention of specifying an alignment value for ME_NEW but later in the articles the Allocate() functions for arenas/allocators require an alignment value.
+
+Is it something you added at a later stage and forgot to update the first parts of the article or do you provide a default alignment value in the ME_NEW macro that gets passed to Allocate()? (I’m doubting this is the case though unless you also provide a ME_NEW_ALIGNED which allows the user to specify alignment).
+
+Thanks!
+
+Reply ↓
+Stefan Reinalter
+on January 24, 2013 at 10:32 am said:
+
+Hi Aaron,
+
+It is the latter. I didn’t mention alignment in the first few articles because I wanted to concentrate on key points, and not confuse readers with too much additional detail.
+As you correctly assumed, Molecule actually offers two macros: ME_NEW and ME_NEW_ALIGNED.
+ME_NEW internally uses ME_NEW_ALIGNED in conjunction with ME_ALIGN_OF, which is a platform-dependent macro that uses e.g. __alignof(). Hence using ME_NEW will always adhere to minimal alignment requirements and e.g. compiler-specific options for certain types.
+The user can also use ME_NEW_ALIGNED directly instead, which takes an additional parameter and is useful for e.g. aligning raw buffers.
+
+Glad you enjoy the blog!
+
+Reply ↓
+Aaron
+on January 25, 2013 at 12:10 am said:
+
+Ahh excellent! That works perfectly 🙂
+
+Aaron on January 24, 2013 at 7:51 am said:
+
+I have another question…
+
+Is there a nice way memory arenas can be used in conjunction with boost shared_ptrs? I have had a couple quick attempts to try minimise the code the user has to type. This is what I have so far for being able to specify a custom deleter for shared_ptr that uses the arenas Free():
+
+#define ME_DELETER(type, arena) boost::bind(&TypeAndCount::Type::Free, arena, _1)
+
+typedef MemoryArena ApplicationArena;
+typedef boost::shared_ptr FooPtr;
+
+ApplicationArena arena(heapArea);
+FooPtr foo(ZE_NEW(Foo, arena, alignment)(args), ZE_DELETER(ApplicationArena, arena));
+
+Can you see a more elegant way of doing this?
+
+Reply ↓
+Stefan Reinalter
+on January 24, 2013 at 12:29 pm said:
+
+I think WordPress ate your template brackets, but the code gets the point across.
+Not being all that familiar with boost::shared_ptr (or boost in general), I would say the code looks reasonable? If boost::shared_ptr takes a custom deleter, there’s not really a way of making the code any shorter?
+I fear stuffing even more things into a macro would be confusing.
+
+Reply ↓
+Aaron
+on January 25, 2013 at 12:16 am said:
+
+Yep WordPress definitely ate the code!
+
+The only way I was thinking it could be made smaller was if the ME_NEW macro could somehow be changed to take in the type of the arena and setup the custom deleter in one go. Something like this pseudo code:
+
+#define ME_NEW_SHARED(type, arenaType, arena) (ME_NEW(type, arena), ME_DELETER(arenaType, arena)
+
+Then we could do this:
+
+FooPtr foo(ME_NEW_SHARED(Foo, ApplicationArena, arena, alignment)(args));
+
+I’m not sure if this is possible though, it might need some extra macro magic. Let me know your thoughts 🙂
+
+Stefan Reinalter
+on January 25, 2013 at 10:47 am said:
+
+Well, it would be possible with a macro that takes variadic arguments, but then you lose the nice syntax of ME_NEW. Something like the following should do the trick:
+
+#define ME_NEW_SHARED(type, arenaType, arena, …) ME_NEW(type, arena)(__VA_ARGS__), ME_DELETER(arenaType, arena)
+
+I would use the more explicit version instead, though.
+
+Shad on April 29, 2013 at 6:38 am said:
+
+Hi,
+
+First, thanks for your articles, they’re really interesting and I learn a lot about custom memory allocators.
+
+I have a question though, that may seem a bit noobish. Also English isn’t my native language (hello from France), so I hope it will be understandable.
+
+If I want several objects to use the same memory arena for their internal allocations, I will pass the current memory arena to each of them as an argument in their constructor.
+But the use of template in the definition of MemoryArena will force me to use template for every classes that have a MemoryArena attribute, which I think can become problematic (all the code has to be in header files for example).
+
+For example :
+template (typename MemoryArena)
+class MyClass {
+public :
+MyClass(…, MemoryArena & arena)
+{ … }
+
+private :
+MemoryArena & mArena;
+};
+
+MyMemoryArena arena;
+MyClass c(16, arena);
+
+I find this a bit of an overkill.
+How do you handle this ?
+Do you force each class to use a specific arena (ApplicationArena, ST_PoolStackArena, …) to avoid template ?
+Or did I miss something to avoid this problem ?
+
+Regards.
+
+Reply ↓
+Stefan Reinalter
+on April 29, 2013 at 2:30 pm said:
+
+Because of this, I use a MemoryArenaBase base class that consists of the Allocate(), Free() and GetStatistics() interface, which is implemented by the templated MemoryArena.
+In container classes (my own array, stack, FIFO, etc.) I usually store a pointer to a MemoryArenaBase and use that for allocating/freeing memory. Because memory allocations in my containers only happen very seldom (no automatic growing) I don’t really mind a virtual function.
+
+But in other cases where I know I want to use some specialized allocator/arena, I store it by concrete type, and avoid the virtual function call overhead. It depends, but having a base class for storing an arena somewhere is definitely handy.
+
+Reply ↓
+Robin
+on August 16, 2016 at 10:48 am said:
+
+Hi Stefan,
+
+Following the reply, I have a question about inheritance.
+
+When MemoryArena inherits the MemoryArenaBase and implements the virtual Allocate(), Free(), …, aren’t the the corresponding methods in MemoryArena automatically becoming virtual? So, even when you use call Allocate() on the concrete class itself, it will incur the virtual call overhead. Is my understanding correct at this point?
+
+============================================
+I tried to resolve this by introducing another template argument, say, unsigned int Virtual. Then I used template specification to create two classes, with one inheriting the base and one not inheriting it.
+
+template(…, unsigned Virtual)
+class MemoryArena
+{ … }
+
+template(…)
+class MemoryArena : public MemoryArenaBase
+{ … }
+
+This way, when I used MemoryArena, it gave me the concrete class without virtual override. And MemoryArena otherwise.
+
+However, this method duplicates code inside the class. The partial specialization class has exactly the same code as the concrete one. Is there good way to get rid of this duplication to make the code more maintainable?
+
+Thank you for your awesome series!
+
+Stefan Reinalter
+on August 16, 2016 at 11:27 am said:
+
+The methods are virtual, yes. But whether calling the method incurs a virtual function call depends on the type you’re calling the method on.
+If you work with an object of a concrete type, e.g.
+
+Derived d;
+d.Something();
+
+then the function call can be resolved at compile-time, and will call Derived::Something() directly.
+
+When dealing with pointers to base classes, as is done most of the time when dealing with inheritance, the function call will most likely be virtual and resolved at run-time.
+However, in rare cases the compiler can deduce the actual type of the object you’re calling the method on, and can resolve the call at compile-time.
+This depends on the compiler and optimization settings used, so I would always check the assembly if I wanted to be sure.
+
+I don’t see the point of introducing another class into the mix. If you know you’re going to use a specific memory arena/allocator and work with discrete types, there won’t be any virtual function call overhead.
+In cases where you want code to work with generic arenas, such as custom containers, data structures, etc. that expect a MemoryArenaBase*, there is no way to avoid the virtual function lookup.
+
+superbadcode
+on August 17, 2016 at 9:21 am said:
+
+Thanks Stefan.
+
+I was confused at first since I did some tests with the virtual function call, which happens to be recursive.
+
+I did see a performance penalty of directly calling virtual function (without using base type pointer to call it).
+
+However, I found that only happens when the virtual function itself has recursive call to itself.
+//=========================================
+; 40 : return 1 + hello(x – 1);
+dec edx
+call ?hello@ARecursion@@QEAAHH@Z ; ARecursion::hello
+inc eax
+; 41 : }
+//=========================================
+; 49 : return 1 + hello(x – 1);
+mov rax, QWORD PTR [rcx]
+dec edx
+call QWORD PTR [rax]
+inc eax
+; 50 : }
+//=========================================
+
+The asm is generated by VS2015 compiler with release build.
+The non-virtual (first snippet) version does not have an extra indirection, which exists in the virtual version (second snippet). I wonder what’s the reason behind this.
+
+Anyway, I guess I am safe since the MemoryArena::allocate does not need a recursive call to allocate resources.
+
+Robin
+
+Stefan Reinalter
+on August 26, 2016 at 10:51 am said:
+
+The non-virtual (first snippet) version does not have an extra indirection, which exists in the virtual version (second snippet). I wonder what’s the reason behind this.
+
+The reason is that the recursive call inside the virtual function needs to be resolved at runtime because a different function (depending on the actual type) could be invoked.
+If you want to call a particular function in your class hierarchy that resolves to a compile-time call, use the scope resolution operator, e.g. ARecursion::hello(x-1);
+
+Carl on July 20, 2014 at 11:11 pm said:
+
+Hi Stefan,
+
+First of all, I really want to thank you for sharing your knowledge and your work.
+
+I’ve got some question about your memory management system.
+
+1) How do you manage object arrays and alignement?
+Your allocators use offset to allocate and return memory that is big enough to hold “debug infos” and return aligned pointers. But in the case of ME_NEW_ARRAY case, I can’t figure out how the “object count” is managed: memory arena uses allocator to allocate memory but it uses the aligned pointer to save the “object count”. In this case, the returned pointer may not be aligned (for example using ME_NEW_ARRAY with vector4 objects).
+
+2) How to strip debug infos?
+You use a smart and simple system to add some debug informations in the memory allocators (file name and function name) by using a “debug policy”. But I wonder if the compiler is smart enough to strip all this informations from the final application. If all the memory management system is in a library, I don’t know if the compiler is able to “know” that __FILE__ and __LINE__ are useless for some targets. Perhaps with Link Time Code Generation is it possible to remove these information.
+
+Anyway, keep the good work and I’m looking forward to reading your next article.
+
+Reply ↓
+Stefan Reinalter
+on July 21, 2014 at 2:24 am said:
+
+Hi Carl,
+
+Thanks for the kind words!
+
+1) How do you manage object arrays and alignement?
+Your allocators use offset to allocate and return memory that is big enough to hold “debug infos” and return aligned pointers. But in the case of ME_NEW_ARRAY case, I can’t figure out how the “object count” is managed: memory arena uses allocator to allocate memory but it uses the aligned pointer to save the “object count”. In this case, the returned pointer may not be aligned (for example using ME_NEW_ARRAY with vector4 objects).
+
+The situation you described is exactly what you need the offset parameter for!
+Each memory allocator needs to ensure that the returned pointer + offset is aligned to alignment.
+
+A memory arena knows how much data it wants to store in front of an allocation, e.g. 8 byte debug info, and 4 byte object count/array size. It will therefore ask the underlying allocator to return aligned memory with an offset of 12, such that the arena stores 12 bytes at the pointer returned by the allocator. Adding those 12 bytes to the pointer makes it aligned, so it can be returned to the user – no matter which type of object is stored, or whether it is an array or not.
+
+2) How to strip debug infos?
+You use a smart and simple system to add some debug informations in the memory allocators (file name and function name) by using a “debug policy”. But I wonder if the compiler is smart enough to strip all this informations from the final application. If all the memory management system is in a library, I don’t know if the compiler is able to “know” that __FILE__ and __LINE__ are useless for some targets. Perhaps with Link Time Code Generation is it possible to remove these information.
+
+Oh, of course there are different macros for development & retail builds.
+In retail builds, none of that information will ever be generated. The user can configure which macros to use based on pre-processor settings, so you still have the possibility to enable debug information in retail builds for hard-to-find leaks or other memory related bugs.
+Same with e.g. the tracking policy: there are simple ones, empty ones, and more sophisticated ones that will store the whole callstack (along with other information) for each allocation. The user can freely choose which one to use in what build.
+
+Reply ↓
+Carl
+on July 21, 2014 at 9:14 am said:
+
+Hi Stefan,
+
+thank you for the answers.
+About Q2 (debug infos stripping): ok, this is the technique I use (a different macro for debug, release or retail target). I was wondering if you found another way to handle this.
+
+About Q1: sorry, I was not enough clear with my question. I completely understand the use of the offset parameter in allocators. I was wondering how do you “say” to the Arena that you need also small room to save the element count of an array: does it means that you have also an “offset” parameter in Arena’s allocation function (I don’t see it in your example)? Or did you wrote a special function to manage arrays in Arena (i.e. AllocateForArray())? Yes, I know that it seems a dumb question but it “tickles” me 😉
+
+Have a good day!
+
+Stefan Reinalter
+on July 21, 2014 at 6:44 pm said:
+
+It’s all really simple: ME_NEW_ARRAY just calls a different function than ME_NEW.
+
+ME_NEW directly uses arena->Allocate(), and calls placement new on the returned pointer.
+ME_NEW_ARRAY calls memory::NewArray(), which first allocates sizeof(T)*N + 4 bytes from the arena, then stores the number of instances, and finally constructs the instances (if they are of non-POD type).
+
+It’s as simple as that, no magic involved :).
+
+Carl on July 22, 2014 at 7:26 pm said:
+
+Hi Stefan. Clear and understable answer, thanks!
+I hope to read a new post from you. I wonder if you plan to write a less technical post, more oriented to your experience as a middleware provider, what you expected when you created your company, what went right/wrong, …
+
+Reply ↓
+Marc Costa on August 27, 2014 at 10:21 am said:
+
+Hi Stefan,
+
+I wanted to ask you a question about containers but I couldn’t find the right post to do it, so I believe this one will have to do 🙂
+
+When describing your engine containers in the products page you say: “The core library provides lightweight containers with explicit memory management, supporting types that require custom alignment. All containers provide STL-like iterators, and allow for specialized implementations based on the type.”
+
+I’m interested in the “explicit memory management” bit.
+
+I’ve implemented very simple containers like a fixed sized array an a queue that take a pointer to some memory and a number of elements as constructor parameters, so the internal memory managment is null. The problem with this approach is that I must allocate a chunk of memory from outside the container and then allocate the container itself via placement new with the pointer to the memory and the number of elements as parameters. This works fine, but makes the syntax a little bit weird, since I usually end up with pointers to containers because they have no default constructor.
+
+I was interested in your approach to the containers. Do you allocate memory externally to them? Or do you pass a MemoryArena as a template/constructor parameter? (I’ve done this approach for one higher level container that uses some plain arrays within)
+
+I’ve thought that a possible solution would be to allow default constructors and provide a method like: reset(void* mem, size_t num_elements);, although that would complicate the inner logic a little bit.
+
+Any comments/ideas will be greatly appreciated!
+
+Reply ↓
+Stefan Reinalter
+on August 28, 2014 at 9:31 pm said:
+
+All containers expect a pointer to an arena interface in the constructor. I see no compelling reason why you would want to pass the allocator as a template parameter, and it’s one thing I particularly dislike about the STL.
+
+What type and instance of arena is passed in is completely up to the user, so you can have things like e.g. the same arena taking care of different vectors, which is what I use for loading resources. They are guaranteed to be contiguous in memory due to the code using a linear allocator for all resident resources in a package.
+
+Reply ↓
+Marc Costa
+on August 29, 2014 at 8:01 am said:
+
+I don’t like the STL way of using custom allocators in containers either. That’s why I was so hesitant to use it for the engine and hence, the question.
+
+I just realized I missed the comment where you actually talk about a common interface for MemoryArena.
+
+Thanks, Stefan! This helps a lot!
+
+heisenbug13 on June 18, 2015 at 10:55 am said:
+
+Hi,
+thank you so much for the series of articles on memory management, really useful.
+I have a question though.
+
+In this approach using a memory Arena, everything works fine if you explicitly use ME_NEW for allocating objects. But how to deal with containers?
+Let’s say you have the following class:
+
+class Node
+{
+….
+std::vector m_children;
+};
+
+and you allocate it with ME_NEW.
+I think it’s reasonable you want to store also the elements of m_children vector in the same arena for many reasons. Even if Arena’s internal allocator was STL compliant, it can’t be used or it will bypass Arena’s method calls and subsequent memory tracking, boundary checks and so on.
+
+I thought a little bit about it, and I guess the only way is to use another allocator for the vector which forward the allocation request to the Arena. Is this reasonable or am I missing something? Do you ever had such need, or I am misunderstanding your design?
+
+Reply ↓
+Stefan Reinalter
+on June 19, 2015 at 11:38 am said:
+
+Yes, in those situations you definitely have to use a custom STL allocator.
+
+I never had the need for this though, because Molecule uses custom containers (it’s not that many you really need in the run-time code). Additionally, even when using a custom allocator for the vector in the example you gave, you will run into problems sooner or later because the allocator type is now part of the vector’s underlying type. I still believe that making the allocator a template parameter in STL containers is one of the biggest design flaws in the STL – yes, it goes with the notion of not having interfaces and only templates, but it still makes no sense.
+
+Reply ↓
+heisenbug13
+on June 19, 2015 at 12:02 pm said:
+
+Ok, thanks for the reply.
+AFAIK now with c++11 allocators can have state, don’t they? In any case I used a “proxy” allocator just to forward allocation to the arena reference. Something like:
+
+template<class MemoryAreaPolicy, class AllocationPolicy, class TrackPolicy, templateclass AllocatorType = ArenaProxyAlloc>
+class Arena
+{
+public:
+template using ContainerAllocator = AllocatorType;
+…
+
+where
+
+template
+class ArenaProxyAlloc
+{
+ArenaProxyAlloc(Arena& a) : m_arena(a){}
+T* allocate(size_type size)
+{
+return reinterpret_cast(m_arena.Allocate(size*sizeof(T), __FILE__, __LINE__));
+}
+
+In practive I’ll have just a couple of ContainerAllocator (aligned and not) which just forward calls to the referenced Arena.
+
+I hope this is a not too bad idea…
+
+Stefan Reinalter
+on June 19, 2015 at 12:26 pm said:
+
+Yes, since C++11 STL allocators are allowed to be stateful.
+Unfortunately, WordPress ate your template brackets, so I’m not entirely sure about the code you posted. What do you need the reinterpret_cast for? Maybe you can provide a Github Gist?
+
+heisenbug13 on June 19, 2015 at 12:36 pm said:
+
+Nothing..just unuseful cast. It should be a static cast to convert a void* returned by arean to T*. Btw, here’s the gist: https://gist.github.com/Heisenbug/5e2d3d79ce253704239f
+
+Reply ↓
+Leave a comment
+
+This site uses Akismet to reduce spam. Learn how your comment data is processed.
+
+Blog at WordPress.com.
+
+IMAGES
+https://blog.molecular-matters.com/wp-content/uploads/2015/07/cropped-banner.png
+https://2.gravatar.com/avatar/bc0a1f0b27051a1690afbb2ea741dda4c9559e1c5f52e6e5fa9b754870c9b2ea?s=68&d=https%3A%2F%2F2.gravatar.com%2Favatar%2Fad516503a11cd5ca435acc9bb6523536%3Fs%3D68&r=G
+https://0.gravatar.com/avatar/0cfe2ec121a986f97bb8cb7d1bc671ea2e3c63f4a8fcea61c0455252acedc288?s=39&d=https%3A%2F%2F0.gravatar.com%2Favatar%2Fad516503a11cd5ca435acc9bb6523536%3Fs%3D39&r=G
+https://2.gravatar.com/avatar/bc0a1f0b27051a1690afbb2ea741dda4c9559e1c5f52e6e5fa9b754870c9b2ea?s=39&d=https%3A%2F%2F2.gravatar.com%2Favatar%2Fad516503a11cd5ca435acc9bb6523536%3Fs%3D39&r=G
+https://0.gravatar.com/avatar/c21751ab333adea3147b1c1f3e239be760666cb63ecfbf68e0785a82363d66e6?s=68&d=https%3A%2F%2F0.gravatar.com%2Favatar%2Fad516503a11cd5ca435acc9bb6523536%3Fs%3D68&r=G
+https://0.gravatar.com/avatar/c21751ab333adea3147b1c1f3e239be760666cb63ecfbf68e0785a82363d66e6?s=39&d=https%3A%2F%2F0.gravatar.com%2Favatar%2Fad516503a11cd5ca435acc9bb6523536%3Fs%3D39&r=G
+https://1.gravatar.com/avatar/1cfbafaba5d5ae9a3961b6743ecc5fe97b024889b147923cbbfbe7281cedb17a?s=68&d=https%3A%2F%2F1.gravatar.com%2Favatar%2Fad516503a11cd5ca435acc9bb6523536%3Fs%3D68&r=G
+https://0.gravatar.com/avatar/61e45295423c6ef2a7db99f8e2157577887031970d23c0460571fe43c15fb7b0?s=68&d=https%3A%2F%2F0.gravatar.com%2Favatar%2Fad516503a11cd5ca435acc9bb6523536%3Fs%3D68&r=G
+https://1.gravatar.com/avatar/aa68cc41d5245c53e8ffdf92b445518b1d9458ead59655c991ac5b518c92b979?s=39&d=https%3A%2F%2F1.gravatar.com%2Favatar%2Fad516503a11cd5ca435acc9bb6523536%3Fs%3D39&r=G
+https://1.gravatar.com/avatar/aa1b852440c0249845d59a46c5ad86cf8fb999a9e4f6afbad95ab6fda8ec50aa?s=68&d=https%3A%2F%2F1.gravatar.com%2Favatar%2Fad516503a11cd5ca435acc9bb6523536%3Fs%3D68&r=G
+https://1.gravatar.com/avatar/aa1b852440c0249845d59a46c5ad86cf8fb999a9e4f6afbad95ab6fda8ec50aa?s=39&d=https%3A%2F%2F1.gravatar.com%2Favatar%2Fad516503a11cd5ca435acc9bb6523536%3Fs%3D39&r=G
+https://1.gravatar.com/avatar/a9b8769407174868f21c0f3528e34978d6a3ebae4a2f9dd1a05527f668309b7d?s=68&d=https%3A%2F%2F1.gravatar.com%2Favatar%2Fad516503a11cd5ca435acc9bb6523536%3Fs%3D68&r=G
+https://2.gravatar.com/avatar/8b7ede1e5ac0bccc9e1c1ce2ba38f1ca474d240db01777243af114f47bdbc5af?s=68&d=https%3A%2F%2F2.gravatar.com%2Favatar%2Fad516503a11cd5ca435acc9bb6523536%3Fs%3D68&r=G
+https://2.gravatar.com/avatar/8b7ede1e5ac0bccc9e1c1ce2ba38f1ca474d240db01777243af114f47bdbc5af?s=39&d=https%3A%2F%2F2.gravatar.com%2Favatar%2Fad516503a11cd5ca435acc9bb6523536%3Fs%3D39&r=G
+https://0.gravatar.com/avatar/3866499908c5b7441379eb21ad9a1699b34aa947d254764849df3fa45bcccf32?s=68&d=https%3A%2F%2F0.gravatar.com%2Favatar%2Fad516503a11cd5ca435acc9bb6523536%3Fs%3D68&r=G
+https://2.gravatar.com/avatar/b2ff36843345360b8fe465e40c0d4d562ae77ceafbff64d36cfa1483cc48558b?s=39&d=https%3A%2F%2F2.gravatar.com%2Favatar%2Fad516503a11cd5ca435acc9bb6523536%3Fs%3D39&r=G
+https://0.gravatar.com/avatar/f5bd9fd71a1e570485b11c4b75492bcddf236ff219720b1347a16042808495c4?s=68&d=https%3A%2F%2F0.gravatar.com%2Favatar%2Fad516503a11cd5ca435acc9bb6523536%3Fs%3D68&r=G
+https://0.gravatar.com/avatar/f5bd9fd71a1e570485b11c4b75492bcddf236ff219720b1347a16042808495c4?s=39&d=https%3A%2F%2F0.gravatar.com%2Favatar%2Fad516503a11cd5ca435acc9bb6523536%3Fs%3D39&r=G
+https://1.gravatar.com/avatar/d669858a7f832fac4b08cb41e91efe33f854be5b88d85ee9da34e2d290e10801?s=68&d=https%3A%2F%2F1.gravatar.com%2Favatar%2Fad516503a11cd5ca435acc9bb6523536%3Fs%3D68&r=G
+https://1.gravatar.com/avatar/d669858a7f832fac4b08cb41e91efe33f854be5b88d85ee9da34e2d290e10801?s=39&d=https%3A%2F%2F1.gravatar.com%2Favatar%2Fad516503a11cd5ca435acc9bb6523536%3Fs%3D39&r=G
+https://1.gravatar.com/avatar/d997f0e36b1a7789dc64d586cb46f05045c10559891ec81a5cbb6d9da5e03948?s=68&d=https%3A%2F%2F1.gravatar.com%2Favatar%2Fad516503a11cd5ca435acc9bb6523536%3Fs%3D68&r=G
+https://1.gravatar.com/avatar/d997f0e36b1a7789dc64d586cb46f05045c10559891ec81a5cbb6d9da5e03948?s=39&d=https%3A%2F%2F1.gravatar.com%2Favatar%2Fad516503a11cd5ca435acc9bb6523536%3Fs%3D39&r=G
+https://s0.wp.com/i/logo/wpcom-gray-white.png?m=1479929237i

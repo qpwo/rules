@@ -1,0 +1,11 @@
+cat ~/tmp/chatgpt-export/renamed/2026-07-22_linux_rseq_explodes_performance_multicore_cpus_43x_ditching_locks_atomics_avoid_dinosaur_6a60f0df.txt
+cp ../greats/cdpturn ./
+halp -y -gl find and download/fulltext all mentioned/linked posts from ~/tmp/chatgpt-export/renamed/2026-07-22_linux_rseq_explodes_performance_multicore_cpus_43x_ditching_locks_atomics_avoid_dinosaur_6a60f0df.txt into ./ one by one by one by one. keepgoing keepgoing keepgoing keepgoing. after you get each fulltext, you should look at it and make sure its good, and clean it up if you have to... cdpturn and pdf2md and serp and such are your friends ... idk
+halp -y -gl find and download/fulltext all mentioned/linked posts from ~/tmp/chatgpt-export/renamed/2026-07-22_linux_rseq_explodes_performance_multicore_cpus_43x_ditching_locks_atomics_avoid_dinosaur_6a60f0df.txt into ./ one by one by one by one. keepgoing keepgoing keepgoing keepgoing. after you get each fulltext, you should look at it and make sure its good, and clean it up if you have to... cdpturn and pdf2md and serp and such are your friends ... idk
+echo sorry not the paul graham garbage and joel garbage and other garbage ones please
+cat ~/tmp/chatgpt-export/renamed/2026-07-22_linux_rseq_explodes_performance_multicore_cpus_43x_ditching_locks_atomics_avoid_dinosaur_6a60f0df.txt
+echo sorry not the paul graham garbage and joel garbage and other garbage ones please
+halp -y -gl
+cat ~/tmp/chatgpt-export/renamed/2026-07-22_linux_rseq_explodes_performance_multicore_cpus_43x_ditching_locks_atomics_avoid_dinosaur_6a60f0df.txt
+headtail -n100 *
+halp -y -h make sure its all good and no junk keepgoing and make sure we didnt drop any goods idfk

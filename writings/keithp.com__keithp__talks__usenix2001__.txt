@@ -1,0 +1,15 @@
+Design and Implementation of the X Rendering Extension
+
+The 2000 Usenix Technical Conference included a presentation outlining the state of the X rendering environment and the capabilities necessary to bring X into the modern world. During the past year, a new extension has been designed and implemented as part of the standard XFree86 distribution.
+
+The X Rendering Extension addresses many of the shortcomings inherent in the core X rendering architecture without adding significantly to the protocol interpretation or implementation burden within the server. By borrowing fundamental image compositing notions from the Plan 9 window system and providing sophisticated and extensible font rendering, XFree86 is now much more able to support existing applications while encouraging new developments in user interfaces. More work remains to be done in areas where best practice is less well established, including precise polygon rasterization and image transformations.
+
+HTML
+
+PostScript
+
+PDF
+
+Slides
+
+Usenix Technical Conference 2001

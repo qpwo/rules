@@ -1,0 +1,354 @@
+Paul Khuong mostly on Lisp
+
+rss feed
+
+Sun, 11 Jul 2010
+ 
+There's more to locality than caches
+
+After some theoretical experiments on hash tables, I implemented a prototype for 2-left hash tables with large buckets (16 entries) to see how it’d work in the real world. It worked pretty well, but the way its performance scaled with table size sometimes baffled me. Playing with the layout (despite not fully understanding the initial prototype’s behaviour) helped, but the results were still confounding. The obvious solution was to run microbenchmarks and update my mental performance model for accesses to memory!
+
+(The full set of results are at the end, but I’ll copy the relevant bits inline.)
+
+1 The microbenchmark
+
+The microbenchmark consists of ten million independent repetitions of a small loop that executes an access pattern on 16 independent cache lines. The addresses are generated with a Galois LFSR to minimise the number of uninteresting memory accesses while foiling any prefetch logic.
+
+There are four access patterns. The first pattern, “0”, reads the first word in the line; “0-3” reads the first and fourth words; “0-3-7” reads the first, fourth and eighth (last) words; finally, “0-3-7-8” reads the first, fourth and eighth words of the cache line and the first of the next cache line. It would be interesting to test “0-8”, but it’s not that relevant to my application.
+
+The working sets are allocated in regular pages (4K bytes) or in huge pages (2M bytes) to investigate the effect of the TLB (Translation Lookaside Buffer) when appropriate. A wide number of working set sizes are tested, from 16 KB to 1 GB.
+
+Finally, “Cache miss” measures the number of cache misses (that is, accesses that hit main memory) across the execution of the program, in millions (including a small amount of noise, e.g. to record timings); “TLB miss” measures the number of TLB misses (the TLB caches mappings from logical to physical address), again in millions; and “Cycle/pattern” is the median number of cycles required to execute the access pattern once, computed as the average of 16 independent pattern executions (without compensating for timing or looping overhead, which should be on the order of 20-30 cycles for all 16 executions).
+
+2 Mistake number one: Use the whole cache line, it’s free
+
+CPUs deal with memory one cache line at a time. Barring non-temporal accesses, reading even a single byte results in reading the whole corresponding cache line (64 bytes on current x86oids). Thus, the theory goes, we’re always going to pay for loading the whole cache line from memory and it shouldn’t be any slower to read it all than to access only a single word.
+
+My initial prototype had buckets (of 16 entries) split in two vectors, one for the hash values (four byte each, so one cache line per bucket of hash values), and another for the key-value pairs (more than a cache line per bucket, but the odds of two different keys hashing identically are low enough that it shouldn’t be an issue). Having the hashes in a vector of their own should have improved locality and definitely simplified the use of SSE to compare four hash values at a time.
+
+The in-cache performance was as expected. Reads had a pretty much constant overhead, with some of it hidden by out of order and superscalar execution.
+
+In my microbenchmark, that’s represented by the test cases with working set size from 16KB to 256KB (which all fit in L1 or L2 caches). All the misses are noise (5 million misses for 160 million pattern execution is negligible), and we observe a slow increase for “Cycle/pattern” as the size of the working set and the number of accesses go up.
+
+                +--------------------------------+ 
+                |           4K pages             | 
+                |    0      0-3    0-3-7  0-3-7-8| 
+                +--------------------------------+ 
+  Size 16KB     |                                | 
+Cache miss (M)  |   3.89    3.85    3.88    3.88 | 
+TLB miss   (M)  |   0.50    0.51    0.50    0.58 | 
+Cycle/pattern   |   4.50    6.25    6.50    6.50 | 
+                |                                | 
+                +--------------------------------+ 
+  Size 32KB     |                                | 
+Cache miss (M)  |   3.79    3.87    3.86    3.88 | 
+TLB miss   (M)  |   0.52    0.51    0.50    0.50 | 
+Cycle/pattern   |   4.75    6.25    6.25    6.50 | 
+                |                                | 
+                +--------------------------------+ 
+  Size 128KB    |                                | 
+Cache miss (M)  |   3.80    3.67    3.84    3.66 | 
+TLB miss   (M)  |   0.52    0.36    0.50    0.39 | 
+Cycle/pattern   |   5.25    6.25    6.50    7.25 | 
+                |                                | 
+                +--------------------------------+ 
+  Size 256KB    |                                | 
+Cache miss (M)  |   5.03    5.07    5.07    4.06 | 
+TLB miss   (M)  |   0.51    0.50    0.51    0.47 | 
+Cycle/pattern   |   5.25    6.50    7.25    7.25 | 
+                |                                | 
+                +--------------------------------+
+
+Once we leave cache, for instance at 128MB, things get weirder:
+
+                +--------------------------------+ 
+                |           4K pages             | 
+                |    0     0-3    0-3-7  0-3-7-8 | 
+                +--------------------------------+ 
+  Size 128MB    |                                | 
+Cache miss (M)  | 153.21  153.35  296.01  299.06 | 
+TLB miss   (M)  | 158.00  158.07  158.10  160.58 | 
+Cycle/pattern   |  30.50   34.50   41.00   44.00 | 
+                |                                | 
+                +--------------------------------+
+
+According to my theory, the cost for accessing additional words in the same cache line should be negligible compared to loading it from memory. Yet, “Cycle/pattern” increases slowly but regularly. I believe that the reason for that is that memory controllers don’t read a full cache line at a time. When an uncached address is accessed, the CPU does load the whole line into cache, but only in multiple steps.
+
+The first step also executes much slower than the others because of the way memory is addressed in RAM: addresses are sent in two halves, first the “column”, and then the “row”. To read an arbitrary address, both halves must be sent, one after the other. Reading an address close to the previous one, however, only updates the row.
+
+It’s also interesting to note that both patterns “0-3-7” and “0-3-7-8” trigger about twice as many cache misses as “0” and “0-3”. Yet, “0-3-7” only reads from one cache line, while “0-3-7-8” reads from two. I believe that’s because of prefetching. We’ll come back to the issue of multiple reads from out-of-cache memory later.
+
+So, while it is true that it’s better to fully use a cache line (because it’ll be completely read regardless), reading more words still incurs additional latency, and it’s only slightly cheaper than hitting an adjacent cache line.
+
+3 Mistake number two: Cache misses dominate everything else
+
+In response to my better understanding of memory, I changed the layouts of my buckets to minimise the expected number of reads. In the end, I decided to pack each bucket’s hash values in a header of 128 bit (the size of an XMM register). With 16 bytes used for the hash values, I could append 15 key-value pairs to have a round size of 256 bytes per bucket, and execute only adjacent accesses on successful lookups. The extra 16th hash value stored the number of entries in the bucket.
+
+So, instead of having one vector of hash buckets and one of value buckets per subtable (and two subtables per hash table):
+
+struct entry { 
+        u64 key, val; 
+}; 
+ 
+struct hash_bucket { 
+        u32 hashes[16]; 
+}; 
+ 
+struct value_bucket { 
+        struct entry entries[16]; 
+};
+
+I had:
+
+struct bucket { 
+        union { 
+                vu8 pack; // SSE vector of u8 
+                u8  vec[16]; 
+        } hash; 
+        struct entry entries[15]; 
+};
+
+The new layout meant that I only had one byte of hash value for each entry. It wasn’t such an issue, since I was already computing two independent hash values per key (for the two subtables). When working with the right subtable, I could simply store the hash value from the left subtable (but still index buckets with the right subtable’s hash value), and vice versa. Since the hashes are independent, the odds of false positives are on the order of 5%. According to my new-found knowledge, this should perform really well: only one access to scan the hash values, and then, when the hash values match, the key-value pairs are at adjacent addresses.
+
+The histogram of timings for inserts and lookups did improve and even showed nice, steep peaks (depending on whether one or two subtables were probed). Yet, there was still something really hard to explain: I seemed to run out cache much earlier than expected.
+
+I have 256KB of L2 cache, and 12MB of L3 on my machine... but, in my microbenchmark, we observe drastic changes in timings even between working sets of 2MB and 8MB:
+
+                +--------------------------------+ 
+                |           4K pages             | 
+                |    0     0-3    0-3-7  0-3-7-8 | 
+                +--------------------------------+ 
+  Size 2MB      |                                | 
+Cache miss (M)  |   5.06    5.10    5.11    5.14 | 
+TLB miss   (M)  |   0.67    0.85    0.88    0.90 | 
+Cycle/pattern   |   6.50    7.25    8.75   10.75 | 
+                |                                | 
+                +--------------------------------+ 
+  Size 8MB      |                                | 
+Cache miss (M)  |   7.29    7.28    8.67    8.68 | 
+TLB miss   (M)  | 120.45  120.55  120.63  122.52 | 
+Cycle/pattern   |  11.00   13.00   15.50   17.25 | 
+                |                                | 
+                +--------------------------------+
+
+The access times nearly double, for working sets that both are much larger than L2 but do fit in L3 (as evidenced by the very low number of cache misses). This is where the “TLB miss” row is interesting: the number of TLB misses goes from negligible to nearly one miss per access (each access to memory triggers a TLB lookup to map from logical to physical address). The L2 TLB on my machine holds 512 pages, at 4K each, for a total of 2MB; a working set not fitting in TLB has as much of an impact as not fitting in cache!
+
+I should have thought of that: people who ought to know like kernel developers or Kazushige Goto (of GotoBLAS and libflame fame) have been writing about the effect of TLB misses since at least 2005. So, I used huge pages (2MB instead of 4KB) and observed a return to sanity. On my microbenchmark, this shows up as:
+
+                +--------------------------------+---------------------------------+ 
+                |           4K pages             :          2M pages               | 
+                |    0     0-3    0-3-7  0-3-7-8 :   0      0-3    0-3-7   0-3-7-8 | 
+                +--------------------------------+---------------------------------+ 
+  Size 2MB      |                                :                                 | 
+Cache miss (M)  |   5.06    5.10    5.11    5.14 :   5.03   5.01    5.02    5.05   | 
+TLB miss   (M)  |   0.67    0.85    0.88    0.90 :   0.23   0.27    0.23    0.24   | 
+Cycle/pattern   |   6.50    7.25    8.75   10.75 :   5.25   6.75    7.75    9.75   | 
+                |                                :                                 | 
+                +--------------------------------+---------------------------------+ 
+  Size 8MB      |                                :                                 | 
+Cache miss (M)  |   7.29    7.28    8.67    8.68 :   5.21   5.22    5.22    5.25   | 
+TLB miss   (M)  | 120.45  120.55  120.63  122.52 :   0.23   0.30    0.27    0.25   | 
+Cycle/pattern   |  11.00   13.00   15.50   17.25 :   5.00   6.75    7.75   10.00   | 
+                |                                :                                 | 
+                +--------------------------------+---------------------------------+
+
+Using huge pages cuts the times by almost 50% on the microbenchmark; that’s on par the difference between L3 and L1 (only ≈ 33%, but timing overhead is much more significative for L1). More importantly, the timings are the same for two working sets that fit in L3 but largely spill out of L2.
+
+Improvements are almost as good when hitting main memory:
+
+                +--------------------------------+---------------------------------+ 
+                |           4K pages             :          2M pages               | 
+                |    0     0-3    0-3-7  0-3-7-8 :   0      0-3    0-3-7   0-3-7-8 | 
+                +--------------------------------+---------------------------------+ 
+  Size 16MB     |                                :                                 | 
+Cache miss (M)  |  49.37   49.41   90.72   91.77 :  47.82  47.72   81.46   88.01   | 
+TLB miss   (M)  | 140.59  140.60  140.67  142.87 :   0.25   0.25    0.24    0.25   | 
+Cycle/pattern   |  18.00   20.50   24.00   26.50 :  14.00  15.25   17.00   18.75   | 
+                |                                :                                 | 
+                +--------------------------------+---------------------------------+ 
+  Size 32MB     |                                :                                 | 
+Cache miss (M)  | 106.93  107.09  203.73  207.82 : 106.55  106.62  186.50  206.83  | 
+TLB miss   (M)  | 150.56  150.74  150.82  153.09 :   0.24   0.26    0.25    0.27   | 
+Cycle/pattern   |  22.25   24.75   31.00   34.00 :  15.75  17.25   20.00   27.50   | 
+                |                                :                                 | 
+                +--------------------------------+---------------------------------+ 
+  Size 64MB     |                                :                                 | 
+Cache miss (M)  | 137.03  137.23  263.73  267.88 : 136.67  136.82  232.64  266.93  | 
+TLB miss   (M)  | 155.63  155.79  155.81  158.21 :   5.09   5.25    5.69    5.78   | 
+Cycle/pattern   |  26.00   29.25   36.75   39.75 :  16.75  18.25   24.25   30.75   | 
+                |                                :                                 | 
+                +--------------------------------+---------------------------------+
+
+The access times are much better (on the order of 30% fewer cycles), but they also make a lot more sense: the difference in execution time between working sets that don’t fit in last level cache (L3) is a lot smaller with huge pages. Moreover, now that TLB misses are out of the picture, accesses to two cache lines (“0-3-7-8”) are almost exactly twice as expensive as an access to one cache line (“0”).
+
+My test machine has a 32 entry TLB for 2M pages (and another 32 for 4M pages, but my kernel doesn’t seem to support multiple huge page sizes). That’s enough for 64 MB of address space. Indeed, we observe TLB misses with larger working sets:
+
+                +--------------------------------+---------------------------------+ 
+                |           4K pages             :          2M pages               | 
+                |    0     0-3    0-3-7  0-3-7-8 :   0      0-3    0-3-7   0-3-7-8 | 
+                +--------------------------------+---------------------------------+ 
+  Size 128MB    |                                :                                 | 
+Cache miss (M)  | 153.21  153.35  296.01  299.06 : 152.77  152.86  261.09  298.71  | 
+TLB miss   (M)  | 158.00  158.07  158.10  160.58 :  80.84   84.96   91.48   96.40  | 
+Cycle/pattern   |  30.50   34.50   41.00   44.00 :  18.75   20.75   27.25   33.25  | 
+                |                                :                                 | 
+                +--------------------------------+---------------------------------+ 
+  Size 512MB    |                                :                                 | 
+Cache miss (M)  | 170.65  170.90  326.84  329.59 : 169.90  170.22  286.47  326.54  | 
+TLB miss   (M)  | 160.39  160.41  162.17  164.62 : 140.35  147.28  160.81  179.58  | 
+Cycles/patterm  |  36.75   41.00   47.00   50.00 :  20.50  23.00   29.75   35.50   | 
+                |                                :                                 | 
+                +--------------------------------+---------------------------------+ 
+  Size 1GB      |                                :                                 | 
+Cache miss (M)  | 184.29  184.29  353.23  356.73 : 180.11  180.43  300.66  338.62  | 
+TLB miss   (M)  | 163.64  164.26  176.04  178.88 : 150.37  157.85  169.58  190.89  | 
+Cycle/pattern   |  37.25   41.50   52.00   55.25 :  22.00  24.75   30.50   37.00   | 
+                |                                :                                 | 
+                +--------------------------------+---------------------------------+
+
+However, even with a working set of 1GB, with nearly as many TLB misses for huge as for regular pages, we see a reduction in timing by 30-40%. I think that’s simply because the page table fits better in cache and is quicker to search. 1GB of address space uses 256K pages (at 4KB each). If each page descriptor uses only 16 bytes (one quad word for the logical address and another for the physical address), that’s still 4MB for the page table!
+
+4 TL;DR
+Multiple accesses to the same cache line still incur a latency overhead over only one access (but not in memory throughput, since the cache line will be fully read anyway).
+Use huge pages if you can. Otherwise, you’ll run out of TLB space at about the same time as you’ll leave L2 (or even earlier)... and TLB misses are more expensive than L2 misses, almost as bad as hitting main memory.
+Prefer accessing contiguous cache lines. If you can’t use huge pages or if your working set is very large, only one TLB miss is incurred for accesses to lines in the same page. You might also benefit from automatic prefetching.
+This is why cache-oblivious algorithms are so interesting: they manage to take advantage of all those levels of caching (L1, L2, TLB, L3) without any explicit tuning, or even considering multiple levels of caches.
+
+The test code can be found at http://discontinuity.info/~pkhuong/cache-test.c.
+
+I could have tried to tweak the layout of my 2-left hash table some more in reaction to my new cost model. However, it seems that it’s simply faster to hit multiple contiguous cache lines (e.g. like linear or quadratic probing) than to access a few uncorrelated cache lines (2-left or cuckoo hashing). I’m not done playing with tuning hash tables for caches, though! I’m currently testing a new idea that seems to have both awesome utilisation and very cheap lookups, but somewhat heavier inserts. More on that soon(ish).
+
+5 Annex: full tables of results from the microbenchmark
+Test machine: unloaded 2.8 GHz Xeon (X5660) with DDR3-1333 (I don’t remember the timings)
+Cache sizes:
+L1D: 32 KB
+L2: 256 KB
+L3: 12 MB
+TLB sizes
+L1 dTLB (4KB): 64 entries
+L1 dTLB (2M):32 entries
+L2 TLB (4 KB): 512 entries
+
+Benchmark description: access 16 independent cache lines, following one of four access patterns. 10M repetitions (with different addresses). Test with regular 4KB pages and with huge pages (2MB). Report the total number of cache and TLB misses (in million), and the median of the number of cycle per repetition (divided by 16, without adjusting for looping or timing overhead, which should be around 30 cycles per repetition). Source at http://discontinuity.info/~pkhuong/cache-test.c.
+
+Access patterns:
+
+0: Read the cache line’s first word
+0-3: Read the cache line’s first and fourth words
+0-3-7: Read the cache line’s first, fourth and eighth words
+0-3-7-8: Read the cache line’s first, fourth and eighth words, and the next cache line’s first word
+                +--------------------------------+---------------------------------+ 
+                |           4K pages             :          2M pages               | 
+                |    0     0-3    0-3-7  0-3-7-8 :   0      0-3    0-3-7   0-3-7-8 | 
+                +--------------------------------+---------------------------------+ 
+  Size 16KB     |                                :                                 | 
+Cache miss (M)  |   3.89    3.85    3.88    3.88 :   3.58   3.78    3.78    3.79   | 
+TLB miss   (M)  |   0.50    0.51    0.50    0.58 :   0.16   0.25    0.25    0.25   | 
+Cycle/pattern   |   4.50    6.25    6.50    6.50 :   4.50   6.25    6.50    6.50   | 
+                |                                :                                 | 
+                +--------------------------------+---------------------------------+ 
+  Size 32KB     |                                :                                 | 
+Cache miss (M)  |   3.79    3.87    3.86    3.88 :   3.77   3.78    3.78    3.78   | 
+TLB miss   (M)  |   0.52    0.51    0.50    0.50 :   0.25   0.24    0.26    0.24   | 
+Cycle/pattern   |   4.75    6.25    6.25    6.50 :   4.75   6.25    6.25    6.50   | 
+                |                                :                                 | 
+                +--------------------------------+---------------------------------+ 
+  Size 128KB    |                                :                                 | 
+Cache miss (M)  |   3.80    3.67    3.84    3.66 :   3.76   3.77    3.77    3.78   | 
+TLB miss   (M)  |   0.52    0.36    0.50    0.39 :   0.26   0.26    0.24    0.26   | 
+Cycle/pattern   |   5.25    6.25    6.50    7.25 :   5.25   6.25    6.50    7.25   | 
+                |                                :                                 | 
+                +--------------------------------+---------------------------------+ 
+  Size 256KB    |                                :                                 | 
+Cache miss (M)  |   5.03    5.07    5.07    4.06 :   3.98   3.98    3.83    3.83   | 
+TLB miss   (M)  |   0.51    0.50    0.51    0.47 :   0.27   0.26    0.23    0.25   | 
+Cycle/pattern   |   5.25    6.50    7.25    7.25 :   5.25   6.25    6.75    7.25   | 
+                |                                :                                 | 
+                +--------------------------------+---------------------------------+
+
+Figure 1:	Working sets fit in L1 or L2 (16 to 256 KB)
+                +--------------------------------+---------------------------------+ 
+                |           4K pages             :          2M pages               | 
+                |    0     0-3    0-3-7  0-3-7-8 :   0      0-3    0-3-7   0-3-7-8 | 
+                +--------------------------------+---------------------------------+ 
+  Size 1MB      |                                :                                 | 
+Cache miss (M)  |   5.04    5.09    5.09    5.09 :   5.00   4.99    5.00    4.99   | 
+TLB miss   (M)  |   0.50    0.50    0.49    0.50 :   0.23   0.25    0.24    0.24   | 
+Cycle/pattern   |   6.25    7.25    8.50   10.50 :   5.25   6.75    7.75    9.50   | 
+                |                                :                                 | 
+                +--------------------------------+---------------------------------+ 
+  Size 2MB      |                                :                                 | 
+Cache miss (M)  |   5.06    5.10    5.11    5.14 :   5.03   5.01    5.02    5.05   | 
+TLB miss   (M)  |   0.67    0.85    0.88    0.90 :   0.23   0.27    0.23    0.24   | 
+Cycle/pattern   |   6.50    7.25    8.75   10.75 :   5.25   6.75    7.75    9.75   | 
+                |                                :                                 | 
+                +--------------------------------+---------------------------------+ 
+  Size 4MB      |                                :                                 | 
+Cache miss (M)  |   5.19    5.19    5.19    5.22 :   5.08   5.07    5.08    5.11   | 
+TLB miss   (M)  |  80.42   80.59   80.70   81.98 :   0.24   0.25    0.24    0.24   | 
+Cycle/pattern   |   8.25   10.00   12.00   13.75 :   5.00   6.75    7.75    9.75   | 
+                |                                :                                 | 
+                +--------------------------------+---------------------------------+ 
+  Size 8MB      |                                :                                 | 
+Cache miss (M)  |   7.29    7.28    8.67    8.68 :   5.21   5.22    5.22    5.25   | 
+TLB miss   (M)  | 120.45  120.55  120.63  122.52 :   0.23   0.30    0.27    0.25   | 
+Cycle/pattern   |  11.00   13.00   15.50   17.25 :   5.00   6.75    7.75   10.00   | 
+                |                                :                                 | 
+                +--------------------------------+---------------------------------+
+
+Figure 2:	Working sets fit in L3 and in huge TLB, but not always in regular TLB
+                +--------------------------------+---------------------------------+ 
+                |           4K pages             :          2M pages               | 
+                |    0     0-3    0-3-7  0-3-7-8 :   0      0-3    0-3-7   0-3-7-8 | 
+                +--------------------------------+---------------------------------+ 
+  Size 16MB     |                                :                                 | 
+Cache miss (M)  |  49.37   49.41   90.72   91.77 :  47.82  47.72   81.46   88.01   | 
+TLB miss   (M)  | 140.59  140.60  140.67  142.87 :   0.25   0.25    0.24    0.25   | 
+Cycle/pattern   |  18.00   20.50   24.00   26.50 :  14.00  15.25   17.00   18.75   | 
+                |                                :                                 | 
+                +--------------------------------+---------------------------------+ 
+  Size 32MB     |                                :                                 | 
+Cache miss (M)  | 106.93  107.09  203.73  207.82 : 106.55  106.62  186.50  206.83  | 
+TLB miss   (M)  | 150.56  150.74  150.82  153.09 :   0.24   0.26    0.25    0.27   | 
+Cycle/pattern   |  22.25   24.75   31.00   34.00 :  15.75  17.25   20.00   27.50   | 
+                |                                :                                 | 
+                +--------------------------------+---------------------------------+ 
+  Size 64MB     |                                :                                 | 
+Cache miss (M)  | 137.03  137.23  263.73  267.88 : 136.67  136.82  232.64  266.93  | 
+TLB miss   (M)  | 155.63  155.79  155.81  158.21 :   5.09   5.25    5.69    5.78   | 
+Cycle/pattern   |  26.00   29.25   36.75   39.75 :  16.75  18.25   24.25   30.75   | 
+                |                                :                                 | 
+                +--------------------------------+---------------------------------+
+
+Figure 3:	Working sets exceed L3, but still fit in huge TLB
+                +--------------------------------+---------------------------------+ 
+                |           4K pages             :          2M pages               | 
+                |    0     0-3    0-3-7  0-3-7-8 :   0      0-3    0-3-7   0-3-7-8 | 
+                +--------------------------------+---------------------------------+ 
+  Size 128MB    |                                :                                 | 
+Cache miss (M)  | 153.21  153.35  296.01  299.06 : 152.77  152.86  261.09  298.71  | 
+TLB miss   (M)  | 158.00  158.07  158.10  160.58 :  80.84   84.96   91.48   96.40  | 
+Cycle/pattern   |  30.50   34.50   41.00   44.00 :  18.75   20.75   27.25   33.25  | 
+                |                                :                                 | 
+                +--------------------------------+---------------------------------+ 
+  Size 512MB    |                                :                                 | 
+Cache miss (M)  | 170.65  170.90  326.84  329.59 : 169.90  170.22  286.47  326.54  | 
+TLB miss   (M)  | 160.39  160.41  162.17  164.62 : 140.35  147.28  160.81  179.58  | 
+Cycles/patterm  |  36.75   41.00   47.00   50.00 :  20.50  23.00   29.75   35.50   | 
+                |                                :                                 | 
+                +--------------------------------+---------------------------------+ 
+  Size 1GB      |                                :                                 | 
+Cache miss (M)  | 184.29  184.29  353.23  356.73 : 180.11  180.43  300.66  338.62  | 
+TLB miss   (M)  | 163.64  164.26  176.04  178.88 : 150.37  157.85  169.58  190.89  | 
+Cycle/pattern   |  37.25   41.50   52.00   55.25 :  22.00  24.75   30.50   37.00   | 
+                |                                :                                 | 
+                +--------------------------------+---------------------------------+
+
+Figure 4:	Working sets exceed caches and TLBs
+
+posted at: 22:31 | /LowLevel | permalink
+
+ Contact me by email: pvk@pvk.ca.
+
+IMAGES
+http://pyblosxom.bluesock.org/images/pb_pyblosxom.gif

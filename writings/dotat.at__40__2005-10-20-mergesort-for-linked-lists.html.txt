@@ -1,0 +1,116 @@
+Tony Finch – blog
+ home  search  archive  recent  feed  links  elsewhere
+2005-10-20 – mergesort for linked lists
+⇐ 2005-10-13 ⫤
+ 
+⊨ 2005-10-21 ⇒
+https://fanf.livejournal.com/40178.html
+https://fanf.dreamwidth.org/39714.html
+
+👤simontatham has a description of his really nice mergesort algorithm for linked lists which sorts in place with O(1) overhead and only uses forward links. Unfortunately he has described it in the Knuth style - pre-optimised assembler translated into prose - which is possibly the worst way of describing algorithms. So when I implemented it, I only got a rough idea from Simon’s description, then I went through a process like the following to reconstruct his algorithm from a simple starting point. Happily, the solution I ended up with was the same as Simon’s.
+
+The most basic merge sort goes like this:
+
+    split the list in two
+    sort each half
+    merge the halves
+    ...
+    profit!
+
+This requires O(log N) space overhead for the recursive calls in step 2. However it is possible to eliminate the recursion and turn mergesort into an iterative algorithm, and thereby avoid the space overhead. (This is a fairly standard optimization.)
+
+The recursive calls can occur in any order, so for the purposes of illustration, imagine that they occur at the same time, and imagine the call sequence that this produces. The algorithm divides into two phases: a recursive subdivision phase where we split the lists and perform recursive calls; and an accumulation phase where we merge pairs of lists and return upwards. Note that the first phase is not dependent on the data at all: every list of the same length is divided the same way, and at the end of the phase we always end up with a collection of singleton lists. The first phase also gives us is some book-keeping information to co-ordinate the merges. But the structure of this information is so simple that we can skip the recursive subdivision and do the book-keeping on the fly while we perform the merges.
+
+This leads to the following bottom-up merge sort:
+
+ 1   sort(list) =
+ 2     for n := 1 step n := n * 2
+ 3       output := []
+ 5       for merges := 0 step merges := merges + 1
+ 6         (a,list) := take(n,list)
+ 7         (b,list) := take(n,list)
+ 8         break if empty?(a)
+ 9         output := append(output,merge(a,b))
+10       loop
+11       list := output
+12       return(list) if merges <= 1
+13     loop
+
+In the outer loop (lines 2,13) we treat the list as a sequence of sub-lists of length N, which starts at one and doubles each time round the loop. For each N we make a pass over the list. Inside the inner loop (lines 6,7,9) we take a pair of short lists (which are sorted) and merge them into a double-length sorted list ready for the next pass. The merge() function is standard.
+
+Lines 5,8,12 deal with termination conditions: If there was nothing in the list to move to A, then the inner loop has completed its pass. If we only performed one merge then the list is now completely sorted.
+
+The above version is not very efficient, because there are lots of avoidable O(N) operations. In particular, we are repeatedly appending to the output list as we build it up from the head to the tail. This is easy to optimize away by maintaining a tail pointer which keeps track of where appends occur. The merge operation also wants to build up a list from the head to the tail, so it can be altered to take care of the append too.
+
+ 1   sort(list) =
+ 2     for n = 1 step n = n * 2
+ 3       output := []
+ 4       tail := &output
+ 5       for merges := 0 step merges := merges + 1
+ 6         (a,list) := take(n,list)
+ 7         (b,list) := take(n,list)
+ 8         break if empty?(a)
+ 9         tail := append_merge(tail,a,b)
+10       loop
+11       list := output
+12       return(list) if merges <= 1
+13     loop
+14
+15   append_merge(tail,a,b) =
+16     (a1,a) = take(1,a)
+17     (b1,b) = take(1,b)
+19     while not null?(a1) or not null?(b1)
+20       if null?(b1) or (not null?(a1) and a1 <= b1)
+21         tail := append1(tail,a1)
+22         (a1,a) = take(1,a)
+23       else
+24         tail := append1(tail,b1)
+25         (b1,b) = take(1,b)
+27     loop
+28     return(tail)
+
+In the combined append & merge function, we loop until both lists are empty (i.e. both of the variables we used to store the head of a list are undefined - line 19). We add the smaller of the two head variables to the tail of the output list if both are defined, otherwise we just add the rest of the remaining list.
+
+Note that the comparison on line 20 is less-than-or-equal, not strictly-less-than. This is important for ensuring that the sort is stable, i.e. that equal elements in the input list appear in the same order in the output list. Since elements of A came before elements of B in the input list, if the two heads are equal we should add the head of A to the output before the head of B.
+
+The above version still has some slack. In particular it scans the elements in A and B twice, once in the call to take() when creating the lists, and once when merging them. We have to scan A before the merge so that we can scan A and B together during the merge, but this isn’t necessary for B. Instead we can merge A with the first N elements of the list directly.
+
+ 1   sort(list) =
+ 2     for n = 1 step n = n * 2
+ 3       output := []
+ 4       tail := &output
+ 5       for merges := 0 step merges := merges + 1
+ 6         (a,list) := take(n,list)
+ 8         break if empty?(a)
+ 9         (tail,list) := append_merge_take(tail,a,list,n)
+10       loop
+11       list := output
+12       return(list) if merges <= 1
+13     loop
+14
+15   append_merge_take(tail,a,b,n) =
+16     (a1,a) = take(1,a)
+17     (b1,b) = take(1,b)
+18     n := n - 1
+19     while not null?(a1) or (not null?(b1) and n >= 0)
+20       if (null?(b1) or n < 0) or (not null?(a1) and a1 <= b1)
+21         tail := append1(tail,a1)
+22         (a1,a) = take(1,a)
+23       else
+24         tail := append1(tail,b1)
+25         (b1,b) = take(1,b)
+26         n := n - 1
+27     loop
+28     return(tail,b)
+
+The main difference here is that the tests for the end of the B loop on lines 19,20 are more complicated, because we also have to check for running out of N. Note that we decrement N whenever we take an element from B (lines 17,18 and 25,26)
+
+This is pretty much the algorithm that Simon describes. However he skips the elements of A rather than taking them from the list, which adds complexity to the merge function’s end-detection for A similar to that for B. An in-place implementation of take() would have the same effect.
+
+⇐ 2005-10-13 ⇐ ☆ ⇐
+⇒ ☆ ⇒ 2005-10-21 ⇒
+
+Tony Finch <dot@dotat.at>
+
+IMAGES
+https://dotat.at/graphics/dotat-64.png

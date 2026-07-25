@@ -1,0 +1,61 @@
+cdb
+Intro
+Download
+Install
+Test
+Read API
+cdbget
+cdbdump
+cdbmake
+cdbmake-12
+cdbmake-sv
+cdbstats
+cdbtest
+Format
+License
+Alternatives
+cdb: cdbmake
+NAME
+
+cdbmake - create a constant database
+
+SYNOPSIS
+
+cdbmake f ftmp
+
+DESCRIPTION
+
+cdbmake reads a series of encoded records from its standard input and writes a constant database to a file named f, replacing any previous contents of f.
+
+cdbmake ensures that f is updated atomically, so programs reading f never have to wait for cdbmake to finish. It does this by first writing the database to ftmp and then moving ftmp on top of f. If ftmp already exists, it is destroyed. The directories containing ftmp and f must be writable to cdbmake; they must also be on the same filesystem.
+
+cdbmake always makes sure that ftmp is safely written to disk before it replaces f. If the input is in a bad format or if cdbmake has any trouble writing ftmp to disk, cdbmake complains and leaves f alone.
+
+There is also a cdb64make that uses cdb64 format instead of cdb format.
+
+RECORD FORMAT
+
+Records are indexed by keys. A key is a string. The file f is structured so that another program, starting from a key, can quickly find the relevant record. cdbmake allows several records with the same key, although
+
+most readers take only the first record, and
+
+cdbmake slows down somewhat if there are many records with the same key.
+
+cdbmake preserves the order of records.
+
+For the input provided to cdbmake, each record is encoded as +klen,dlen:key->data followed by a newline. Here klen is the number of bytes in key and dlen is the number of bytes in data. The end of all records is indicated by an extra newline. For example, here are two records:
+
++3,5:one->Hello
++3,7:two->Goodbye
+
+key and data may contain any characters, including colons, dashes, newlines, and nulls.
+
+Keys and data do not have to fit into memory, but cdbmake needs roughly 16 bytes of memory per record. A database cannot exceed 4 gigabytes (or 1 exabyte for cdb64make).
+
+f is portable across machines.
+
+SEE ALSO
+
+cdbdump(1), cdbget(1), cdbmake-12(1), cdbmake-sv(1), cdbstats(1)
+
+Version: This is version 2025.10.21 of the "cdbmake" web page.

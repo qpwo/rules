@@ -1,0 +1,423 @@
+LWN
+.net
+News from the source
+Content
+Weekly Edition
+Archives
+Search
+Kernel
+Security
+Events calendar
+Unread comments
+LWN FAQ
+Write for us
+Edition
+Return to the Kernel page
+User:  Password:   |  | 
+Tux3, a Versioning Filesystem
+From:	 	Daniel Phillips <phillips@phunq.net>
+To:	 	linux-kernel@vger.kernel.org
+Subject:	 	[ANNOUNCE] Tux3, a Versioning Filesystem
+Date:	 	Wed, 23 Jul 2008 13:49:13 -0700
+Message-ID:	 	<200807231349.13561.phillips@phunq.net>
+Cc:	 	linux-fsdevel@vger.kernel.org
+
+Hi all,
+
+Since everybody seems to be having fun building new filesystems these
+days, I thought I should join the party.  Tux3 is the spiritual and
+moral successor of Tux2, the most famous filesystem that was never
+released.[1]  In the ten years since Tux2 was prototyped on Linux
+2.2.13 we have all learned a thing or two about filesystem design. Tux3
+is a write anywhere, atomic commit, btree based versioning filesystem. 
+As part of this work, the venerable HTree design used in Ext3 and
+Lustre is getting a rev to better support NFS and possibly become more
+efficient.
+
+The main purpose of Tux3 is to embody my new ideas on storage data
+versioning.  The secondary goal is to provide a more efficient
+snapshotting and replication method for the Zumastor NAS project, and a
+tertiary goal is to be better than ZFS.
+
+Tux3 is big endian as the Great Penguin intended.
+
+General Description
+
+In broad outline, Tux3 is a conventional node/file/directory design
+with wrinkles.  A Tux3 inode table is a btree with versioned attributes
+at the leaves.  A file is an inode attribute that is a btree with
+versioned extents at the leaves.  Directory indexes are mapped into
+directory file blocks as with HTree.  Free space is mapped by a btree
+with extents at the leaves.
+
+The interesting part is the way inode attributes and file extents are
+versioned.  Unlike the currently fashionable recursive copy on write
+designs with one tree root per version[2], Tux3 stores all its
+versioning information in the leaves of btrees using the versioned
+pointer algorithms described in detail here:
+
+   http://lwn.net/Articles/288896/
+
+This method promises a significant shrinkage of metadata for heavily
+versioned filesystems as compared to ZFS and Btrfs.  The distinction
+between Tux3 style versioning and WAFL style versioning used by ZFS and
+Btrfs is analogous to the distinction between delta and weave encoding
+for version control systems.  In fact Tux3's pointer versioning
+algorithms were derived from a binary weave technique I worked on
+earlier for version control back in the days when we were all racing for
+the glory of replacing the proprietary Bitkeeper system for kernel
+version control.[3]
+
+Filesystem Characteristics and Limits
+
+ * Versioning of individual files, directories or entire filesystem
+ * Remote replication of single files, directories or entire filesystem
+ * All versions (aka snapshots) writable
+ * 2^60 maximum file size
+ * 2^60 maximum volume size
+ * 2^48 maximum versions
+ * 2^48 maximum inodes
+ * Variable sized, dynamically allocated inodes
+ * New versioning method (Versioned pointers)
+     - versioned extents for file/directory data
+     - versioned standard attributes (e.g. mode, uid, mtime, size)
+     - versioned extended attributes (including immediate file data)
+ * New atomic update method (Forward logging)
+ * New physically stable directory index (PHTree)
+ * Btree backpointers for robust fsck
+
+Forward Logging
+
+Atomic update in Tux3 is via a new method called forward logging that
+avoids the double writes of conventional journalling and the recursive
+copy behavior of copy on write.
+
+Each update transaction is a series of data blocks followed by a commit
+block.  Each commit block either stores the location where the next
+commit block will be if it is known, otherwise it is the end of a chain
+of commits.  The start of each chain of commits is referenced from the
+superblock.
+
+Commit data may be logical or physical.  Logical updates are first
+applied to the target structure in memory (usually a inode table block
+or file index block) then the changed blocks are logged physically
+before being either applied to the final destination or implicitly
+merged with the destination via logical logging.  This multi level
+logging sounds like a lot of extra writing, but it is not because the
+logical updates are more compact than physical block updates and many of
+them can be logged with a periodic rollup pass to perform the physical
+or higher level logical updates.
+
+A typical write transaction therefore looks like a single data extent
+followed by one commit block, which can be written anywhere on the disk.
+This is about as efficient as it is possible for an atomic update to be.
+
+Fragmention Control
+
+Versioning filesystems on rotating media are prone to fragmentation. 
+With a write-anywhere strategy, we have a great deal of latitude in
+choosing where to write, but translating that ability into minimzing
+read seeks is far from easy.  For metadata, we can fall back to update
+in place using the forward logging method acting as a "write twice"
+journal.  Because the metadata is small (at least when the filesystem is
+not heavily versioned) sufficient space of the single commit block
+required to logically log a metadata update will normally be available
+near the original location and the update in place fallback will not
+often be needed.
+
+When there is no choice but to write new data far away from the original
+location, a method called "write bouncing" is to be used, where the
+allocation target is redirected according to a generating function to a
+new target zone some distance away from the original one.  If that zone
+is too crowded, then the next candidate zone further away will be
+checked and so on, until the entire volume has been checked for
+available space.  (Analogous to a quadratic hash.)  What this means is,
+even though seeking to changed blocks of a large file is not entirely
+avoided, at least it can be kept down to a few seeks in most cases. File
+readahead will help a lot here, because a number of outlying extents can
+be picked up in one pass.  Physical readahead would help even more, to
+deal with cross-file fragmentation in a directory.
+
+With flash storage, seek time is essentially zero and transfer bandwidth
+is the dominant issue, at which Tux3 should excel.
+
+Inode attributes
+
+An inode is a variable sized item indexed by its inode number in the
+inode btree.  It consists of a list of attributes blocks with standard
+attributes are grouped together according their frequency of updating,
+and extended attributes.  Each standard attribute block carries a
+version label at which the attribute was last changed.  Extended
+attributes have the same structure as files, and in fact file data is
+just an extended attribute.  Extended attributes are not versioned in
+the inode, but at the index leaf blocks.  The atime attribute is handled
+separately from the inode table to avoid polluting the inode table with
+versions generated by mere filesystem reads.
+
+Unversioned attributes:
+
+   Block count
+     - Block sharing makes it difficult to calculate so just give the
+       total block count for the data attribute btree
+
+Standard attribute block:
+   mode
+   uid
+   gid
+
+Write attribute block:
+
+   size - Update with every extending write or truncate
+   mtime - update with every change
+
+Data attribute:
+
+   Either immediate file data or root of a btree index with versioned
+   extents at the leaves
+
+Immediate data attributes:
+
+   immediate file data
+   symlink
+   version link (see below)
+
+Unversioned reference to versioned attributes:
+
+   xattrs - version:atom:datalen:data
+   file/directory data
+
+Versioned link count:
+
+   The inode can be freed when link counts of all versions are zero
+
+None of the above:
+
+   atime - Update with every read - separate versioned btree
+
+Note: an inode is never reused unless it is free in all versions.
+
+Atom table
+
+Extended attributes are tagged with attribute "atoms" held in a global,
+unversioned atom table, to translate attribute names into compact
+numbers.
+
+Directory Index
+
+The directory index scheme for Tux3 is PHTree, which is a (P)physically
+stable variant of HTree, obtained by inserting a new layer of index
+blocks between the index nodes and the dirent blocks, the "terminal"
+index blocks.  Each terminal index block is populated with [hash, block]
+pairs, each of which indicates that there is a dirent in <block> with
+hash <hash>.
+
+Thus there are two "leaf" layers in a PHTree: 1) the terminal nodes of
+the index btree and 2) the directory data blocks containing dirents.
+This requires one extra lookup per operation versus HTree, which is
+regretable, but it solves the physical stability problem that has caused
+so much grief in the past with NFS support.  With PHTree, dirent blocks
+are never split and dirents are never moved, allowing the logical file
+offset to serve as a telldir/seekdir position just as it does for
+primitive filesystems like Ext2 and UFS, on which the Posix semantics of
+directory traversal are sadly based.
+
+There are other advantages to physical stability of dirents besides
+supporting brain damaged NFS directory traversal semantics: because
+dirents and inodes are initially allocated in the same order, a
+traversal of the leaf blocks in physical order to perform deletes etc,
+will tend to access the inodes in ascending order, which reduces cache
+thrashing of the inode table, a problem that has been observed in
+practice with schemes like HTree that traverse directories in hash
+order.
+
+Because leaf blocks in PHTree are typically full instead of 75% full as
+in HTree, the space usage ends up about the same.  PHTree does btree
+node merging on delete (which HTree does not) so fragmentation of the
+hash key space is not a problem and a slightly less uniform but far more
+efficient hash function can be used, which should deliver noticeably
+better performance.
+
+HTree always allocates new directories entries into btree leaf nodes,
+splitting them if necessary, so it does not have to worry about free
+space management at all.  PHTree does however, since gaps in the
+dirent blocks left by entry deletions have to be recycled.  A linear
+scan for free space would be far too inefficient, so instead, PHTree
+uses a lazy method of recording the maximum sized dirent available in
+each directory block.   The actual largest free dirent may be smaller,
+and this will be detected when a search fails, causing the lazy max
+to be updated.  We can safely skip searching for free space in any
+block for which the lazy max is less than the needed size.  One byte
+is sufficient for the lazy max, so one 4K block is sufficient to keep
+track of 2^12 * 2^12 bytes worth of directory blocks, a 16 meg
+directory with about half a million entries.  For larger directories
+this structure becomes a radix tree, with lazy max recorded also at
+each index pointer for quick free space searching without having to
+examine every lazy map.
+
+Like HTree, a PHTree is a btree embedded in the logical blocks of a
+file.  Just like a file, a directory is read into a page cache mapping
+as its blocks are accessed.  Except for cache misses, the highly
+efficient page cache radix tree mechanism is used to resolve btree
+pointers, avoiding many file metadata accesses.  A second consequence of
+storing directory indexes in files is that the same versioning mechanism
+that versions a file also versions a directory, so nothing special needs
+to be done to support namespace versioning in Tux3.
+
+Scaling to large number of versions
+
+What happens as number of versions becomes very large is something of a
+worry.  Then a lot of metadata for unrelated versions may have to be
+loaded, searched and edited.  A relatively balanced symmetric version
+tree can be broken up into a number of subtrees.  Sibling subtrees
+cannot possibly affect each other.  O(log(subtrees)) subtrees need to be
+loaded and operated on for any given version.
+
+What about scaling of completely linear version chain?  Then data is
+heavily inherited and thus compressed.  What if data is heavily
+versioned and therefore not inherited much?  Then we should store
+elements in stable sort order and binsearch, which works well in this
+case because not many parents have to be searched.
+
+I have convinced myself that scaling to arbitrary numbers of versions
+will cause worst case slowdown of no more than O(log(versions)) using
+the method described above.  When I say "large number of versions" I
+mean "more than a few hundred", so it is not an pressing issue for
+today's versioning filesystem applications, which mainly use
+their versioning capability to implement backup and replication.
+
+Filesystem expansion and shrinking
+
+(What could possibly go wrong?)
+
+Multiple Filesystems sharing the same Volume
+
+This is just a matter of providing multiple inode btrees sharing the
+same free tree.  Not much of a challenge, and somebody may have a need
+for it.  Is there really any advantage if the volume manager and
+filesystem already support on-demand expansion and shrinking?
+
+Quotas
+
+(Have not thought about it yet.  Quotas should be comprehensive, fine
+grained and deadlock free.)
+
+New user interfaces for Version Control
+
+The standard method for accessing a particular version of a volume is
+via a version option on the mount command.  But it is also possible to
+access file versions via several other methods, including a new variant
+of the open syscall with a version tag parameter.
+
+"Version transport" allows the currently mounted version to be changed
+to some other.  All open files will continue to access the version under
+which they were opened, but newly opened files will have the new
+version.  This is the "Git Cache" feature.
+
+Tux3 introduces the idea of a version link, similar to a symlink, but
+carrying a version tag to allow the named file to be opened for some
+other version than the currently mounted version.  Like symlinks,
+it is not required that the referenced object be valid.  Version links
+do not introduce any new inter-version consistency requirement, and are
+therefore robust.  Unlike symlinks, version links are not followed by
+default.  This makes it easy to implement a Netapp-like feature of
+a hidden .snapshot subdirectory in each directory through which periodic
+snapshots can be accessed by a user.
+
+Summary of data structures
+
+Superblock
+   Only fixed fs attributes and pointers to metablocks
+
+Metablocks
+   Like traditional superblocks, but containing only variable data
+   Distributed across volume, all read on start
+   Contain variable fields, e.g., forward logs
+
+Inode table
+   Versioned standard attributes
+   Versioned extended attributes
+   Versioned data attribute
+   Nonversioned file btree root
+
+Atime table
+   Btree tree versioned at the terminal index nodes leaf blocks are
+   arrays of 32 bit atimes
+
+Free tree
+   Btree with extents at the leaves
+   subtree free space hints at the nodes
+
+Atom table
+   A btree much like a directory mapping attribute names to internal
+   attribute codes (atoms).  Maybe it should just be a directory like
+   any other?
+
+Forward log commit block
+   Hash of transaction data
+   Magic
+   Seq
+   Rollup - which previous log entries to ignore
+   Data blocks
+
+Directory Index
+   Embedded in logical blocks of directory file, therefore
+   automatically versioned
+
+Implementation
+
+Implementation work has begun.  Much of the work consists of cutting and
+pasted bits of code I have developed over the years, for example, bits
+of HTree and ddsnap.  The immediate goal is to produce a working
+prototype that cuts a lot of corners, for example block pointers instead
+of extents, allocation bitmap instead of free extent tree, linear search
+instead of indexed, and no atomic commit at all.  Just enough to prove
+out the versioning algorithms and develop new user interfaces for
+version control.
+
+The biggest single piece of prototype work remaining to go from a
+simplified prototype to the filesystem described here is to extend the
+versioned pointer algorithms to handle versioned extents, a challenging
+bit of hacking indeed.  Transaction management at the VFS method level
+is also expected to be a major cause headaches just as it was for Ext3.
+Btree methods are pretty much under control.
+
+The Tux3 project home is here:
+
+   http://tux3.org/
+
+A mailing list is here:
+
+   http://tux3.org/cgi-bin/mailman/listinfo/tux3
+
+All interested parties welcome.  Hackers especially welcome.
+
+Prototype code proving the versioning algorithms is here:
+
+   http://tux3.org/source/version.c
+
+A Mercurial tree is coming soon.
+
+Regards,
+
+Daniel
+
+[1] For the whole story: google "evil+patents+sighted"
+
+[2] Copy on write versioning, which I had a hand in inventing.
+
+[3] Linus won.  A major design element of Git (the directory manifest)
+was due to me, and of course Graydon Hoare (google Quicksort) deserves
+more credit than anyone.
+--
+To unsubscribe from this list: send the line "unsubscribe linux-kernel" in
+the body of a message to majordomo@vger.kernel.org
+More majordomo info at  http://vger.kernel.org/majordomo-info.html
+Please read the FAQ at  http://www.tux.org/lkml/
+
+Copyright © 2008, Eklektix, Inc.
+Comments and public postings are copyrighted by their creators.
+Linux is a registered trademark of Linus Torvalds
+
+IMAGES
+https://static.lwn.net/images/logo/barepenguin-70.webp
+https://static.lwn.net/images/lcorner-ss.png

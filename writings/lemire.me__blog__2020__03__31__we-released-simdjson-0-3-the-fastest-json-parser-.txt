@@ -1,0 +1,462 @@
+Skip to content
+
+Daniel Lemire's blog
+
+Daniel Lemire is a software performance expert. He ranks among the top 2% of scientists globally (Stanford/Elsevier 2025) and is one of GitHub's top 1000 most followed developers.
+
+My home page
+GitHub profile
+Your business needs help? Get in touch, I offer private talks, training, consulting and I do sponsored open-source projects.
+SUPPORT MY WORK!
+I do not accept any advertisement. However, you can you can sponsor my open-source work on GitHub. 
+Daniel Lemire started this blog in 2004. It contains 2,378 posts and 16,330 approved comments.
+
+Daniel Lemire's blog ranks among the top 50 most popular blogs on Hacker News, a leading tech news aggregation platform.
+
+Join over 12,500 email subscribers:
+
+Search for:
+RECENT POSTS
+Does a PhD Pay Off?
+From Institutions to Individuals: the White House Report on Revitalizing U.S. Scientific Leadership
+Using AI to build your own software
+X just gave us an interface that AI agents can use. I pointed it at my own posts.
+Chatting with an AI Won’t Make You a Top Programmer
+RECENT COMMENTS
+Daniel Lemire on Parsing JSON at compile time with C++26 static reflection
+JeffFromOhio on Parsing JSON at compile time with C++26 static reflection
+Daniel Lemire on Parsing JSON at compile time with C++26 static reflection
+JeffFromOhio on Parsing JSON at compile time with C++26 static reflection
+JeffFromOhio on From Institutions to Individuals: the White House Report on Revitalizing U.S. Scientific Leadership
+PAGES
+A short history of technology
+About me
+Book recommendations
+Cognitive biases
+Interviews and talks
+My bets
+My favorite articles
+My favorite quotes
+My rules
+Newsletter
+Predictions
+Privacy Policy
+Recommended video games
+Terms of use
+Write good papers
+ARCHIVES
+Archives
+BORING STUFF
+Log in
+Entries feed
+Comments feed
+WordPress.org
+We released simdjson 0.3: the fastest JSON parser in the world is even better!
+
+Last year (2019), we released the simjson library. It is a C++ library available under a liberal license (Apache) that can parse JSON documents very fast. How fast? We reach and exceed 3 gigabytes per second in many instances. It can also parse millions of small JSON documents per second.
+
+The new version is much faster. How much faster? Last year, we could parse a file like simdjson at a speed of 2.0 GB/s, and then we reached 2.2 GB/s. We are now reaching 2.5 GB/s. Why go so fast? In comparison, a fast disk can reach  5 GB/s and the best network adapters are even faster.
+
+The following plot presents the 2020 simdjson library (version 0.3) compared with the fastest standard compliant C++ JSON parsers (RapidJSON and sajson). It ran on a single Intel Skylake core, and the code was compiled with the GNU GCC 9 compiler. All tests are reproducible using Docker containers.
+
+In this plot, RapidJSON and simjson have exact number parsing, while RapidJSON (fast float) and sajson use approximate number parsing. Furthermore, sajson has only partial unicode validation whereas other parsers offer exact encoding (UTF8) validation.
+
+If we only improved the performance, it would already be amazing. But our new release pack a whole lot of improvements:
+
+Multi-Document Parsing: Read a bundle of JSON documents (ndjson) 2-4x faster than doing it individually.
+Simplified API: The API has been completely revamped for ease of use, including a new JSON navigation API and fluent support for error code and exception styles of error handling with a single API. In the past, using simdjson was a bit of a chore, the new approach is definitively modern, see for yourself:
+auto cars_json = R"( [
+  { "make": "Toyota", "model": "Camry",  "year": 2018, 
+       "tire_pressure": [ 40.1, 39.9 ] },
+  { "make": "Kia",    "model": "Soul",   "year": 2012, 
+       "tire_pressure": [ 30.1, 31.0 ] },
+  { "make": "Toyota", "model": "Tercel", "year": 1999, 
+       "tire_pressure": [ 29.8, 30.0 ] }
+] )"_padded;
+dom::parser parser;
+dom::array cars = parser.parse(cars_json).get<dom::array>();
+
+// Iterating through an array of objects
+for (dom::object car : cars) {
+  // Accessing a field by name
+  cout << "Make/Model: " << car["make"] 
+           << "/" << car["model"] << endl;
+
+  // Casting a JSON element to an integer
+  uint64_t year = car["year"];
+  cout << "- This car is " << 2020 - year 
+           << "years old." << endl;
+
+  // Iterating through an array of floats
+  double total_tire_pressure = 0;
+  for (double tire_pressure : car["tire_pressure"]) {
+    total_tire_pressure += tire_pressure;
+  }
+  cout << "- Average tire pressure: " 
+      << (total_tire_pressure / 2) << endl;
+
+  // Writing out all the information about the car
+  for (auto [key, value] : car) {
+    cout << "- " << key << ": " << value << endl;
+  }
+}
+
+Exact Float Parsing: simdjson parses floats flawlessly at high speed.
+Fallback implementation: simdjson now has a non-SIMD fallback implementation, and can run even on very old 64-bit machines. This means that you no longer need to check whether the system supports simdjson.
+Automatic allocation: as part of API simplification, the parser no longer has to be preallocated: it will adjust automatically when it encounters larger files.
+Runtime selection API: We have exposed simdjson’s runtime CPU detection and implementation selection as an API, so you can tell what implementation we detected and test with other implementations.
+Error handling your way: Whether you use exceptions or check error codes, simdjson lets you handle errors in your style. APIs that can fail return simdjson_result, letting you check the error code before using the result. But if you are more comfortable with exceptions, skip the error code
+and cast straight to the value you need, and exceptions will be thrown automatically if an error happens. Use the same API either way!
+Error chaining: We also worked to keep non-exception error-handling short and sweet. Instead of having to check the error code after every single operation, now you can chain JSON navigation calls like looking up an object field or array element, or casting to a string, so that you only have to check the error code once at the very end.
+We now have a dedicated web site (https://simdjson.org) in addition to the GitHub site (https://github.com/simdjson/simdjson).
+
+Credit: many people contributed to simdjson, but John Keiser played a substantial role worthy of mention.
+
+Daniel Lemire, "We released simdjson 0.3: the fastest JSON parser in the world is even better!," in Daniel Lemire's blog, March 31, 2020, https://lemire.me/blog/2020/03/31/we-released-simdjson-0-3-the-fastest-json-parser-in-the-world-is-even-better/.
+[BibTeX]
+
+PUBLISHED BY
+Daniel Lemire
+
+A computer science professor at the University of Quebec (TELUQ). View all posts by Daniel Lemire 
+
+Posted on
+March 31, 2020
+Author
+Daniel Lemire
+Categories
+30 thoughts on “We released simdjson 0.3: the fastest JSON parser in the world is even better!”
+Claude
+says:
+April 1, 2020 at 8:10 am
+
+Congratulations is de rigueur here.
+
+I guess the next challenge will be an API to speed up YAML parsing. YAML files are an important part of deploying PyTorch on most platforms, it will be worth seeing if you can easily adapt this library to this type of parsing.
+
+REPLY
+Michal Lazo
+says:
+April 1, 2020 at 9:20 am
+
+Are there any SIMD accelerated XML parser?
+
+REPLY
+Daniel Lemire
+says:
+April 1, 2020 at 12:47 pm
+
+There has been some XML parsers, at least at the prototype level, that have used SIMD instructions deliberately. However, I do not think that there has ever been something like simdjson for XML.
+
+REPLY
+José Duarte
+says:
+June 11, 2020 at 2:38 am
+
+The Parabix XML project.
+
+REPLY
+Daniel Lemire
+says:
+June 11, 2020 at 1:35 pm
+
+The Parabix XML project.
+
+Yes, we know of parabix, but no, it is nothing like simdjson for XML.
+
+REPLY
+José Duarte
+says:
+June 11, 2020 at 2:12 pm
+
+And? How does it compare? It looks innovative. Is simdjson’s approach applicable to XML too?
+
+REPLY
+Daniel Lemire
+says:
+June 11, 2020 at 3:41 pm
+
+Please see the paper where it is discussed in details. If you have questions after reading the paper, I will be happy to answer them.
+
+REPLY
+Joe Duarte
+says:
+June 14, 2020 at 7:43 pm
+
+Okay, I read it. Very nice work.
+
+Q1: Why do you use 8 bytes to encode things like null, true, false, etc.? Couldn’t you just use one byte, or even a few bits? After all, there’s a null codepoint in ASCII / UTF-8 — it’s the first one, the binary zero byte 0000 0000. Do you need everything to be eight bytes for some reason?
+
+Q2: Why are you focused only on huge files, over 50 KB? For JSON that’s huge. The most common use of JSON is slinging around requests and responses on the web, with small payloads. For example, a REST API for payments might involve JSON payloads that are about 1 to 3 KB each. (GraphQL, like REST, also uses JSON.) See PayPal’s API, or here’s an example of a typical request payload: https://doc.gopay.com/en/?lang=shell#standard-payment
+
+Q3: What do you do if you can’t use tzcnt to count trailing zeros? That instruction is part of BMI, which came out in Haswell. Ivy Bridge and Sandy Bridge won’t have it, and there are still a lot of servers running on those families. How far back do you go on SIMD? Is something like Westmere or Nehalem you’re floor? They would have SSE4.2, carryless multiplication, and I think AES.
+
+You might be understating simdjson performance with all those number-heavy files, since number parsing should be your slowest.
+
+FYI, I opened an issue on GitHub asking about CPU and memory overhead. That’s an important dimension that the paper and the website don’t address. It’s also important to know if it causes cores to throttle down when you use AVX2 or whatever. I think Skylake and Cascade Lake might be okay on that front, but there might be an issue using AVX or AVX2 on earlier families. If so, using simdjson would slow down all the other applications and workloads on the server. I know that AVX512 throttles cores, but I don’t remember about AVX2.
+
+REPLY
+Daniel Lemire
+says:
+June 14, 2020 at 9:59 pm
+
+Why do you use 8 bytes to encode things like null, true, false, etc.? Couldn’t you just use one byte, or even a few bits?
+
+The tape uses a flat 8-byte per element, with some exceptions (numbers use two 8-byte entries).
+
+Why are you focused only on huge files, over 50 KB? For JSON that’s huge.
+
+That is what the paper benchmarks. But you can find other results on GitHub, including on tiny files.
+
+What do you do if you can’t use tzcnt to count trailing zeros? That instruction is part of BMI, which came out in Haswell. Ivy Bridge and Sandy Bridge won’t have it, and there are still a lot of servers running on those families. How far back do you go on SIMD? Is something like Westmere or Nehalem you’re floor? They would have SSE4.2, carryless multiplication, and I think AES.
+
+The simdjson relies on runtime dispatching. It runs on every x64 processing under a 64-bit system. It is open source.
+
+FYI, I opened an issue on GitHub asking about CPU and memory overhead. That’s an important dimension that the paper and the website don’t address. It’s also important to know if it causes cores to throttle down when you use AVX2 or whatever. I think Skylake and Cascade Lake might be okay on that front, but there might be an issue using AVX or AVX2 on earlier families. If so, using simdjson would slow down all the other applications and workloads on the server. I know that AVX512 throttles cores, but I don’t remember about AVX2.
+
+We do not support AVX-512. No downclocking is expected: we do not use AVX2 instructions requiring it (e.g., FMA). But, in any case, as the user, you are in charge of kernel that runs, so you can select SSSE3 is you prefer, even when your system supports AVX2. The simdjson has a non-allocation policy for parsing, so you can parse terabytes of data without allocating memory.
+
+REPLY
+Joe Duarte
+says:
+June 15, 2020 at 8:53 am
+
+Okay, so on the issue of CPU overhead you said on GitHub that speed is CPU overhead or something. That’s not quite right. The equation is:
+
+Overhead = (JSON GB / Parsing speed) × CPU usage
+
+Where CPU usage is the percentage of CPU. There could also be a form that uses CPU clock cycles per byte or something. It’s not enough to know how fast some software is – we normally have to know its cost in resources like CPU and memory. It looks like you’re good on memory since you don’t allocate, but I’m surprised that you’re unwilling to report CPU overhead.
+
+Another suggestions.
+
+It would be great to know some things about simdjson’s security properties, to have some basic assurances. This is a strange era for computing given how insecure and primitive our programming languages and tools are. C++ is an unsafe language where exploitable memory bugs are inevitable on medium to large projects. One light assurance would be if you follow the C++ Core Guidelines. Much stronger assurance would be to pass something Coverity Scan. It’s free for open source projects.
+
+A JSON parser might parse untrusted input, which can be malformed or not JSON at all. Ideally a parser would be formally verified, but hardly anyone does that since popular programming languages like C++ aren’t designed to facilitate verification and the tooling sucks. So Coverity is about as good as it gets. Address Sanitizer and Memory Sanitizer in the LLVM project are interesting too. The Software Engineering Institute at Carnegie Mellon has a Secure C++ Coding Guidelines too: https://insights.sei.cmu.edu/sei_blog/2017/04/cert-c-secure-coding-guidelines.html
+
+If you had some kind of formal assurances like those it would be pretty distinctive.
+
+REPLY
+Daniel Lemire
+says:
+June 15, 2020 at 12:24 pm
+
+I’m surprised that you’re unwilling to report CPU overhead.
+
+If you have interesting performance metrics you would like to propose, we are always inviting new pull requests. The simdjson library is a community-based project. Please write up some code, and we shall be glad to discuss it.
+
+REPLY
+Marcel Weiher
+says:
+April 1, 2020 at 9:53 am
+
+Awesome work! When I looked at integrating the previous version into a higher level parser, it didn’t look like it handled streaming. Was that impression correct and if so, has that changed? Thanks!
+
+REPLY
+Daniel Lemire
+says:
+April 1, 2020 at 12:45 pm
+
+We do handle long inputs containing multiple JSON documents (e.g., line separated). We even have a nifty API for it (see “parse_many”).
+
+If you mean streaming as in “reading from a C++ istream”, then, no, we do not support this and won’t. It is too slow. We are faster than getline applied to an in-memory istream.
+
+REPLY
+Marcel Weiher
+says:
+April 1, 2020 at 12:54 pm
+
+Don’t care about C++ istream. In order to stream, the parser must be able to deal with partial/incomplete inputs and with resuming such an incomplete parse.
+
+Feeding it is then Somebody Else’s Problem.
+
+One of the things I learned early on in building high-perf components is that having the component itself be fast is (at most) half the bette. The crucial bit is that it must be possible, preferably easy/straightforward, to use it in such a way the the whole ensemble is fast.
+
+A lot of the “fast” XML parsers tended to fall flat in that regard.
+
+REPLY
+Marcel Weiher
+says:
+April 1, 2020 at 12:55 pm
+
+battle, of course. I blame autocorrect…
+
+REPLY
+Daniel Lemire
+says:
+April 1, 2020 at 1:13 pm
+
+The way simdjson is currently designed is that it won’t let you access a document (at all) unless it has been fully validated. The rationale behind this is that many people do not want to start ingesting documents that are incorrect. And, of course, you can only know that a document is valid if you have seen all of it.
+
+For line-separated JSON documents, it is not an issue because you get to see the whole JSON document before returning it to the user, it is just that you have a long stream of them.
+
+We plan to offer more options in future releases.
+
+REPLY
+Pawel Terlecki
+says:
+October 29, 2020 at 11:32 pm
+
+The parsing speed is impressive, great work.
+
+I second Marcel’s point. The current interface works well if a processing pipeline starts with a file. However, the parser cannot be used in the middle of a pipeline in a larger system. Without supporting streaming input, materializing large intermediate result clogs the flow. Downloading a file from cloud storage or user-defined document transformations are common scenarios here.
+
+The parser would not have to output incorrect or incomplete documents. It would wait for another chunk of input to continue parsing a document that is in-flight.
+
+REPLY
+Daniel Lemire
+says:
+October 29, 2020 at 11:59 pm
+
+You write “materializing large intermediate”, and with that constraint, I agree. But be mindful that large means “out of cache”, and we have megabytes of cache on current processor cores. For small to medium files, querying cache lines through an interface is an anti-design.
+
+Note that we have since released version 0.6 which introduces a new API that we call On Demand API. So this blog post is somewhat obsolete at this point.
+
+REPLY
+eb
+says:
+April 1, 2020 at 11:03 am
+
+Minor inconsistency in the example: the average tire pressure of the cars will not be what one would expect (only half of it)!
+
+REPLY
+Alex Mikhalev
+says:
+April 1, 2020 at 4:05 pm
+
+Any plans for Rust bindings?
+
+REPLY
+Daniel Lemire
+says:
+April 1, 2020 at 4:36 pm
+
+There are Rust bindings but help is needed to get it updated:
+https://github.com/SunDoge/simdjson-rust
+
+REPLY
+Catherine
+says:
+May 22, 2020 at 8:11 pm
+
+Congrats !
+
+What about a mooc/levure on parsing with C++ ?
+
+REPLY
+Daniel Lemire
+says:
+May 22, 2020 at 8:15 pm
+
+@Catherine
+
+I have a talk on YouTube, does that count?
+
+https://www.youtube.com/watch?v=wlvKAT7SZIQ
+
+REPLY
+Catherine
+says:
+May 22, 2020 at 10:28 pm
+
+Thanks. Great talk and aha moments.
+
+REPLY
+José Duarte
+says:
+June 11, 2020 at 2:47 am
+
+By the way, it would be neat to have an ultrafast SIMD JSON minifier, something very light in terms of CPU and memory use.
+
+This would presumably be much simpler than a parser, since all it would have to do is strip spaces, tabs, newlines, and carriage returns. Well, it would have to know not to touch the contents of quoted strings.
+
+There’s an enormous amount of waste with all the unminified JSON people are slinging around. You can save 10% most of the time by minifying, but there aren’t any good minifiers out there.
+
+REPLY
+Daniel Lemire
+says:
+June 11, 2020 at 1:33 pm
+
+By the way, it would be neat to have an ultrafast SIMD JSON minifier,
+something very light in terms of CPU and memory use.
+
+But we do have that!!!! It is part of simdjson.
+
+REPLY
+José Duarte
+says:
+June 11, 2020 at 2:09 pm
+
+Oh nice! Does it minify by default, or is it a flag?
+
+REPLY
+Daniel Lemire
+says:
+June 11, 2020 at 2:46 pm
+
+Oh nice! Does it minify by default, or is it a flag?
+
+It is a function that you may call on JSON string. It does not parse. It is highly optimized.
+
+It is not currently very well exposed or documented, since it has been updated to be multiplatform only recently.
+
+REPLY
+Daniel Ryan
+says:
+December 8, 2020 at 12:49 am
+
+How’s the performance for mobile? E.g Android and iOS devices.
+I’m currently using rapidjson for a library that’s used for mobile devices and wondering if I should move over to simjson, if it’s faster and easier to use.
+
+REPLY
+Daniel Lemire
+says:
+December 8, 2020 at 1:05 am
+
+We support 64-bit ARM platforms with accelerated kernels. See https://lemire.me/blog/2019/08/01/a-new-release-of-simdjson-runtime-dispatching-64-bit-arm-support-and-more/
+
+REPLY
+Leave a Reply
+
+Your email address will not be published.
+
+COMMENT *
+
+NAME *
+
+EMAIL *
+
+WEBSITE
+
+ Save my name, email, and website in this browser for the next time I comment.
+
+You can also subscribe by email to this blog (non-commercial, no ads, weekly email).
+
+How to post code (C, C++, Java, Python, etc.):
+
+Wrap your code in backticks, like this:
+
+`int main() {
+    return 0;
+}`
+
+Post navigation
+PREVIOUS
+Previous post:
+Science and Technology links (March 28th 2020)
+NEXT
+Next post:
+Science and Technology links (April 4th 2020)
+Terms of use
+
+IMAGES
+https://lemire.me/blog/wp-content/uploads/2020/03/image.png
+https://secure.gravatar.com/avatar/a0c6c34cf4a45ff5083d5ea541e7f27c5e4457ac393889e077af10688f6b3831?s=56&d=mm&r=g
+https://secure.gravatar.com/avatar/355f21be3e78f8b6217649d2ff13cbdcef13699f7a352970c1d00d0e8cee73b8?s=56&d=mm&r=g
+https://secure.gravatar.com/avatar/e1593357d3cf14522f65a4db1dac0dede2a68ab7c5d95a1982d8d71154038b57?s=56&d=mm&r=g
+https://secure.gravatar.com/avatar/cc63cc17bc38d8ca94762c0e5adb9b4fe5cc7e39945e527be6486c2e0a02be72?s=56&d=mm&r=g
+https://secure.gravatar.com/avatar/83692c23ce2e651a35fb2f7d75e9c2b5cc8e3cd5c1290949dc0f4c20d089ab75?s=56&d=mm&r=g
+https://secure.gravatar.com/avatar/4e893ba657feff00bc3c7d976a2d447ac383636fd841fa59741d4763bcd3189b?s=56&d=mm&r=g
+https://secure.gravatar.com/avatar/53dbc72aca15b087d623bfba1ccaba0ad1b26864dd356acf7c1d8e54781d5157?s=56&d=mm&r=g
+https://secure.gravatar.com/avatar/3cfc551f97d4c58717a7b86777ba1c85528b4b0da6131866507b3a9676a0449a?s=56&d=mm&r=g
+https://secure.gravatar.com/avatar/565509761398ccbf71b890a87745be89b86ef561a133f6f80c4310598447e173?s=56&d=mm&r=g
+https://secure.gravatar.com/avatar/e3507d517337039466ad342f37c23a0385a5b5067411c7c07f77d417e72330ab?s=56&d=mm&r=g

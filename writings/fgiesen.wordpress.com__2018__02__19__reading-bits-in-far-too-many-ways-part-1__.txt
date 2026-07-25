@@ -1,0 +1,426 @@
+Follow:
+RSS
+Twitter
+The ryg blog
+When I grow up I'll be an inventor.
+Home
+About
+Coding
+Compression
+Computer Architecture
+Demoscene
+Graphics Pipeline
+Maths
+Multimedia
+Networking
+Papers
+Stories
+Thoughts
+Uncategorized
+Reading bits in far too many ways (part 1)
+February 19, 2018
+
+Resurrecting an old tradition of this blog, let’s take a simple problem, go over a way too long list of alternative solutions, and evaluate their merits.
+
+Our simple problem is this: we want to read data encoded using some variable-bit-length code from a byte stream. Reading individual bytes, machine words etc. is directly supported by most CPUs and many programming languages, but for bit-granularity IO, you generally need to implement it yourself.
+
+This sounds simple enough, and in some sense it is. The first source of problems is that this operation tends to be a hot spot in codecs—-and yes, compute bound, not memory or I/O bound. So we’d like not just an implementation that works; we’d like it to be efficient as well. And along the way we’ll run into many other complications: interactions with IO buffering, end-of-buffer handling, corner cases in the way bit shifts are specified both in C/C++ and in various processor architectures, as well as other bit shift peculiarities.
+
+I’ll mainly focus on many different ways to handle the reader side in this post; essentially all techniques covered in here apply equally to the writer side, but I don’t want to double the number of algorithm variations I’m presenting. There will be plenty as it is.
+
+Degrees of freedom
+
+“Read a variable number of bits” is not a sufficient problem specification. There are lots of plausible ways to pack bits into bytes, and all have their strengths and weaknesses that I’ll go into later. For now, let’s just cover the differences.
+
+The first major decision to make is whether fields are packed MSB-first or LSB-first (“most significant bit” and “least significant bit”, respectively). That is, if we call our to-be-implemented function getbits and run the code sequence
+
+a = getbits(4);
+b = getbits(3);
+
+on some bitstream that we just opened, we expect both values to come from the same byte, but how are they arranged in that byte? If bits are packed MSB-first, then “a” occupies 4 bits starting at the MSB, and “b” is below “a”, leading to this arrangement:
+
+I’m numbering bits with the LSB being bit 0 and increasing towards the MSB, which is the conventional ordering in most contexts. LSB-first packing is the opposite, where the first field occupies bit 0 and later fields proceed upwards:
+
+Both conventions are used in everyday file formats. For example, JPEG uses MSB-first bit packing for its bitstream, and DEFLATE (zip) uses LSB-first.
+
+The next question we have to settle is what’s supposed to happen when a value ends up spanning multiple bytes. Say we have another value, “c”, that we want to encode in 5 bits. What do we want to end up with? We can postpone the issue slightly be declaring that we’re packing values into 32-bit words or 64-bit words and not bytes, but ultimately we’ll have to settle on something. This is where we suddenly get a whole lot of different variants, and I’m only going to cover the main contenders.
+
+We can think of MSB-first bit packing as iterating over our bitfield “c” from its MSB towards the LSB, inserting one bit at a time. And once we fill up one byte, we start with the next byte. Following these rules for our new bitfield c, this is where the bits end up in our stream:
+
+Note that by following these rules, we end up with the same two bytes we would have gotten from MSB-first bit packing into a big integer and then stored it in big-endian byte order. If we had instead decided to split c such that its LSB goes into the first byte and the four higher-order bits into the second byte, this wouldn’t have worked. I’m going to call bit-packing rules that are self-consistent like that “natural” rules.
+
+LSB-first bit-packing of course also has its corresponding natural rule, which is to insert the new value bit by bit starting from the LSB upwards, and if we do that here, we end up with this bit stream:
+
+LSB-first natural packing gives us the same bytes as LSB-first packing into a big integer then storing it in little-endian byte order. Also, we’re clearly running into some awkwardness with the drawing here: the logically contiguous packing of c into multiple bytes looks discontinuous when drawing it like this, whereas the drawing for the MSB-first packing looked the way you’d expect. But there’s trouble brewing there too: in the MSB-first drawing, we’re numbering the bits in increasing order from right to left (as is common) and the bytes in increasing order from left to right (as is also common).
+
+Here’s what happens with the LSB-first bit diagram if we draw bit 0 (the LSB) in each byte at the left and bit 7 (the MSB) at the right:
+
+If you draw it this way, it looks the way you’d expect. Putting the MSB on the right feels weird when thinking of a byte as a number and much less weird when you just think about it as an array of 8 bits (which is, effectively, what we’re treating it as when we’re doing bit-wise IO).
+
+Incidentally, some big-endian architectures (e.g. IBM POWER) do number bits this way – bit 0 is the MSB, bit 31 (or 63) is the LSB. Diagramming MSB-first bit packing on such a machine with bit 0=MSB, and also numbering our own bit fields so that their bit 0 corresponds to the MSB, we’d get the exact same diagram (but it would mean something slightly different). This convention makes bit and byte ordering consistent (nice) but breaks the handy convention of bit k corresponding to a value of 2k (less nice).
+
+And if the idea of renumbering bits so bit 0 is the MSB breaks your head, you can also leave the bit numbering as it is but be a rebel and draw byte addresses increasing to the left. Or alternatively keep drawing increasing addresses to the right but be a slightly different kind of rebel and write your byte stream backwards. If you do either of those, you end up with this layout:
+
+I realize this is getting confusing, and I’ll stop now, but I’m trying to make an actual point here: you should not get too attached to the way this stuff is drawn. It’s easy to fool yourself into thinking that one variant is better than another because it looks prettier, but the conventions of drawing bytes left to right and bits within them right to left are completely arbitrary, and no matter which one you pick, they always end up having that One Weird Thing about them.
+
+It turns out that MSB-first and LSB-first packing conventions both have advantages and disadvantages, and it’s much more useful to think of them as tools with different areas of application than it is to designate one as the “right way” and the other as the “wrong way”. As for byte order, and whether to pack values into bytes, words, or something larger, I highly recommend that you use whatever the natural order for your bit-packing convention is: MSB-first corresponds naturally to big-endian style byte ordering, and LSB-first corresponds naturally to little-endian byte ordering. Unless you’re writing byte streams in reverse—believe it or not, there’s good reasons to do that too—in which case we have reverse-order MSB-first corresponding to little-endian and reverse-order LSB-first corresponding to big-endian.
+
+The reason to prefer “natural” orders is that they tend to give you more freedom for different implementations. A natural-order stream admits a variety of different decoders (and encoders), all with different trade-offs (and good on different targets). “Unnatural” orders are usually designed with exactly one implementation in mind and tend to very awkward to decode any other way.
+
+Our first getbits (bit extract)
+
+Now that we’ve specified the problem sufficiently, we can implement a solution. A particularly simple version is possible if we assume the entire bit stream is sequential in memory (as a byte array) and also completely ignore, for the time being, such pesky issues as running into the end of the array. Let’s just pretend it’s infinite! (Or large enough and zero-padded, anyway.)
+
+In that case, we can base everything on a purely functional “bit extract” function, which I am then going to illustrate a number of issues that come up in all kind of bit-reading functions. Let’s start with LSB-first bit packing:
+
+// Treating buf[] as a giant little-endian integer, grab "width"
+// bits starting at bit number "pos" (LSB=bit 0).
+uint64_t bit_extract_lsb(const uint8_t *buf, size_t pos, int width) {
+    assert(width >= 0 && width <= 64 - 7);
+
+    // Read a 64-bit little-endian number starting from the byte
+    // containing bit number "pos" (relative to "buf").
+    uint64_t bits = read64LE(&buf[pos / 8]);
+
+    // Shift out the bits inside the first byte that we've
+    // already consumed.
+    // After this, the LSB of our bit field is in the LSB of bits.
+    bits >>= pos % 8;
+
+    // Return the low "width" bits, zeroing the rest via bit mask.
+    return bits & ((1ull << width) - 1);
+}
+
+// State variable, assumed to be local variables, or factored
+// into some object; hopefully not actual globals.
+const uint8_t *bitstream; // The input bistream
+size_t bit_pos; // Current position in the stream, in bits.
+
+uint64_t getbits_extract_lsb(int width) {
+    // Read the bits
+    uint64_t result = bit_extract_lsb(bitstream, bit_pos, width);
+    // Advance the cursor
+    bit_pos += width;
+    return result;
+}
+
+We’re just using the fact I noted earlier that a LSB-first bit stream is just a big little-endian number. We first grab 64 contiguous byte-aligned bits starting from the first byte containing any bits we care about, do a right shift to get rid of the remaining 0-7 extra bits below the first bit we care about, and then return the result masked to the desired width.
+
+Depending on the value of pos, that right shift can cost us an extra 7 bits. So even though we read a full 64 bits, the maximum number of bits we can read in one go with the code above is 64-7=57 bits.
+
+With bitextract in hand, getbits is straightforward; we just keep track of the current position in the bitstream (in bits), and increment it after reading. Easy.
+
+The corresponding MSB-first variant works out quite similarly, except for one annoying issue I’ll explain after showing the code:
+
+// Treating buf[] as a giant big-endian integer, grab "width"
+// bits starting at bit number "pos" (MSB=bit 0).
+uint64_t bit_extract_msb(const uint8_t *buf, size_t pos, int width) {
+    assert(width >= 1 && width <= 64 - 7);
+
+    // Read a 64-bit big-endian number starting from the byte
+    // containing bit number "pos" (relative to "buf").
+    uint64_t bits = read64BE(&buf[pos / 8]);
+
+    // Shift out the bits we've already consumed.
+    // After this, the MSB of our bit field is in the MSB of bits.
+    bits <<= pos % 8;
+
+    // Return the top "width" bits.
+    return bits >> (64 - width);
+}
+
+uint64_t getbits_extract_msb(int width) {
+    // Read the bits
+    uint64_t result = bit_extract_msb(bitstream, bit_pos, width);
+    // Advance the cursor
+    bit_pos += width;
+    return result;
+}
+
+This works very similar to the one before: read 64 contiguous byte-aligned bits (big-endian this time), do a left shift to align the top of the bit field we want with the MSB of bits (where before, we did a right shift to align the bottom of our bit field with the LSB of bits), and then do a right shift to place the top width bits at the bottom to return them, because when somebody calls getbits(3), they generally expect to see a value between 0 and 7 inclusive.
+
+Shift boundary cases
+
+So what’s the problem? Well, this version doesn’t allow width to be zero. The issue is that if we allow width == 0, then the final shift will try to right-shift a 64-bit value by 64 bits, and that’s undefined behavior in C/C++! In this case, we may only shift by 0 through 63.
+
+Now, in some cases, C/C++ leave details unspecified for backwards-compatibility with machines essentially nobody cares about at this point. Not requiring that the representation of signed numbers use two’s complement being a famous example; while non-two’s complement architectures exist, they’re all museum pieces at this point.
+
+Sadly, this is not one of these cases. Here’s what happens on different widespread CPU architectures when the shift amount is out of range:
+
+For 32-bit x86 and x86-64, shift amounts are interpreted mod 32 for operand widths of 32 bits and lower, and mod 64 for 64-bit operands. So right-shifting a 64-bit value by 64 will yield the same as shifting by 0, i.e. a no-op.
+In 32-bit ARM (A32/T32 instruction sets), shift amounts are taken mod 256. Right-shifting a 32-bit value by 32 (or 64) will hence yield 0, as will right-shifting it by 255, but right-shifting it by 256 will leave the value untouched.
+In 64-bit ARM (A64 ISA), shift amounts are taken mod 32 for 32-bit shifts and mod 64 for 64-bit shifts (essentially the same as x86-64).
+RISC-V also follows the same rule: 32-bit shifts distances are mod 32, 64-bit shift distances are mod 64.
+For POWER/PowerPC, 32-bit shifts take the shift amount mod 64 and 64-bit shifts take the shift amount mod 128.
+
+To make matters even more confusing, in most of these instruction sets with SIMD extensions, the SIMD integer instructions have different out-of-range shift behavior
+than the non-SIMD instructions. In short, this is one of those cases where there’s actual architectural differences between mainstream platforms; POWER and RISC-V might be a bit obscure for most of you, but say 32-bit vs. 64-bit ARM both have hundreds of millions of devices sold at this point.
+
+Therefore, even if all the compiler does with that right-shift is to emit the corresponding right-shift instruction for the target architecture (which is generally what happens), you will still see different behavior on different architectures, and on both ARM A64 and x86-64, the result of a shift by 64 will be effectively a no-op, and getbits(0) will therefore (generally) return a non-0 value, where one would expect that it’s always zero.
+
+Why does it matter in the first place? Having a hard-coded getbits(0) is indeed not an interesting use case; but sometimes you might want to perform a getbits(x) for some variable x, where x can be zero in some cases, and it’s nice for that case to just work and not require some special-case testing.
+
+If you really need that case to work, one option is to explicitly test for width == 0 and handle that specially; another is to use an branch-less expression that works for zero widths, for example this variant used in Yann Collet‘s FSE:
+
+    // Return the top "width" bits, avoiding width==0 edge cases.
+    return (bits >> 1) >> (63 - width);
+
+This particular case is easier to handle with LSB-first bit streams. And while I’m mentioning them, let’s talk about the masking operation I used to isolate the lowest width bits:
+
+    // Return the low "width" bits, zeroing the rest via bit mask.
+    return bits & ((1ull << width) - 1);
+
+There’s an equivalent form that is slightly cheaper on architectures with a three-operand and-with-complement (AND-NOT) instruction. This includes many RISC CPUs as well as x86s with BMI1. Namely, we can take a mask of all-1 bits, left-shift it to introduce width zeroes at the bottom, then complement the whole thing:
+
+    return bits & ~(~0ull << width);
+
+If you’re on an x86 with not just BMI1, but also BMI2 support, you can also use the BZHI instruction that is tailor-made for this use case, if you can figure out how to make your compiler emit it (or use assembly). Yet another option that is advantageous in some cases is to simply prepare a small look-up table of bit masks, which then simplifies the code into
+
+    return bits & width_to_mask_table[width];
+
+It may feel ridiculous to prepare a lookup table storing the result of two integer operations, especially since computing the address of the table element to load usually involves both a shift and an addition—the exact two operations we’d be performing if we didn’t have the table!—but there’s a method to this madness: the required address calculation can be done as part of the memory access in a single load instruction on e.g. x86 and ARM machines, and so this shift and add get executed on an Address Generation Unit (AGU) as part of the load pipeline of the CPU, not with integer arithmetic and shift instructions. So counter-intuitive as it may sound, replacing two integer ALU instruction with one integer load instruction like this can result in a noticeable speed-up in bit-IO-intensive code, because it balances the workload better between available execution units.
+
+Another interesting property is that the LSB-first version using the mask table lookup only performs one shift by a variable amount (to shift out the already-consumed bits). This matters because, for a variety of (often banal) reasons, integer shifts by a variable amount are more expensive than shifts by a compile-time constant amount on many micro-architectures. For example, the Cell PPU/Xbox 360 Xenon CPU were infamous for having variable-distance shifts that stalled the CPU core for a whopping 12 cycles, whereas regular shifts were pipelined and would complete in two cycles. Less drastically, on many Intel x86 microarchitectures, “traditional” variable x86 shifts (SHR reg, cl and friends) are about three times as expensive as shifts by a compile-time constant.
+
+This seems like another way in which the MSB-first variant is behind: the variants we’ve seen so far perform either two or three shifts per extract operation, two of which are variable-distance. But there’s a trick to get down to a single shift-type operation, namely by using a bit rotate (cyclical shift) instead of a regular shift:
+
+// Treating buf[] as a giant big-endian integer, grab "width"
+// bits starting at bit number "pos" (MSB=bit 0).
+uint64_t bit_extract_rot(const uint8_t *buf, size_t pos, int width) {
+    assert(width >= 0 && width <= 64 - 7);
+
+    // Read a 64-bit big-endian number starting from the byte
+    // containing bit number "pos" (relative to "buf").
+    uint64_t bits = read64BE(&buf[pos >> 3]);
+
+    // Rotate left to align the bottom of our bit field with the LSB.
+    bits = rotate_left64(bits, (pos & 7) + width);
+
+    // Return the bottom "width" bits.
+    // (Using a table here, but the other ways of masking discussed
+    // for LSB-first bit IO also work.)
+    return bits & width_to_mask_table[width];
+}
+
+Here, the rotate-left (which you need to figure out how to best access in your C compiler yourself; I want to avoid further digressions) first takes up the work of the original left-shift, and then rotates by an extra “width” bits to make our bit field wrap around from the most-significant bits of the value down to the least-significant, where we can then mask it the same way as in the LSB-first variant.
+
+Oh, and I’ve also started writing the division by 8 as shift-right by 3, and the mod-8 of our unsigned position as a binary AND with 7. These are equivalent substitutions, and you’ll see both forms in real-world code, so I figured I’d mix it up a little.
+
+This rotate-style masking operation was how we (being RAD Game Tools) used to perform bit reading on the Cell PPU and Xbox 360, purely because the variable-distance shifts were so dismal on that particular core. And I’ll note that this version also has no problems whatsoever with width == 0; the only problem is its dependence on rotate instructions, which are available (and fast) in most architectures, but tend to be somewhat inconvenient to access from C code.
+
+At this point, I’ve talked a lot about many, many different ways to do a bit shifting and masking, and I’ll be referring back to these later. What I haven’t shown you yet is any actual practical bit IO logic—the bit extraction form is a useful starting point, and convenient to explain these concepts in without having to worry about state, but you’re unlikely to ever use it as presented in any production code, not least because it assumes that the entire bit stream is in memory and will gleefully read past the end of the buffer during normal operation!
+
+However, this post is already long enough that WordPress editing is starting to get sluggish on me. So what I’ll do is split this up into a multi-part series; you get to take a breather, and we’ll meet back in the next part. Until then!
+
+Related
+
+End-of-buffer checks in decompressors
+January 2, 2016
+In "Coding"
+
+Buffer-centric IO
+November 21, 2011
+In "Coding"
+
+Reading and writing are less symmetric than you (probably) think
+October 25, 2015
+In "Coding"
+
+From → Coding, Compression
+
+5 Comments
+Netzia permalink
+
+Hey,
+
+I wanted to mention that you have a very nice and clear way of explaining things. I managed to learn some new things from just bit-shifts and representations in general, but also about the differences between architectures, and all this from just a single blog post!
+
+Waiting for the next one!
+
+Reply
+Christian Vetter permalink
+
+Interesting read, very detailed and it covers a lot of the pain points one usually has when implementing a bit-stream.
+
+The last project [1] I had to use something like this required portable bit-fields, and creating code that is basically 0-overhead (for a chosen platform) was quite challenging. If offset/size are known at compile time more optimization are available (and a C++ compiler will usually apply them for bitfields).
+
+[1] flatadata bit readers/writer:
+https://github.com/heremaps/flatdata/blob/master/flatdata-cpp/include/flatdata/internal/Reader.h
+https://github.com/heremaps/flatdata/blob/master/flatdata-cpp/include/flatdata/internal/Writer.h
+
+Reply
+Lawrence Kok permalink
+
+interesting read, contained some nice bits of information i wasn’t aware of before.
+
+Reply
+cb permalink
+
+The way I keep MSB and LSB straight in my head is to think about how smaller bit reads compose vs just doing them together.
+
+Compare getbits(7) vs getbits(3) then getbits(4)
+
+With MSB , getbits(7) is =
+
+x = getbits(3)
+x <<= 4
+x |= getbits(4)
+
+that is, earlier reads go to the high part of the word
+
+With LSB , getbits(7) is =
+
+x = getbits(3)
+x |= getbits(4) << 3
+
+that is, earlier reads go to the low part of the word
+
+Reply
+cb permalink
+
+It’s actually kind of hard to see the real advantage of the rotate method here because part 1 is doing non-retained bitbuf ; the reader should skip ahead to part 2 to read about retained bitbufs and then come back here to look at rotate again.
+
+With non-retained bitbuf, rotate & shift can both do one shift to get the word in the right place.
+
+With retained bitbufs, MSB rotate has the advantage that it puts the word you want to grab at the bottom (so you can get it with a mask) *and* it also puts the remaining bits in a known spot at the top.
+
+That is, it’s doing the “peek” and “consume” shifts both together in one op.
+
+As you noted, this was absolutely huge on the PowerPC, it’s not so important on modern chips that have decent variable shift, but certainly something for the tool bag.
+
+Note that rotate with retained bitbuf may need to clear bits for refill, since unlike shifting it is not clearing the consumed bits out of the bitbuf.
+
+Reply
+Leave a comment
+« Reading bits in far too many ways (part 2)
+Network latencies and speed of light »
+Recent Posts
+PivCo-Huffman “merge” operations
+Simple batch decoding of unary codes
+Why does ASTC use ISE when almost nothing else does?
+Content creator
+Oodle 2.9.14 and Intel 13th/14th gen CPUs
+UNORM and SNORM to float, hardware edition
+MRSSE
+Exact UNORM8 to float
+BC7 optimal solid-color blocks
+Why those particular integer multiplies?
+Categories
+Coding
+Compression
+Computer Architecture
+Demoscene
+Graphics Pipeline
+Maths
+Multimedia
+Networking
+Papers
+Stories
+Thoughts
+Uncategorized
+Archives
+June 2026
+May 2026
+July 2025
+May 2025
+December 2024
+November 2024
+October 2024
+August 2024
+October 2023
+July 2023
+May 2023
+March 2023
+November 2022
+October 2022
+September 2022
+April 2022
+October 2021
+August 2021
+July 2021
+July 2019
+April 2019
+February 2019
+December 2018
+September 2018
+March 2018
+February 2018
+January 2018
+December 2017
+November 2017
+September 2017
+August 2017
+April 2017
+October 2016
+August 2016
+April 2016
+March 2016
+February 2016
+January 2016
+December 2015
+October 2015
+September 2015
+July 2015
+May 2015
+February 2015
+December 2014
+October 2014
+August 2014
+July 2014
+June 2014
+May 2014
+March 2014
+February 2014
+December 2013
+November 2013
+October 2013
+September 2013
+August 2013
+July 2013
+June 2013
+May 2013
+March 2013
+February 2013
+January 2013
+August 2012
+July 2012
+June 2012
+April 2012
+March 2012
+February 2012
+November 2011
+October 2011
+September 2011
+August 2011
+July 2011
+May 2011
+February 2011
+January 2011
+December 2010
+November 2010
+October 2010
+September 2010
+August 2010
+March 2010
+December 2009
+October 2009
+
+Blog at WordPress.com.
+
+Comment
+ 
+Subscribe
+
+IMAGES
+https://fgiesen.wordpress.com/wp-content/uploads/2018/02/msbfirst.png
+https://fgiesen.wordpress.com/wp-content/uploads/2018/02/lsbfirst.png
+https://fgiesen.wordpress.com/wp-content/uploads/2018/02/msbfirst_multi.png
+https://fgiesen.wordpress.com/wp-content/uploads/2018/02/lsbfirst_multi.png?w=497
+https://fgiesen.wordpress.com/wp-content/uploads/2018/02/lsbfirst_multi_renum.png?w=497
+https://fgiesen.wordpress.com/wp-content/uploads/2018/02/lsbfirst_multi_reverse.png?w=497
+https://0.gravatar.com/avatar/c4f8a80ba6120df88f10f13c80add45ec4189f88eec3468b10099035f9e4f4f1?s=40&d=identicon&r=G
+https://0.gravatar.com/avatar/358be57f2355cc4a4084d59cfad65a64a67dda48b11ea4f3c7d12ea7d60f1312?s=40&d=identicon&r=G
+https://0.gravatar.com/avatar/0b9e53a3ccdbcf49182dedde29eabc034db40f233b5480c827fb47afd5dfd2c6?s=40&d=identicon&r=G
+https://0.gravatar.com/avatar/cf1fa60e708005dc6f1cb2fd70f2b9c511495f62df7130d18e014d4300588898?s=40&d=identicon&r=G
+https://s0.wp.com/i/logo/wpcom-gray-white.png?m=1479929237i
+https://pixel.wp.com/g.gif?blog=9777542&v=wpcom&tz=-7&user_id=0&post=4318&subd=fgiesen&host=fgiesen.wordpress.com&ref=&rand=0.05389531877734699

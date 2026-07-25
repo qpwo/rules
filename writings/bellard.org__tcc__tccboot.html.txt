@@ -1,0 +1,25 @@
+TCCBOOT: TinyCC Boot Loader
+News
+(Oct 27, 2004) TCCBOOT is slashdotted.
+Introduction
+TCCBOOT is a boot loader able to compile and boot a Linux kernel directly from its source code.
+
+TCCBOOT is only 138 KB big (uncompressed code) and it can compile and run a typical Linux kernel in less than 15 seconds on a 2.4 GHz Pentium 4.
+
+TCCBOOT is based on the TinyCC compiler, assembler and linker. TinyCC is an experiment to produce a very small and simple C compiler compatible with the GNU C compiler and binary utilities.
+
+Screenshots
+ 
+Download
+ISO image demonstation: tccboot.iso (5.9 MB).
+
+Create a CD from it and boot it to see TCCBOOT in action (PC with at least 64 MB of RAM required). You can also try it with the QEMU PC emulator.
+
+TCCBOOT source code: tccboot-0.1.tar.gz, and README file.
+
+Copyright (c) 2004 Fabrice Bellard
+Fabrice Bellard - https://bellard.org/ - https://bellard.org/tcc/
+
+IMAGES
+https://bellard.org/tcc/tccboot1s.png
+https://bellard.org/tcc/tccboot2s.png

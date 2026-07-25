@@ -1,0 +1,108 @@
+Blog
+Repos
+Github
+Linkedin
+Measuring the impact of false sharing
+January 2023 - RSS
+I recently began writing a bounded, wait-free, multi-producer single-consumer (MPSC) queue. An often cited wisdom for ring-buffer based implementations goes as follows:
+Don't pack tail or head indices of each queue together into a struct, without padding each index to a cache line. Otherwise, the cache-coherency traffic due to false sharing will drastically reduce your performance!
+In this article, I would like to find out the concrete performance penalty of false sharing for my data structure. I'll be measuring the effects on both ARM (Apple Silicon) and x86 (Intel/AMD) processors.
+What is False Sharing
+Assume that we're operating in a shared-memory, multi-processor system, and perform concurrent reads and writes to our main memory. In the simplest case, a memory controller will determine a global order of operations, and make any change to the shared memory immediately visible to all other processors. In reality though, CPUs make use of local cache hierarchies, causing possibly stale data to reside in different cache domains.
+Figure 1: A very(!) simplified sketch of a cache-coherent NUMA CPU. Processor cores have their own L1 and L2 cache, followed by a shared last-level cache (L3). Depending on the architecture, the next-closest memory device may be a DRAM controller belonging to a NUMA node, and then some type of interconnect fabric to share memory between NUMA nodes as well as CPU sockets.
+
+Without some global ordering guarantees, writing meaningful concurrent algorithms becomes pretty much impossible. To resolve this, CPUs employ a microarchitectural cache coherence protocol that (1) propagates writes to all other processors and (2) serializes writes to the same memory location, so that they are observed in the same global order by every processor.
+
+Note: Cache coherency is part of a CPUs memory model and always architecture or ISA specific. Furthermore, operating systems and programming languages may define their own memory models to abstract over a variety of hardware. The C/C++11 memory ordering specification is one such example.
+
+Most CPUs follow an invalidation-based protocol like MESI, usually equipped with an additional state for making certain operations more efficient via cache-to-cache transfers. For these protocols, writing to an address generally invalidates all other processors' cache lines that contained this addresses value, thereby forcing the affected processors to pull the latest value from a lower memory level (last-level cache or main memory) on the next read in the worst case. This can strongly degrade performance, and can cause a poorly-implemented multithreaded system to perform worse than its single-threaded counterpart. For a real example, refer to chapter 7.3 of the AMD64 architecture manual, which covers their MOESDIF (Modified, Owned, Exclusive, Shared, Dirty, Invalid, Forward) cache coherence protocol.
+
+Update: As noted by David Chisnall, if the writing processor did not perform a previous load on a cache line, cache coherency protocols may sometimes employ remote stores instead of invalidation. This means that the value is sent to the remote processor over the interconnect, updating the value in-place.
+
+Intuitively, it makes sense that lots of processors reading and writing concurrently to the same address would cause a performance bottleneck. This problem is known as true sharing, and is quite easy to identify. False sharing on the other hand is more insidious. It's a type of performance degradation where multiple processors write to different memory addresses concurrently, but still cause lots of cache coherency traffic. How is that possible if they are writing to different memory addresses?
+
+The reason is that the cache coherence protocol is rough-grained and invalidates an entire cache line on any write, so that updating 8 bytes of data (size of an unsigned 64-bit integer) also invalidates 56 neighboring bytes.
+Figure 2: False sharing in action. Two threads update two unrelated objects, but the addresses are close enough to map into the same cache line. The cache coherence protocol will invalidate the cache line in one of the two processors.
+
+So even though 2 distinct objects are updated by two different processors, we see a similar level of performance degradation as with true sharing, as long as these objects map to the same cache line.
+
+The most egregious offenders are densely packed structs, with each variable being accessed by another thread. This gives you a false illusion of data independence and parallelism.
+#[repr(C)]
+
+pub struct State {
+
+    t1: u64, // only accessed by thread #1
+
+    t2: u64, // only accessed by thread #2
+
+    t3: u64, // only accessed by thread #3
+
+}
+
+Depending on the alignment of State, all three values will likely map to the same cache line. To avoid this, you generally align variables to a cache line using either macros or padding fields*.
+(*): Padding fields like this is very common in multithreading libraries or kernel code. In the Linux kernel for example, this is done with the macro __cacheline_aligned_in_smp. You can see it used for the struct bpf_ringbuf in /bpf/ringbuf.c.
+
+By now it's pretty clear that we should definitely avoid false sharing; all that's left is measuring the actual performance gain of cache line alignment.
+The Data Structure: MPSC Queue
+
+To measure the impact of false sharing, we will perform experiments on a wait-free, bounded, multi-producer single-consumer queue. It's a data structure that allows multiple concurrent threads to push data into a single data stream, which can be read by a consumer thread. The way these concurrent write operations are merged into a single consumable stream differs between implementations.
+
+In our case, producers are pushing data into their own thread-local FIFO ring buffer, which is regularly polled and emptied by the consumer thread. When the queue is full, new data from producers are discarded (partial write / fail on overflow according to this classification).
+Figure 3: A rough sketch of our MPSC queue. The red blocks represent variable-sized byte chunks. My implementation was actually designed for a multithreaded tracing and debugging library for my RISC-V kernel.
+
+Now the memory layout. The data structure consists of (1) an array of thread-local buffers, represented as a single contiguous backing array and (2) an offset table that stores head and tail offsets of each individual queue. For the purposes of this blog post, the offset table is our main concern. Because whenever producers OR consumer push or pop data off these queues, they perform atomic load/store operations with release/acquire semantics on what are essentially pointers.
+
+The producer p is the only thread that is allowed to modify the p-th head offset, using the push operation. Similarly, the consumer has exclusive write permission for any tail via pop. This means we have no competing store operations (and thus no atomic RMW sequences like compare-and-swap or LL/SC). Great! Except, as we've seen before, independent store operations may still degrade performance due to false sharing.
+Figure 4: The same false sharing scenario, this time adopted for our MPSC Queue. Producers and consumer can safely modify the tail/head offsets, as they have exclusive write access to it. However, if we pack these offsets into a dense structure, we'll incur a cache coherency penalty
+Now that we've identified how false sharing affects us, let's revisit the premise of this post:
+Don't pack tail or head indices of each queue together into a struct, without padding each index to a cache line. Otherwise, the cache-coherency traffic due to false sharing will drastically reduce your performance!
+With this advice in mind, we can consider three different ways of laying out our offset table in memory: packed, padded and a hybrid of those two.
+Figure 5: Different versions of our offset table. We can pack them tightly (1), add padding to align them to a cache line (2), or only apply padding to heads (3). I was curious about this last hybrid approach, because the consumer updates all tails at the same time, and may be able to make batch updates with 128-bit atomic stores, which only works when they're packed in memory.
+For now, the subject of our benchmarking suite will be the packed and hybrid versions. The concrete benchmarking setup and workloads are described in detail in the following chapter. Note that in order to accurately measure false sharing, the heads and tails in the packed version each need to fit into a single 64B cache line. This is why the benchmark implementation is using 16-bit atomic integers for heads and tails, allowing up to 32 concurrent producers.
+Benchmarking Setup
+Our workload allocates a queue, spawns p producer threads (initially gated by a semaphore), and lets producers push a total of 1Mb into a 15-bit wide queue. The task is considered done when all producers successfully completed their (partial) write operations. I controlled for the two following parameters:
+p: number of producers, depending on CPU
+d: number of dummy instructions inserted between queue ops, values = [0, 500]
+The dummy instructions are a more fine-grained way to reduce queue contention, because (1) there's a large minimum overhead of putting a thread to sleep and (2) we don't have access to the OS scheduler, making our tests less deterministic. The payload for the push operation is set to 1 byte, because we don't want memcpy to dominate our benchmark.
+Results and Evaluation
+I tested the benchmarking suite on a mix of laptop, desktop and server-grade hardware:
+Apple M1 Pro, 10 cores, bare-metal, macOS
+Intel i5-9600k, 4 cores, bare-metal, Windows
+AMD EPYC, 30 cores, KVM, Linux
+Intel Cascade Lake, 30 cores, KVM, Linux [lscpu dump]
+
+The code is written in Rust, and uses the criterion microbenchmarking framework. You can find the code and instructions to run the benchmark here at commit 3fcbe5ed2b (details are in BENCH.md, Linux-only). All benchmarks were compiled and run under rustc 1.68.0-nightly. The generate_report.py script will output a report.txt file containing measurements in milliseconds across a wide variety of parameters. Note that running the entire suite can take a very long time, because of the combinatorial explosion of parameters, frequent recompilations, and the high sample count in the criterion config.
+
+Expectations: We generally expect hybrid to outperform packed in most cases and for the difference between them to become more apparent as we increase the producer count. The following sections contain figures and descriptions for each testing platform.
+Apple M1 Pro (aarch64, 10 cores, bare-metal, macOS)
+Figure 6: Packed vs. hybrid multithreading performance for two different contention scenarios. Tested on MacBook Pro M1 Pro 2021, 32GB RAM, macOS 12.6.
+Intel i5-9600k (x86_64, 6 cores, bare-metal, Windows)
+Figure 7: Same benchmark, ran on desktop PC with overclocked Intel i5-9600k@4GHz and 16GB RAM@3600MHz. While we have less total cores than the M1, we observe a similar effect.
+AMD EPYC Milan (x86_64, 28 cores, KVM, Linux)
+Figure 8: Tested on AMD EPYC Milan on a C2D-highcpu instance @ GCP. lscpu says it's a 1 socket, 1 NUMA machine, even though SMT is disabled. Since the EPYC 7B13 is a 16-core processor, I'm going to assume that we're in fact running our benchmarks on two sockets.
+Intel Cascade Lake (x86_64, 30 cores, KVM, Linux)
+Figure 9: Tested on 2x Intel Xeon (2 sockets, 1 NUMA node each) on a C2-highcpu instance @ GCP. A dump of lscpu can be found here.
+
+Overall, we can confirm that the packed layout performs worse across the board, getting generally incrementally worse with higher thread count. I found that for the M1 Pro and i5-9600k, the level of simultaneous cache line accesses is a crucial factor for overall throughput. This makes sense intuitively, because CPUs have more time to complete their cache transaction, while the remaining instructions continue to be executed in parallel.
+
+However, on the server platforms I noticed some unusual behavior. Starting from >15 producers, we can actually see very good packed performance when the indices are highly contended. Even more confusing, once we add dummy instructions (thereby releasing pressure on the same cache line), the hybrid layout starts to significantly outperform packed. What is going on here? Why is false sharing becoming more apparent when we reduce cache contention? The likely cause is that these servers are configured as multi-socket and multi-NUMA, and that the specifics of CPU/socket interconnect (which can be intimidatingly complex) cause this behavior.
+
+Conclusion
+
+We have seen that false sharing due to suboptimal layout has a real, non-negligible impact on performance for our wait-free data structure (the quote mentioned in the beginning of this post rings true). It performs worse than our hybrid layout across all measured parameters, with the exception of the dual-thread, single-producer case. We also saw that the hybrid layout scales much better with the number of concurrent producers (which is one of the goals of a performant MPSC queue).
+
+However, while all measurements lean in favor of hybrid, the concrete comparative advantage heavily depends on the CPU architecture, hardware config and cache line contention. One surprising result on the server platforms is that by increasing the frequency of cache line accesses to the maximum, we actually reduce the relative penalty of false sharing, if done across NUMA nodes and multiple sockets.
+
+Further Reading
+False sharing, and more generally cache coherence protocols, are well-understood and thoroughly researched topics. I recommend the following reading material as a starting off point:
+Sorin, Daniel J., Mark D. Hill, and David A. Wood. "A primer on memory consistency and cache coherence."  Synthesis lectures on computer architecture 6.3 (2011): 1-212. [PDF]
+Hennessy, John L., and David A. Patterson. Computer architecture: a quantitative approach. Elsevier, 2011. [PDF]
+David, Tudor, Rachid Guerraoui, and Vasileios Trigonakis. "Everything you always wanted to know about synchronization but were afraid to ask."  Proceedings of the Twenty-Fourth ACM Symposium on Operating Systems Principles. 2013. [PDF]
+Liu, Tongping, and Emery D. Berger. "Sheriff: precise detection and automatic mitigation of false sharing."  Proceedings of the 2011 ACM international conference on Object oriented programming systems languages and applications. 2011.
+
+IMAGES
+https://alic.dev/static/false-sharing/ccnuma.webp
+https://alic.dev/static/false-sharing/false-sharing.webp
+https://alic.dev/static/mpsc/dsdesign.webp
+https://alic.dev/static/false-sharing/fs-mpsc.webp
+https://alic.dev/static/false-sharing/offset-versions.webp

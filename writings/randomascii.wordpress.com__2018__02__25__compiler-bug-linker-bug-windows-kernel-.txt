@@ -1,0 +1,648 @@
+Random ASCII – tech blog of Bruce Dawson
+Forecast for randomascii: programming, tech topics, with a chance of unicycling
+Skip to content
+Home
+About
+← Zombie Processes are Eating your Memory
+Making Windows Slower Part 1: File Access →
+Compiler bug? Linker bug? Windows Kernel bug.
+Posted on February 25, 2018 by brucedawson
+
+See the end of the post for an October 2018 bug fix update, or read the whole story:
+
+Flaky failures are the worst. In this particular investigation, which spanned twenty months, we suspected hardware failure, compiler bugs, linker bugs, and other possibilities. Jumping too quickly to blaming hardware or build tools is a classic mistake, but in this case the mistake was that we weren’t thinking big enough. Yes, there was a linker bug, but we were also lucky enough to have hit a Windows kernel bug which is triggered by linkers!
+
+In September of 2016 we started noticing random failures when building Chrome – 3 out of 200 builds of Chrome failed when protoc.exe, one of the executables that is part of the build, crashed with an access violation. That is, we would build protoc.exe, and then run it to generate header files for the next build stage, but it would crash instead.
+
+The developers who investigated knew immediately that something weird was happening but they couldn’t reproduce the bug locally so they were forced to make guesses. A couple of speculative fixes (reordering the tool’s arguments and adding explicit dependencies) were made, and the second fix seemed to work. The bug went away for a year.
+
+And then, a few days shy of its first birthday, the bug started happening again. A steady drumbeat of reports came in – ten separate bugs were merged into the master bug over the next few months, representing just a fraction of the crashes.
+
+Local repros
+
+I joined the investigation when I hit the bug on my workstation. I ran the bad binary under a debugger and saw this assembly language in the debugger:
+
+…
+00000001400010A1 00 00  add byte ptr [rax],al
+00000001400010A3 00 00  add byte ptr [rax],al
+mainCRTStartup:
+00000001400010A5 00 00  add byte ptr [rax],al
+00000001400010A7 00 00  add byte ptr [rax],al
+…
+
+Now we have a problem statement that we can reason about: why are large chunks of our code segment filled with zeroes?
+
+I deleted the binary and relinked it and found that the zeroes were replaced with a series of five-byte jmp instructions. The long array of zeroes was in an array of thunks, used by VC++’s incremental linker so that it can more easily move functions around. It seemed quite obvious that we were hitting a bug in incremental linking. Incremental linking is an important build-time optimization for huge binaries like chrome.dll, but for tiny binaries like protoc.exe it is irrelevant, so the fix was obvious: disable incremental linking for the tiny binaries used in the build.
+
+It turned out that this fix did work around an incremental linking bug, but it was not the bug we were looking for.
+
+I then ignored the bug until I hit it on my workstation two weeks later. My fix had not worked. And, this time the array of zeroes was in a function, instead of in the incremental linking jump table.
+
+I was still assuming that we were dealing with a linker bug so when another two weeks later I hit the problem again I was confused. I was confused because I was not using Microsoft’s linker anymore. I had switched to using lld-link (use_lld=true in my gn args). In fact, when the bug first hit we had been using the VC++ compiler and linker and I’d just hit it with the clang compiler and linker. If switching out your entire toolchain doesn’t fix a bug then it’s clearly not a toolchain bug – mass hysteria was starting to seem like the best explanation.
+
+Science!
+
+Up to this point I had been hitting this bug randomly. I was doing a lot of builds because I was doing build-speed investigations and these crashes were interfering with my ability to do measurements. It’s frustrating to leave your computer running tests overnight only to have crashes pollute the results. I decided it was time to try science.
+
+Instead of doing a dozen builds in a night to test a new build optimization I changed my script to just build Chrome in a loop until it failed. With jumbo distributed builds and a minimal level of symbols I can, on a good day, build Chrome a dozen times in an hour. Even a rare and flaky bug like this one starts happening every single night when you do that. So do other bugs (zombies!) but that’s a different story.
+
+And then, I got lucky. I logged on to my computer in the morning, saw that genmodule.exe had crashed overnight (the crashing binary varied), and decided to run it again, to get a live crash instead of looking at crash dumps. And it didn’t crash.
+
+The crash dump (I have Windows Error Reporting configured to save local crash dumps, all Windows developers should do this) showed lots of all-zero instructions in the critical path. It was not possible for this binary to run correctly. I ran genmodule.exe under the debugger and halted on the function that had previously crashed – that had previously been all zeroes – and it was fine.
+
+Apologies for the strong language, and those of a more sensitive nature (and karate fans) might want to skip the rest of this paragraph, but WTF?!?
+
+I then loaded the crash dump into windbg and typed “!chkimg”. This command compares the code bytes in the crash dump (some of them are saved in the crash dump, just in case) against those on disk. This is helpful when a crash is caused by bad RAM or bad patching and it will sometimes report that a few dozen bytes have been changed. In this case it said that 9322 bytes in the code in the crash dump were wrong. Huh!
+
+Now we have a new problem statement: why are we not running the code that the linker wrote to the file?
+
+This was starting to look like a Windows file cache bug. It looked like the Windows loader was pulling in pages full of zeroes instead of the pages that we had just written. Maybe something to do with multi-socket coherency of the disk and cache or ???
+
+My coworker Zach made the vital suggestion that I run the sysinternals sync command after linking binaries. I resisted at first because the sync command is quite heavyweight and requires administrative privileges, but eventually I ran a weekend long test where I built Chrome from scratch over 1,000 times, as admin, with various mitigations after running the linker:
+
+Normal build: 3.5% failure rate
+7-second sleep after linking exes: 2% failure rate
+sync.exe after linking exes: 0% failure rate
+
+Huzzah! Running sync.exe was not a feasible fix, but it was a proof of concept. The next step was a custom C++ program that opened the just-linked exe and called FlushFileBuffers on it. This is much lighter weight and doesn’t require administrative privileges and this also stopped the bug from happening. The final step was to convert this into Python, land the change, and then make my favorite under-appreciated tweet:
+
+Later that day – before I’d had a chance to file an official bug report – I got an email from Mehmet, an ex-coworker at Microsoft, basically saying “Hey, how’s things? What’s this I hear about a kernel bug?”
+
+I shared my results (the crash dumps are quite convincing) and my methodology. They were unable to reproduce the bug – probably due to not being able to build Chrome as many times per hour as I can. But, they helped me enable circular-buffer ETW tracing, rigged to save the trace buffers on a build failure. After some back-and-forth I managed to record a trace which contained enough information for them to understand the bug.
+
+The underlying bug is that if a program writes a PE file (EXE or DLL) using memory mapped file I/O and if that program is then immediately executed (or loaded with LoadLibrary or LoadLibraryEx), and if the system is under very heavy disk I/O load, then a necessary file-buffer flush may fail. This is very rare and can realistically only happen on build machines, and even then only on monster 24-core machines like I use. They confirmed that my fix should reliably avoid the bug (I’d already noted that it had allowed ~600 clean builds in a row), and promised to create a proper fix in Windows.
+
+Play along at home
+
+You probably won’t be able to reproduce this bug but if you want to see an example crash dump you can find one (and the .exe and .pdb files) on github. You can load them into Visual Studio and see all the zero bytes in the disassembly, or load them into windbg to run !chkimg and see the !chkimg errors:
+
+0:000> .sympath .
+Symbol search path is: .
+0:000> .ecxr
+eax=cbb75f7e …
+re2c!mainCRTStartup:
+00412d40 0000  add  byte ptr [eax],al  ds:002b:cbb75f7e=??
+0:000> !chkimg
+9658 errors : @$ip (00408000-00415815)
+0:000> uf eip
+re2c+0x12d40:
+00412d40 0000  add byte ptr [eax],al
+00412d42 0000  add byte ptr [eax],al
+00412d44 0000  add byte ptr [eax],al
+00412d46 0000  add byte ptr [eax],al
+
+Investigation complications
+
+1) Building Chrome very quickly causes CcmExec.exe to leak process handles. Each build can leak up to 1,600 process handles and about 100 MB. That becomes a problem when you do 300+ builds in a weekend – bye bye to ~32 GB of RAM, consumed by zombies. I now run a loop that periodically kills CcmExec.exe to mitigate this, and Microsoft is working on a fix (Microsoft also told me how to disable the problematic CcmExec.exe feature, which I did).
+
+2) Most Windows developers have seen 0xC0000005 enough times to remember that it means Access Violation – it means that your program dereferenced memory that it should not have, or in a way that it should not have. But how many Windows programmers recognize the error codes 3221225477 or -1073741819? It turns out that these are the same value, printed as unsigned or signed decimal. But, not surprisingly, when developers see a number around negative one billion their eyes glaze over and the numbers all start to look the same. So when some of the crashes returned error code -1073740791 the difference was either not noticed, or was ignored.
+
+3) That’s a shame because it turns out that there were two bugs. crbug.com/644525 is the Chromium bug for investigating what turned out to be this kernel bug. But, once I landed a workaround for that bug and reenabled incremental linking we started hitting different crashes – crbug.com/812421. Some developers were hitting error code –1073740791 which is 0xC0000409 which is STATUS_STACK_BUFFER_OVERRUN. I never saw this crash myself but I asked for a crash dump (I was terrified that crbug.com/644525 had returned) from a coworker and saw that ntdll.dll!RtlpHandleInvalidUserCallTarget was calling RtlFailFast2. I recognized this signature and knew that it had nothing to do with buffer overruns. It’s a Control Flow Guard violation, meaning that the OS thinks that your program is being exploited by bad people to do an illegal indirect function call.
+
+It appears that if you use /incremental with /cfg then the Control Flow Guard information isn’t always updated during incremental linking. The simple fix was to update our build configurations to never use /incremental and /cfg at the same time – they aren’t a useful combination anyway.
+
+And, for my own sanity, I landed a few changes that get us to print Windows error codes in hex. So much better.
+
+Epilogue
+
+We still don’t know what caused this bug to start showing up in the first place – maybe our switch to gn changed the ordering of build steps to make us more vulnerable?
+
+We also don’t know why the bug disappeared for a year. Was the original bug something unrelated that was fixed by this change? Or did we just get lucky or oblivious?
+
+Either way, whether we fixed two or three separate bugs, Chrome’s builds are much more reliable now and I can go back to doing build-performance testing without hitting failures.
+
+The Chrome build workaround I landed is 100% reliable, and both lld-link.exe and Microsoft’s link.exe will be adding FlushFileBuffers calls as mitigations. If you work on a tool that creates binaries (Rust? I filed a bug for Go’s linker but it’s not vulnerable) using memory mapped files you should consider adding a FlushFileBuffers call just before closing the file. This bug shows up from Server 2008 R2 (Windows 7) up to the latest stable build of Windows 10 and OS fixes will take a while to propagate so you might as well be careful.
+
+Twitter announcement is here, hacker news discussion is here, and reddit discussion is here.
+
+Russian translation is here.
+
+A twitter user shared a report of them hitting the bug in 2015, which is not hugely shocking since this bug appears to be 8+ years old. And another twitter user reported that they hit the bug after I reported it.
+
+Update, October 2018
+
+I recently found that at least two other companies (for a total of five known) were hitting this bug – once you know it’s there it becomes easier to identify it. One of the other companies that was hitting it was Microsoft.
+
+I also just heard that Windows 10 RS5 (1809, the fall 2018 update) has a fix. So, the workaround that we added to lld-link will probably get an OS version check so that we only pay the cost when it is actually needed.
+
+Share this:
+ Email Reddit X
+Loading...
+Related
+
+Compiler Bugs Found When Porting Chromium to VC++ 2015
+March 24, 2016
+In "Programming"
+
+What this blog is about
+March 25, 2025
+In "Fun"
+
+How to Report a VC++ Code-Gen Bug
+October 14, 2013
+In "Bugs"
+
+About brucedawson
+I'm a retired programmer, ex-Google/Valve/Microsoft/etc., who was focused on optimization and reliability. Nothing's more fun than making code run 10x as fast. Unless it's eliminating large numbers of bugs. I also unicycle. And play (ice) hockey. And sled hockey. And juggle. And worry about whether this blog should have been called randomutf-8. 2010s in review tells more: https://twitter.com/BruceDawson0xB/status/1212101533015298048
+View all posts by brucedawson →
+This entry was posted in Debugging, Investigative Reporting, Programming and tagged ETW, kernel, linking, Windows. Bookmark the permalink.
+← Zombie Processes are Eating your Memory
+Making Windows Slower Part 1: File Access →
+57 Responses to Compiler bug? Linker bug? Windows Kernel bug.
+Felix says:
+February 26, 2018 at 1:21 am
+
+Very interesting article. I don’t find it correct to assume women can’t handle strong language. You might want to reword that one to not come across wrong.
+
+Reply
+brucedawson says:
+February 26, 2018 at 9:02 am
+
+Yeah, that was dumb on my part. Fixed.
+
+Reply
+Jeez says:
+February 26, 2018 at 11:24 am
+
+Rather than talk about the contents of your post, it’s easier and more satisfying to complain about meaningless details and cause drama. If I were you I’d just ban anyone going off-topic, myself included.
+
+Reply
+brucedawson says:
+February 26, 2018 at 12:24 pm
+
+In order to avoid distraction, offense, and exclusion I have altered that paragraph. I regret the original phrasing. It’s funnier with the new phrasing so the change is a win-win. Exclusionary language is something that should be avoided, and I should have done better.
+
+Reply
+George says:
+February 26, 2018 at 3:07 am
+
+Felix, it’s a joke man, if they can handle strong language surely they can handle a joke… jesus
+
+Reply
+John Smith says:
+February 26, 2018 at 7:01 am
+
+Why do you assume Felix is a man?
+
+Reply
+caustic96 says:
+February 26, 2018 at 7:37 am
+
+calling someone “man” is an older phrase/slang that didn’t rely on a person’s gender.
+It’s like calling a group of people “guys” but it’s a mix of both men and women.
+But that’s getting off topic.
+
+Reply
+Deborah Johns says:
+February 26, 2018 at 8:25 am
+
+This **** is quickly getting out of hand.
+Really, keep your political agendas out of this blog. In fact, keep it to your most inner circles for humanity’s sake.
+
+Reply
+nwildner says:
+February 26, 2018 at 10:45 am
+
+Why do you assume “man” in this phrase means masculine?
+
+Reply
+Jeez says:
+February 26, 2018 at 11:14 am
+
+I’m sure it was a genuine mistake, Madam Smith.
+
+Reply
+Eirik Lygre says:
+February 26, 2018 at 3:53 am
+
+Interesting article, a good read!
+
+As I approached the end, I also wanted to comment on the “women and children” part. A friend of mine handles strong language very well, but she is less appreciating of being singled out due to her gender. I think the article would do equally well without that part; there is little to gain, and a bit more to lose.
+
+Reply
+jaericho says:
+February 26, 2018 at 7:01 am
+
+Eirik, lighten up and stop being offended for other people. I’m sure your friend can be offended for herself.
+
+Reply
+brucedawson says:
+February 26, 2018 at 9:00 am
+
+It was intended to be poking fun at the patriarchal idea of women’s fragility, but there is a fine line between reinforcing and mocking the status quo. I messed up.
+
+Reply
+mdod says:
+February 28, 2018 at 11:40 pm
+
+— snip —
+
+No more non-technical comments on this post or on the comments on the post.
+
+Reply
+Steven Honaker II says:
+February 26, 2018 at 4:10 am
+
+I really need to learn how to use debugging tools like this guy can. I have an extremely reliable bug on my computer for AMD’s wattman tool that has been affecting me since the Fall and has survived driver updates and clean OS installs the WHQL driver works fine and some older drivers are good but anything newish is a system hang in the making.
+
+Reply
+u mass says:
+February 26, 2018 at 7:05 am
+
+BIOS update? Might be SMM related.
+
+Reply
+Steven Honaker II says:
+February 26, 2018 at 3:03 pm
+
+I’m on the latest bios for my motherboard, which I think is the 3rd I’ve updated too since the problem started, and I’ve tried several different bios’s for my GPU.
+
+Reply
+Jack says:
+February 26, 2018 at 8:29 am
+
+I’m kinda surprised that a “Release Build” wouldn’t have a flush call after every disk write.
+
+Reply
+brucedawson says:
+February 26, 2018 at 8:57 am
+
+Flushing of file buffers is relatively expensive and usually not necessary. FlushFileBuffers is used by databases to ensure correctness in case of power failures and these (necessary) calls show up on disk I/O profiles. I’m not clear on why the flush call is needed in this case – I suspect it is something to do with ASLR rebased-code buffers but I really don’t know.
+
+Reply
+Zachary Turner says:
+February 26, 2018 at 10:55 am
+
+If by “this case” you mean the case you described in the bug, I guess it’s just because the kernel has two inconsistent views of the cache, and the entire point of flush is to commit to disk and invalidate the cache. So by calling flush, the correct view of the cache gets committed to the underlying media, and both the correct and incorrect view are then invalidated so that the next read goes to the disk.
+
+If you mean “Why does the kernel have two inconsistent views of the cache?” well, yea, who knows 
+
+Reply
+brucedawson says:
+February 26, 2018 at 1:38 pm
+
+The inconsistent view of the cache may be due to ASLR. This theory is based on my belief that the OS keeps a separate cache of code pages that have had rebasing applied to them so that these pages can be shared between processes – otherwise the rebasing required by ASLR would cause most code pages to be per-process-private which would be hugely wasteful.
+
+This half-baked theory has some inconsistencies and was never suggested by Microsoft so it is probably wrong, but it’s the best I’ve got. Thanks again for the help Zachary! It was great to be able to brainstorm this bug with you.
+
+Reply
+Darren says:
+February 26, 2018 at 9:24 am
+
+I am surprised that building something like the windows kernel and/or OS is not a heavy enough load to trigger this. Presumably they are using a grid of smaller machines or not triggering one of the other conditions you mentioned.
+
+Reply
+brucedawson says:
+February 26, 2018 at 1:35 pm
+
+I agree that it is surprising. It may be that their build system puts a longer gap between writing binaries and running them, but I am just speculating
+
+Reply
+asdf says:
+February 26, 2018 at 10:03 am
+
+That workstation of your seems to be causing you no ends of trouble. Tell you what, I’ll take it off your hands for no cost, and if you want I’ll even swap you for an old AMD quad-core APU machine. Not having to investigate all these irrelevant issues would speed up your work tremendously!
+
+Reply
+brucedawson says:
+February 26, 2018 at 1:36 pm
+
+ Sounds like a good plan. The side benefit would be more frequent coffee breaks for me. Let’s do that.
+
+Reply
+Tuneer Saha says:
+February 26, 2018 at 10:38 am
+
+Dude it seems that you understand and know how to read the crash dump files how about if I send you some crash dump files and it would be very helpful if you can interpret them for me
+
+Reply
+brucedawson says:
+February 26, 2018 at 1:39 pm
+
+Sorry, I’m afraid I can’t help. I recommend sharing out the crash dumps and then posting a question to stack overflow. The more precise the question, and the more advance work you do, and the more interesting the problem, the better your odds of getting an answer are.
+
+Reply
+Jeroen Janssen says:
+February 26, 2018 at 11:12 am
+
+Very interesting, could it be that one would hit this issue if you were building and running unittests in parallel at the same time? We have some strange access violations during tests (and I know the load on the build servers has recently increased)
+
+Reply
+brucedawson says:
+February 26, 2018 at 1:41 pm
+
+Yes, that could trigger this bug. But, the only way to be sure is to look at the crash dumps – the signature is quite obvious when you do that.
+
+Reply
+ES says:
+February 26, 2018 at 11:23 am
+
+This is an otherwise-interesting breakdown with a tedious “dur hur women amirite” thrown in for no reason in way that appears to be typical of Google employees these days. I know many women who are better at both swearing and programming than any man in the room. The target audience of this post includes more women than you seem to think.
+
+Reply
+brucedawson says:
+February 26, 2018 at 2:03 pm
+
+It was a weak attempt at humor and it gave an impression that I most certainly did not intend. I regret the comment and I’ve fixed it, and I appreciate those who called me out on it. I work with many brilliant female programmers and I believe in the importance of making software development more welcoming for all.
+
+FWIW, I don’t believe that “dur hur women amirite” is at all typical of Google. Google is more devoted to diversity and the avoidance of implicit bias than any other company I have worked at. My error was *despite* what I have learned at Google, not because of it.
+
+Reply
+Minuous says:
+February 26, 2018 at 11:27 am
+
+Presumably WTF = What The Fuck? That being the case, I don’t understand the rationale for linking this term to https://en.wikipedia.org/wiki/World_Taekwondo .
+
+Reply
+brucedawson says:
+February 26, 2018 at 2:03 pm
+
+Note the mention of the rename in June 2017 in the Wikpedia article.
+
+Reply
+Zach Saw says:
+February 26, 2018 at 2:54 pm
+
+Yeah, hunting down intermittent OS Kernel bug is hard, and time consuming, not to mention the last thing you’d suspect when something fails. I found and root caused a separate OS kernel bug 8 years ago (one that existed since XP) myself (WOW64 bug) and it surely wasn’t fun.
+
+Reply
+KenH says:
+February 26, 2018 at 3:55 pm
+
+Great investigation! Any chance you can pass on the “circular-buffer ETW tracing” tricks?
+
+Reply
+brucedawson says:
+February 26, 2018 at 7:03 pm
+
+Circular buffer ETW tracing is easy enough to configure. Just use UIforETW (https://github.com/google/UIforETW/issues) with its default settings. If you check “Show commands” it will even print the exact commands it is executing so you can reuse them in a batch file.
+
+The information that they gave me was about which particular settings they wanted recorded in order to be able to diagnose this particular problem, and those specifics won’t be relevant to other issues.
+
+Reply
+Andrei says:
+February 27, 2018 at 1:44 am
+
+Hello Bruce,
+
+I just stumbled across your blog, mainly because of my interest in WPA/xperf as well as build system optimizations. I was very surprised when you said you can rebuild Chrome from scratch in less than 200 seconds, this is quite a remarkable achievement. I was wondering if you already have some post on how is the build structured, or can you give me some pointers on what I could do inside my company’s build system to improve the build speed. Currently we are using TFS, and yes, we have some powerfull machines.
+
+Reply
+brucedawson says:
+February 27, 2018 at 8:26 am
+
+200 s is rare, but 5-10 minutes is more common. We have very powerful machines but we also have a distributed build system – goma. The client was recently open sourced. If the results are all cached and if I turn off full symbols then occasionally I’ll get build times around 200 seconds.
+
+Note that clang-cl seems to work better for distributed builds than VC++ as it is more careful about the size of the debug information it emits.
+
+Reply
+hekoone says:
+February 27, 2018 at 4:37 am
+
+This is not simple bug hunting, it’s literally *ghost busting*, man! ‘Cause you’ve actually seen an etheric phatom exe in action, disrupting your build toolchain 
+
+Reply
+Gogi says:
+February 27, 2018 at 8:26 am
+
+First I would say “never create big programs”. Chrome is ENORMOUSLY big and sure 50% of its code is rubbish not needed in 21-th century. Or browser is overloaded with functions nobody needs.
+Second, you made great work finding that stupid bug. Definitely MS should PAY for sh*t like this! Nobody cares it’s memory mapped file or just disk file – once it’s “closed” it MUST be properly written to the disk. Surprised that nobody met this bug before – sure not only Chrome suffer from the lost bytes!
+MS must die. Not discussible. 
+
+Reply
+brucedawson says:
+February 27, 2018 at 9:46 am
+
+If you think that 50% of Chrome’s code is rubbish then feel free to file a bug at crbug.com with more details. Or, contribute a fix to remove some of the bloat: http://dev.chromium.org/developers/contributing-code
+
+Microsoft agrees that this is a bug, and they will be fixing it. They would have fixed it much earlier except that its incredible rarity meant that few people encountered it so they didn’t know that it existed until a few weeks ago.
+
+Reply
+ChadF says:
+February 27, 2018 at 3:30 pm
+
+How is it that the line/paragraph “It turned out that this fix did work around an incremental linking bug, but it was not the bug we were looking for.” was not follow/ended with: *Jedi hand wave*
+
+Reply
+brucedawson says:
+February 27, 2018 at 8:35 pm
+
+“The bug you just fixed is not the bug you are looking for”
+
+Reply
+Severin Pappadeux says:
+February 27, 2018 at 3:50 pm
+
+It is a bit unclear – is it only PE/DLL related bug? Could I trigger it by just writing some random pieces into memory-mapped file, closing it and then just copying it to other drive/ramdisk/… ?
+
+Reply
+Zachary Turner says:
+February 27, 2018 at 4:25 pm
+
+It’s specific to PE files.
+
+Reply
+ChadF says:
+February 27, 2018 at 3:58 pm
+
+An example of just how poor Window’s memory management is? I would expect an OS to use the in-memory buffer that is tied to a file page (whether it has been flushed to disk or not). Isn’t that suppose to be the benefit of using mapped files.. that anything referencing the same file pages automatically share the same physical RAM copy with no overhead except VM mappings.
+
+This might help explain why compiling the same code on Windows compared to a unix box is so slooooow. Something which literally takes 30 seconds to build on FreeBSD takes around 5 minutes on Windows (using either MSVC or MinGW/gcc).
+
+Reply
+brucedawson says:
+February 27, 2018 at 8:33 pm
+
+> An example of just how poor Window’s memory management is?
+
+No, an example of how a subtle and rare bug in a complex system can escape notice for a long time. Your expectation about in-memory buffers being tied to file pages is correct, but in this one edge case it was violated.
+
+This has no relation to performance differences between the operating systems.
+
+Reply
+Russell Standish says:
+March 2, 2018 at 8:23 pm
+
+I’d noticed this too, when I worked at a large R&D company that used Windows as its dev platform. I initially blamed NTFS for the performance difference, but someone cluier than me about Windows system calls demonstrated that most of the difference came from the posix emulation layer (in this case Cygwin). When comparing direct Windows I/o calls with Linux I/O on the same hardware, the difference resolved to NTFS being only about a factor of 2 slower that Linux (ext4 IIRC).
+
+Reply
+WGH (@WGH) says:
+February 27, 2018 at 4:06 pm
+
+I’ve also encountered some really weird possibly kernel bugs on Windows.
+
+I have a very large 7z archive, maybe around 80 gigabytes (which contains a backup of my laptop). For some reason, when unpacking or just testing it, there’s a big chance that it will fail. I only managed to extract it correctly on like 20th attempt. File position where error happens seems to be random. However, if it happened closer to beginning of the file, it would likely happen at the exact same position again (probably because corrupted data gets stuck in the page cache).
+
+I even wrote a script that sends the archive via network to my laptop, where it receives it and verifies on the fly. The same problem persisted. So it looked like some HDD hardware problem.
+
+Unsurprisingly, I encountered this bug at the worst possible time: when my laptop SSD failed and I actually NEEDED that backup. Needless to say, my emotions were intense. (later on, I managed to extract data from the failed SSD by plugging it into external SATA-USB adapter, where it miraculously worked fine, even though when I plugged it inside my friend’s laptop, it also showed the same failure mode as it did on my laptop, meaning it somehow failed in a way that it only refused to work with Intel SATA controller or something, wtf)
+
+Few months later, I decided to test another scenario. I booted the same Windows computer from an Ubuntu flash stick and tested the archive there. Even though NTFS filesystem was mounted with FUSE-based ntfs-3g (as opposed to native Windows NTFS driver), the problem went away! I rechecked the archive several times in a row, and it was always successful. wtf.
+
+Reply
+Yoni says:
+February 28, 2018 at 1:03 am
+
+Is there any info on the kernel bug itself (what the kernel does wrong which can cause flush failures)? Does this bug have any security implications?
+
+Reply
+brucedawson says:
+February 28, 2018 at 7:53 am
+
+I don’t know anything more about the internals of the bug.
+
+I don’t believe there are any security implications. I suppose an attacker might figure out a sequence of operations which triggered the bug more reliably but that would mean that they already had arbitrary code execution. Therefore the only thing that they could want would be privilege escalation and I can’t see a way to do that.
+
+Reply
+Xxyz says:
+February 28, 2018 at 6:49 pm
+
+Note that before ASLR, loading a PE file was actually a memory mapping (section) with an extra option flag telling the memory manager it to expand the empty space between file sections, set memory access bits (rwx) and apply copy-on-write base relocations if the preferred load address in the file header conflicted with already allocated memory in the process. With ASLR, files never load at the preferred address, but a boot-time-random offset from it. This may involve a special copy-on-write variation which still shares the modified pages before activating per process copy-on-write for data pages (initialized variables). This in turn would involve the memory / cache manager setting up cache pages with the ASLR relocated content. Hypothetically, if that code is optimized for the bootup case of loading the PE file from disk, while being shoehorned into code that used to share it with the regular file cache pages. Then it might accidentally issue disk reads that sometimes happen before the disk writes for the brand new PE file being copied from cache to disk. This may be exacerbated by having a NUMA system with two clusters of 12 cores+RAM, since many NUMA optimizations were implemented in the same timeframe as ASLR, possibly resulting in uncoordinated patches / pull requests that were designed based on the same old code behavior. That same kernel release was bundled with update installation pessimizations that happen to increase the time between updates to program files and their first execution.
+
+A completely different theory is that this is a much older bug seen during programmaric (no .inf) kernel driver installs as far back as W2K or NT 4.0, where the freshly unpacked PE file would read back as all 0 once in a blue moon, resulting in instant crash with a file loading error code (somehow the release (Free) kernel thought failure to load should assert instead of just returning failure).
+
+Reply
+brucedawson says:
+February 28, 2018 at 8:16 pm
+
+Thanks for sharing this information and ideas.
+
+Reply
+Max says:
+March 6, 2018 at 12:40 am
+
+Very interesting indeed.
+Just wondering whether any such exception might be reproducible with the following sequence:
+– Peek some bundled windows binary exe (calculator, notepad, etc..)
+– In a temporary folder create a file mapping with a random name and copy the contents of the source file into this new file.
+– Run the new binary (CreateProcess, ShellExecute, whatever..), probably better to choose some “instant ready for hard work” source exe
+– Wait for a couple of seconds (10 seconds..) and kill the process if everything is ok (“not ok” probably some detection of an exception in the child process) .
+– Repeat the actions above until “not ok”
+
+Reply
+brucedawson says:
+March 6, 2018 at 10:50 pm
+
+I tried that and was not able to reproduce the bug. The missing component (in addition to using a memory mapped file to write a .exe that is then executed) was sufficiently high load on the system – whatever that means. A trivial repro is probably possible, but I’m not going to create it.
+
+Reply
+Some Engineer says:
+March 7, 2018 at 9:12 pm
+
+On iOS, every page is signed and validated on demand, which helped catching quite a few similar bugs, or issues in experimental hardware.
+
+Reply
+brucedawson says:
+March 8, 2018 at 12:07 am
+
+Presumably that applies to read-only pages only, correct?
+
+I’m not sure that would have caught this bug because an entire page was coming in from the wrong place (from the zero-page list instead of from the file or a cached copy of it), so the signature would probably have matched.
+
+It would be great if Microsoft explained why a flush call was even needed – that still seems odd to me – but I think we will never know.
+
+Reply
+Leave a comment
+
+This site uses Akismet to reduce spam. Learn how your comment data is processed.
+
+ 
+Recent Posts
+Reflections on My Tech Career – Part 2
+Reflections on My Tech Career – Part 1
+Finding a VS Code Memory Leak
+Acronis True Image Costs Performance When Not Used
+Google Maps Doesn’t Know How Street Addresses Work
+Categories
+AltDevBlogADay
+Bugs
+Chromium
+Code analysis
+Code Reliability
+Commuting
+Computers and Internet
+Debugging
+Documentation
+Drinks
+Environment
+Floating Point
+Fractals
+Fun
+Gaming
+Investigative Reporting
+Linux
+Math
+memory
+metric
+Performance
+Programming
+Quadratic
+Rants
+Security
+Symbols
+Travel
+uiforetw
+Uncategorized
+Unicycling
+Visual Studio
+WLPG
+Xbox 360
+xperf
+Meta
+Create account
+Log in
+Entries feed
+Comments feed
+WordPress.com
+Random ASCII – tech blog of Bruce Dawson
+Blog at WordPress.com.
+Comment
+ 
+Reblog
+ 
+Subscribe
+
+IMAGES
+https://randomascii.wordpress.com/wp-content/uploads/2011/07/blog-header-from-p2090787.jpg
+https://randomascii.wordpress.com/wp-content/uploads/2018/02/image_thumb9.png?w=185&h=315
+https://randomascii.wordpress.com/wp-content/uploads/2018/02/image_thumb10.png?w=299&h=276
+https://randomascii.wordpress.com/wp-content/uploads/2018/02/image11.png?w=591&h=433
+https://0.gravatar.com/avatar/3a42ddfd2e617c6fa03c80889690163b8b57f6d253bfbc73cfa04a110c13f970?s=60&d=identicon&r=G
+https://2.gravatar.com/avatar/2bc570dfc8447403108fcb6e99ffc8c1b835fb72eeef67083df5ef99ad363eea?s=40&d=identicon&r=G
+https://0.gravatar.com/avatar/3a42ddfd2e617c6fa03c80889690163b8b57f6d253bfbc73cfa04a110c13f970?s=40&d=identicon&r=G
+https://2.gravatar.com/avatar/20366a8b39012dcae5236b092e76f5518125ae6f2081a606441ca79976e17cd8?s=40&d=identicon&r=G
+https://0.gravatar.com/avatar/6345fa3cf03c51e72f9e92d55a45905d2d335dfbb725d08c0c0eab4608ecd817?s=40&d=identicon&r=G
+https://1.gravatar.com/avatar/494bce2f957fee4b1efe14ce4146614b9ad9a5b853a9cb4fd7b71ef1ff8beae1?s=40&d=identicon&r=G
+https://2.gravatar.com/avatar/502a4dd5dc2533cb144596634445881f42973b446a289dffdd7d64c5fb2a6c84?s=40&d=identicon&r=G
+https://2.gravatar.com/avatar/bf9c3ccc8d8097bd89d6ea76cdb2c3bb099b6fdb1fc5a2262910f36ae8400b56?s=40&d=identicon&r=G
+https://2.gravatar.com/avatar/2348b62cef2d2d96a9a90700e8f59d2284d35c636c7dfe0e2291b153d747566c?s=40&d=identicon&r=G
+https://i0.wp.com/lh3.googleusercontent.com/-sTKaR6xAoGQ/AAAAAAAAAAI/AAAAAAAACVk/00tmhGX4XPY/photo.jpg?resize=40%2C40&ssl=1
+https://0.gravatar.com/avatar/f48c4480eedebf7fb02d12cf927fd0626de7788b1f8db9d0bdba8cc01d648547?s=40&d=identicon&r=G
+https://0.gravatar.com/avatar/c155dd3e5ac133267c7c585850f5568dd96cdf385e792e2e163d83672621c2b0?s=40&d=identicon&r=G
+https://2.gravatar.com/avatar/bfcd778902147cfc03dfe853a3af9819047e92c76c31e43cb8e9958ceac9ccad?s=40&d=identicon&r=G
+https://0.gravatar.com/avatar/08027e73d8f3f1d9e65570d2026c921b5266ffb92ad12f7e0ebe679e4e14f329?s=40&d=identicon&r=G
+https://2.gravatar.com/avatar/b3f4231df4953efabac02dc8ad0c9c82eaa674126fa2a030cc781dbb950ddf1e?s=40&d=identicon&r=G
+https://2.gravatar.com/avatar/845e71d13c0214c4f8cfc4766a7bbcd9abb6fe8b200ddff31fdabf2d77f30af4?s=40&d=identicon&r=G
+https://s0.wp.com/wp-content/mu-plugins/wpcom-smileys/twemoji/2/svg/1f642.svg
+https://0.gravatar.com/avatar/6647e7330722b204230b837fc5407652971ce9e7b675ab4395502bb0bb0872d1?s=40&d=identicon&r=G
+https://0.gravatar.com/avatar/f054ce4e2e4fe8810322d414b88517af05a846599aab8372975eb0cfadd10c11?s=40&d=identicon&r=G
+https://1.gravatar.com/avatar/d534c830144177d3d5ead3c6d85e31aad0e797aa081ce8b4dd4ac3d9a0071ce9?s=40&d=identicon&r=G
+https://i0.wp.com/lh6.googleusercontent.com/-f9XRS59fO4Q/AAAAAAAAAAI/AAAAAAAABPg/5o-ytFRkg9c/photo.jpg?resize=40%2C40&ssl=1
+https://2.gravatar.com/avatar/2bd61cfa3ba237b123299937fc8302fdcf089edbf712025a7508431912ab2657?s=40&d=identicon&r=G
+https://0.gravatar.com/avatar/0461b74133ce19ae367dd642bf529ec5fa669a5cb28fb678e02777d3ec69a16a?s=40&d=identicon&r=G
+https://2.gravatar.com/avatar/b51e548e56db3fe4720c018d917ffe2978259e5f26ca8559c0129e4a3a0d8b21?s=40&d=identicon&r=G
+https://1.gravatar.com/avatar/714cb41415d81310453963cb1b2a5b3ecd43779a36825713eb4aee8ace6e653f?s=40&d=identicon&r=G
+https://2.gravatar.com/avatar/e935f021001c9db92871e607149882a235819e690dd449503248bdbfb8298105?s=40&d=identicon&r=G
+https://1.gravatar.com/avatar/7d4fb75f00b11b0ff5ee9464871ddfdf02ac99e551f69ae6d3fc2dc6d79cac7e?s=40&d=identicon&r=G
+https://s0.wp.com/wp-content/mu-plugins/wpcom-smileys/twemoji/2/svg/1f600.svg
+https://1.gravatar.com/avatar/7c8858297306270fe932059f721de484d85e6c685ca16bd4a9cb934f21f85d6f?s=40&d=identicon&r=G
+https://2.gravatar.com/avatar/5a6e805be7855f6fb3200f7442644890d6d3ac4f0284eed99a1a2af6d5f14562?s=40&d=identicon&r=G
+https://1.gravatar.com/avatar/a94723267e089fee7cc72046913d5c22a553f342b7029e34ffc1a16862a39cd9?s=40&d=identicon&r=G
+https://1.gravatar.com/avatar/456b1c2c3b541623b2c5ca95237469f37123142b1de9e6d586af3841dd3608ed?s=40&d=identicon&r=G
+https://i0.wp.com/abs.twimg.com/sticky/default_profile_images/default_profile_normal.png?resize=40%2C40&ssl=1
+https://0.gravatar.com/avatar/6e4a4570e475eb0d8553473604b8489c2e213117c7913f1d0b48e4e5adad8dc2?s=40&d=identicon&r=G
+https://0.gravatar.com/avatar/61fd96bf740e18394a826007b4445fda163b6d10a8bb8f15097b6c7903009c07?s=40&d=identicon&r=G
+https://1.gravatar.com/avatar/19dc6ce5b5293b198a178913846ba5c56ff20622ecf7dbb29da4cf9991c50fe3?s=40&d=identicon&r=G
+https://0.gravatar.com/avatar/90c9620dbf70f10f3b8e35e6be23f34154862d6ca2667c40dc4f63804300f2c2?s=40&d=identicon&r=G
+https://randomascii.wordpress.com/wp-content/uploads/2017/07/cropped-uiforetwicon2.png?w=50
+https://pixel.wp.com/g.gif?blog=18565082&v=wpcom&tz=-7&user_id=0&post=2747&subd=randomascii&host=randomascii.wordpress.com&ref=&rand=0.09455493679461291

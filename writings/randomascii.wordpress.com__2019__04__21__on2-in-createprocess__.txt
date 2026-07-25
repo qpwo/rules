@@ -1,0 +1,349 @@
+Random ASCII – tech blog of Bruce Dawson
+Forecast for randomascii: programming, tech topics, with a chance of unicycling
+Skip to content
+Home
+About
+← Exercises in Emulation: Xbox 360’s FMA Instruction
+Taskbar Latency and Kernel Calls →
+O(n^2) in CreateProcess
+Posted on April 21, 2019 by brucedawson
+
+So many possible introductions to this one:
+
+Windows 7: Sheesh, I sure am slow at creating processes
+Windows 10: Hold my beer…
+
+Or how about:
+
+A) How long does CreateProcess take on Windows?
+B) How long would you like it to take?
+A) You mean you can make it as fast as I want?
+B) No, I can make it as *slow* as you want
+
+O(n^2) algorithms that should be linear are the best.
+
+Note that, despite breathless and click-baity claims to the contrary, the performance of Chrome and Chromium was never affected by this bug. Only Chromium’s tests were affected, and that slowdown has been 100% mitigated.
+
+CFG ended up being a big part of this issue, and eight months earlier I had hit a completely unrelated CFG problem, written up here.
+
+I often find odd performance issues all on my own, but sometimes they are given to me. So it was when I returned from vacation to find that I’d been CCed on an interesting looking bug. Vivaldi had reported “Unit test performance much worse on Win10 than Win7”. unit_tests were taking 618 seconds on Win10, but just 125 seconds on Win7.
+
+Update, April 23, 2019: Microsoft received the initial “anomaly” report on the 15th, the repro steps on the 21st, and announced a fix today. Quick work! The fix is in 1903 (back ported) and in 2004. I don’t know what other Windows 10 versions received the fix.
+
+By the time I looked at the bug it was suspected that CreateProcess running slowly was the problem. My first guess was that the problem was UserCrit lock contention caused by creating and destroying default GDI objects. Windows 10 made these operations far more expensive, I’d already written four blog posts about the issues that this causes, and it fit the symptoms adequately well.
+
+But! I don’t get paid to guess at the causes of problems, so I built Chromium’s unit_tests.exe, profiled it myself, and quickly found that my initial theory was completely wrong.
+
+unit_tests.exe runs about 10,900 tests. It creates child-process instances of itself to run them, with each child process running ten tests. That means it needs to create about 1,090 child processes. The child-process creation is multi-threaded, but serialized by a lock in order to control handle inheritance. I verified by looking at CPU Usage (Precise) data in an ETW trace that the main process was spending huge amounts of time waiting on its lock around the CreateProcess calls.
+
+The easiest explanation for why there was so much contention for the lock around CreateProcess would be that CreateProcess was running slowly, and indeed it was taking about 320 ms to execute. The CPU Usage (Sampled) data showed exactly that. It showed that 99% of the CPU time in the main unit_tests process was inside of CreateProcess, and 98.4% of the samples were in a single function. To be clear, that 98.4% of samples was not in a function and its children – those samples were all in the same function. It was the hottest hot-spot you can possibly get. The function was called ntoskrnl!MiCopyToCfgBitMap, and here is some CPU sampling data from a worst-case scenario – notice that in this case more than 99.5% of samples are in the one function:
+
+MiCopyToCfgBitmap is clearly related to CFG, also known as Control Flow Guard. CFG is also something I’ve tangled with before. Oddly slow virtual memory scanning of endlessly leaking CFG memory was causing gmail hangs for a while until we added a mitigation in Chrome’s JavaScript engine.
+
+CFG is a security feature that uses a bitmap to track which indirect branch targets are valid and MiCopyToCfgBitMap was clearly initializing that bitmap. unit_tests.exe is a 122 MB executable and it has about 180,000 valid indirect branch targets but… computers are really fast. The CFG bitmap for unit_tests.exe is only about 1.5 MB and it’s hard to understand why it would take about 780 million clock cycles to initialize such a small amount of data.
+
+Step 1, mitigate
+
+Since CFG is a security feature we want to leave it enabled for all of the executables that we ship. But we don’t actually need it for our tests. So, I landed a change that turns off CFG for our test binaries, and suddenly unit_tests.exe was running about five times faster, with CreateProcess itself now running about 20 times faster (Vivaldi measured CreateProcess as 200 times faster after the mitigation!). Our other large test binaries also run a bit faster, but I didn’t spend much time measuring their improvements.
+
+Step 2, investigate
+
+My work here was done but I am a very curious bear and I wanted to better understand what was going on. I wanted to find out whether the problem was specific to Chromium (perhaps caused by our use of clang-cl or lld-link) and I wanted to try to understand why CFG was causing such a slowdown.
+
+My best theory for why MiCopyToCfgBitMap was so slow was that it was using an O(n^2) algorithm. That would explain why this performance issue had gone unnoticed by Microsoft, and it would explain why initializing such a small amount of data was taking so long. Ever since I wrote a “sooper-fast (TM)” version of std::vector (before std::vector existed) and found that it had abysmal performance due to my use of a linear growth strategy I have had a deep respect for the ability of O(n^2) algorithms to make fast computers run slowly.
+
+In one trace that I grabbed I found that more than 95% of the samples in my test process were in just seventeen instructions in MiCopyToCfgBitMap, which is tough to do without an n^2 algorithm:
+
+My first attempt at investigating was to grab the sample counts and addresses from the ETW trace, grab the disassembly of MiCopyToCfgBitMap from livekd, write a script to merge them, and then analyze the annotated disassembly. This gave a nice visualization of a small number of instructions accounting for the vast majority of the CPU time (the lea/bt/jae trio account for 23% of CPU time in the process):
+
+0: kd> uf nt!MiCopyToCfgBitmap
+nt!MiCopyToCfgBitMap:
+...
+nt!MiCopyToCfgBitMap+0x3ce:
+  205 fffff802`60ca812e  movzx   eax,byte ptr [r8]
+  407 fffff802`60ca8132  inc     r8
+ 1771 fffff802`60ca8135  dec     r9
+    1 fffff802`60ca8138  mov     ecx,eax
+  212 fffff802`60ca813a  mov     edx,eax
+   84 fffff802`60ca813c  shr     edx,6
+ 3657 fffff802`60ca813f  and     ecx,3Fh
+   13 fffff802`60ca8142  mov     eax,dword ptr [rdi+rdx*4]
+ 4092 fffff802`60ca8145  imul    eax,ecx
+ 6111 fffff802`60ca8148  add     r10d,eax
+ 2163 fffff802`60ca814b  cmp     edx,3
+      fffff802`60ca814e  jne     fffff802`60ca8125
+...
+nt!MiCopyToCfgBitMap+0x42d:
+   22 fffff802`60ca818d  lea     edx,[rcx+r10]
+ 2104 fffff802`60ca8191  bt      qword ptr [r9],rdx
+10784 fffff802`60ca8195  jae     fffff802`60ca81ab
+...
+nt!MiCopyToCfgBitMap+0x437:
+   43 fffff802`60ca8197  mov     rdx,qword ptr [r14+30h]
+ 1988 fffff802`60ca819b  test    rdx,rdx
+      fffff802`60ca819e  je      fffff802`60e47737
+...
+nt!MiCopyToCfgBitMap+0x44b:
+   89 fffff802`60ca81ab  inc     ecx
+ 1973 fffff802`60ca81ad  cmp     ecx,r8d
+      fffff802`60ca81b0  jb      fffff802`60ca818d
+...
+
+But the function was too large to be easily reverse engineered, so I moved on to another tactic. I wrote a Python script that generated classes with virtual functions. Each virtual function is necessarily an indirect branch target so this lets me create binaries with arbitrarily large numbers of CFG entries. I eventually settled on generating 16 source files, each with 50 classes, each with 0 to 1,600 virtual functions. That gave me the following CFG entry counts:
+
+45 – miscellaneous overhead
+800 – one per class, probably related to how destructors are called
+0 to 1,280,000 – one per virtual function
+
+I then compiled seventeen different variants (using /MP for parallel compilation), using this command to verify how many CFG entries I was getting:
+
+dumpbin gen0.exe /loadconfig | find “function count”
+
+Finally I measured CreateProcess time of each version with a simple test harness. That gave me this beautiful graph:
+
+That n^2 graph is so perfect that I’d be suspicious if I hadn’t measured it myself. Plotting the same data as CFG count against sqrt(CreateProcessTime) gives a perfectly straight line (with a tiny kink at the beginning for the fixed cost of actually creating a process):
+
+I don’t know what MiCopyToCfgBitMap is doing but it clearly has two nested loops, and can’t efficiently handle large executables.
+
+The input to this function is, roughly speaking, a sorted array of function pointers. The output of the function is a bitmap, one byte for every 64-bytes of code. This is instrinsically a linear algorithm, which is why it being O(n^2) was so surprising.
+
+Just one more thing…
+
+After creating the necessary gn file (build script) changes to turn off CFG for the test binaries I did one last test, to verify that my fix worked, and to revel in the joy of watching the tests run so much more smoothly.
+
+My revelry was cut short when several of the tests repeatedly timed out and my test run showed no signs of completing at all. It made no sense. I had done a clean run with my fix just a few minutes before, I’d made no code changes, and now I was seeing a new and different form of pathological test performance. WTF!
+
+I grabbed another ETW trace and quickly found that some of the tests were spending 60+ seconds calculating the size of a directory. The current directory. Previously I had run the tests from the output directory, and this scan would take about 4 seconds – fast enough that I didn’t notice it. For some reason on the last test run I had run the test from the Chromium source directory and that directory takes much longer to fully scan.
+
+With that realization I was able to get the clean test run that I wanted (I went back to running from the output directory) and I then filed a bug for the tests with the bogus directory scanning. They are supposed to be testing the behavior of the AppInfoSummaryPanel, this panel includes a display of the size of the app, and the test never specified what directory should be scanned. This bug costs a few seconds every time unit_tests is run, and occasionally costs a lot more, but it should be easy to fix.
+
+Summary and references
+
+Sometimes the most important piece of information is just the knowledge that a piece of code runs faster in one environment than the other, or some other clue that improvement is possible. As soon as Vivaldi pointed out that unit_tests.exe ran slower on Windows 10 than on Windows 7 a solution was inevitable.
+
+Microsoft has been notified and I assume that they will investigate, and fix the issue if possible. There is no sign that this affects Chrome itself because only large .exe files are affected and chrome.exe is actually quite small (the code is mostly in chrome.dll which is unaffected by this bug).
+
+Bug: Unit test performance much worse on Win10 than Win7
+Bug: AppInfoDialogViewsTest tests take a minute to run from the src directory
+24-core CPU and I can’t move my mouse – first UserCrit issue found
+A Not-Called Function Can Cause a 5X Slowdown – second UserCrit issue found
+24-core CPU and I can’t type an email (part one) – CFG, WMI, v8, and service workers
+Test code to demonstrate CreateProcess O(n^2) performance
+Vivaldi’s blog post
+Commute challenge 2018, because who doesn’t like watching me crash a hand cycle
+
+This post is sort of a continuation of an ongoing series about making Windows slower.
+
+Making Windows Slower Part 0: Making VirtualAlloc arbitrarily slower – O(n^2)
+Making Windows Slower Part 1:  Making file access slower
+Making Windows Slower Part 2: Process Creation – O(n^2)
+Making Windows Slower part 3: Process creation again, O(n^2) again, this post
+
+CFG was designed to allow efficient checking of the validity of indirect branch target addresses. However it shipped with three significant inefficiencies in other areas, and the second one is still not fixed:
+
+Scanning over CFG memory with VirtualQuery ran orders of magnitude too slow (fixed)
+CFG bitmap memory is never freed, leading to essentially unbounded (maximum 2 TB!) memory leaks in applications that repeatedly allocate/free code at random addresses (same blog post as the previous issue, not fixed when I last checked)
+CFG bitmap initialization is slow (this bug, fixed)
+
+Link backs:
+
+Reddit discussion is here
+Hacker news discussion is here
+Main twitter announcement is here
+Fix timeline is here with a Microsoft developer giving a fix status update here, and later gave an update saying that a fix is on track to be serviced with 6D (~end of June, 2019).
+ProPublica signal boost – ’cause filing taxes should be both simple and free
+Share this:
+ Email Reddit X
+Loading...
+Related
+
+24-core CPU and I can’t type an email (part two)
+August 22, 2018
+In "Investigative Reporting"
+
+24-core CPU and I can’t type an email (part one)
+August 16, 2018
+In "Investigative Reporting"
+
+ETW Central
+September 24, 2015
+In "uiforetw"
+
+About brucedawson
+I'm a retired programmer, ex-Google/Valve/Microsoft/etc., who was focused on optimization and reliability. Nothing's more fun than making code run 10x as fast. Unless it's eliminating large numbers of bugs. I also unicycle. And play (ice) hockey. And sled hockey. And juggle. And worry about whether this blog should have been called randomutf-8. 2010s in review tells more: https://twitter.com/BruceDawson0xB/status/1212101533015298048
+View all posts by brucedawson →
+This entry was posted in Investigative Reporting, Performance, Quadratic, xperf and tagged cfg. Bookmark the permalink.
+← Exercises in Emulation: Xbox 360’s FMA Instruction
+Taskbar Latency and Kernel Calls →
+14 Responses to O(n^2) in CreateProcess
+Michael says:
+April 22, 2019 at 9:31 pm
+
+I know that this particular codepath is being hit through CreateProcess, but does this not impact LoadLibrary? chrome.exe may be small, but chrome_child.dll is on the heftier side. Naïvely, it seems like CFG bitmap filling should behave similarly for the self-spawns of unit_tests.exe as it would for loads of chrome_child.dll once it’s already been loaded in one process. Unless ASLR doesn’t try to reuse the base address for the primary module in a process, so it’s less likely for there to be shared pages for unit_tests.exe compared to chrome_child.dll? But even then, SetProcessValidCallTargets would seem to complicate things a bit.
+
+Reply
+brucedawson says:
+April 22, 2019 at 9:53 pm
+
+Excellent question. I have been told – and I believe – that loaded DLLs will share a CFG bitmap. So, the CFG penalty might be paid on the first LoadLibrary, but as long as a copy of the DLL is loaded (and maybe for a while after it’s been unloaded) the CFG bitmap is available for sharing. It’s not clear to me why this isn’t implemented for executables – I forgot to ask.
+So, chrome.exe should be fine. And, as an extra layer of protection, we don’t actually build chrome_child.dll with CFG enabled (I’m not sure why).
+
+dumpbin chrome_child.dll /loadconfig | find /i “function count”
+0 Guard CF function count
+
+Reply
+Zhentar says:
+April 23, 2019 at 2:03 pm
+
+I think that the ASLR guess is correct – the exe modules are randomized per launch while shared libraries get randomized per system boot. Although it’s not clear to me why different relocations can’t share CFG bitmaps, since it seems like the bitmaps should be able to be position independent.
+
+Reply
+brucedawson says:
+April 23, 2019 at 7:12 pm
+
+Interesting, but when I run vmmap on four different Chrome renderer processes they all have chrome.exe at the same address – important for sharing relocated code bytes.
+
+Curiously they all have shell32.dll at different addresses. I’m not sure how that works.
+
+Reply
+Volodymyr Korniichuk says:
+April 23, 2019 at 2:09 am
+
+“Since CFG is a security feature we want to leave it enabled for all of the executables that we ship. But we don’t actually need it for our tests.”
+
+I didn’t understand this part. So you decided to run your tests in a pretty different environment (with disabled security) comparing to end-users environment. Tests are useless from now, because something can work in your test environment, but fails (or work much slower) in real environment.
+
+Reply
+brucedawson says:
+April 23, 2019 at 8:18 am
+
+“Useless” is far too strong a statement here, especially given how little use we make of CFG in Chrome itself, and how little (zero?) benefit we have seen from it. Also, disabling CFG does not affect code-generation at all, and doesn’t affect the performance of chrome.exe, so the testing differences are actually quite minuscule.
+
+But, you do have a point – it is important to minimize the differences between testing and production. However, as a practical matter, until Microsoft fixes their CFG initialization the cost/benefit analysis of having CFG enabled for tests is clearly negative.
+
+Reply
+Anthony DeRosa says:
+April 23, 2019 at 1:59 pm
+
+If you throw that MiCopyToCfgBitMap code into Ghidra, the nested loops should pop out pretty clearly in the basic block control flow graph, or better yet, the decompiler view. Download at https://ghidra-sre.org
+
+Reply
+Zhentar says:
+April 23, 2019 at 8:53 pm
+
+While this is true, it doesn’t really get you very far. There are other nested loops in that function that aren’t quadratic (because they don’t scale with the size of any inputs), and there’s a lot of structs not included in the symbol files to wade through to make any sense of what it’s looping over. Nor does it help that Ghidra does not cope well with some of the NT kernel conventions (though it does MiCopyToCfgBitMap well enough, it falls over on some of the callers, should one attempt to trace the types of the parameters)
+
+Reply
+Dilip says:
+April 24, 2019 at 7:29 am
+
+Somehow I never thought of this. I have been wanting to use ghidra *somewhere*. This should be a good test case. I just need to get familiar with it. I am lost looking at all the bewildering options available to reverse engineer something.
+
+Reply
+Chris Guzak says:
+April 23, 2019 at 3:23 pm
+
+I understand this is fixed in internal builds. 21304042 is the bug id.
+
+Reply
+brucedawson says:
+April 23, 2019 at 7:16 pm
+
+That is excellent news! Any details on what went wrong with the original implementation?
+
+Reply
+Zhentar says:
+April 23, 2019 at 8:57 pm
+
+Spoilers!?!?!?!? Does it relate to the part where it checks whether the address of the second field of the 8th parameter is 0 instead of the value?
+
+Reply
+Zupo Llask says:
+April 25, 2019 at 4:21 pm
+
+Can you please inform when the fix is going to be released to the public?
+
+Reply
+brucedawson says:
+April 25, 2019 at 11:18 pm
+
+I don’t have any inside information but Microsoft has said it will be going to insider builds in a few weeks (https://twitter.com/mamyun/status/1120878048620892166) and I would expect that it will ship to stable versions of Windows in 1909. Just guessing
+
+Reply
+Leave a comment
+
+This site uses Akismet to reduce spam. Learn how your comment data is processed.
+
+ 
+Recent Posts
+Reflections on My Tech Career – Part 2
+Reflections on My Tech Career – Part 1
+Finding a VS Code Memory Leak
+Acronis True Image Costs Performance When Not Used
+Google Maps Doesn’t Know How Street Addresses Work
+Categories
+AltDevBlogADay
+Bugs
+Chromium
+Code analysis
+Code Reliability
+Commuting
+Computers and Internet
+Debugging
+Documentation
+Drinks
+Environment
+Floating Point
+Fractals
+Fun
+Gaming
+Investigative Reporting
+Linux
+Math
+memory
+metric
+Performance
+Programming
+Quadratic
+Rants
+Security
+Symbols
+Travel
+uiforetw
+Uncategorized
+Unicycling
+Visual Studio
+WLPG
+Xbox 360
+xperf
+Meta
+Create account
+Log in
+Entries feed
+Comments feed
+WordPress.com
+Random ASCII – tech blog of Bruce Dawson
+Blog at WordPress.com.
+Comment
+ 
+Reblog
+ 
+Subscribe
+
+IMAGES
+https://randomascii.wordpress.com/wp-content/uploads/2011/07/blog-header-from-p2090787.jpg
+https://randomascii.wordpress.com/wp-content/uploads/2019/04/image_thumb.png?w=580&h=608
+https://randomascii.wordpress.com/wp-content/uploads/2019/04/image_thumb-1.png?w=625&h=485
+https://randomascii.wordpress.com/wp-content/uploads/2019/04/image_thumb-2.png?w=631&h=452
+https://randomascii.wordpress.com/wp-content/uploads/2019/04/image_thumb-3.png?w=628&h=293
+https://0.gravatar.com/avatar/3a42ddfd2e617c6fa03c80889690163b8b57f6d253bfbc73cfa04a110c13f970?s=60&d=identicon&r=G
+https://1.gravatar.com/avatar/421a1e7fd02f690b04c88752b7b31dde4d1d830f0df93aa7d63bfe2c44e0eb2e?s=40&d=identicon&r=G
+https://0.gravatar.com/avatar/3a42ddfd2e617c6fa03c80889690163b8b57f6d253bfbc73cfa04a110c13f970?s=40&d=identicon&r=G
+https://1.gravatar.com/avatar/4315c3e7ec56cb00ec6124189caa9c90b0f600036bb8184c31b124bf609a15ca?s=40&d=identicon&r=G
+https://i0.wp.com/lh3.googleusercontent.com/-9u4pNEyNs1I/AAAAAAAAAAI/AAAAAAAAAAA/K-Bgt8QZpS8/photo.jpg?resize=40%2C40&ssl=1
+https://2.gravatar.com/avatar/29b854edb64b8b348024866365508028c62df34cace075110a7c3963891ed09d?s=40&d=identicon&r=G
+https://2.gravatar.com/avatar/b093cc68b53ae657890ef6ae0d493079e00d53de9f6fb58510612fd217f11de1?s=40&d=identicon&r=G
+https://2.gravatar.com/avatar/e7548ff89872c8c0db8141a9050dc756b8f6154cac6b3bf74240421d2c1a8756?s=40&d=identicon&r=G
+https://2.gravatar.com/avatar/262d96344020d1946485cc80d0db1175e77114b1fa073595806dc6897b75c383?s=40&d=identicon&r=G
+https://randomascii.wordpress.com/wp-content/uploads/2017/07/cropped-uiforetwicon2.png?w=50
+https://pixel.wp.com/g.gif?blog=18565082&v=wpcom&tz=-7&user_id=0&post=3162&subd=randomascii&host=randomascii.wordpress.com&ref=&rand=0.13467386602961007

@@ -1,0 +1,1709 @@
+PROBABLY DANCE
+I can program and like games
+Measuring Mutexes, Spinlocks and how Bad the Linux Scheduler Really is
+by Malte Skarupke
+
+This blog post is one of those things that just blew up. From a tiny observation at work about odd behaviors of spinlocks I spent months trying to find good benchmarks, (still not entirely successful) writing my own spinlocks, mutexes and condition variables and even contributing a patch to the Linux kernel. The main thing I’ll try to answer is to give some more informed guidance on the endless discussion of mutex vs spinlock. Besides that I found that most mutex implementations are really good, that most spinlock implementations are pretty bad, and that the Linux scheduler is OK but far from ideal. The most popular replacement, the MuQSS scheduler has other problems instead. (the Windows scheduler is pretty good though)
+
+So this all started like this: I overheard somebody at work complaining about mysterious stalls while porting Rage 2 to Stadia. (edit disclaimer: This blog post got more attention than anticipated, so I decided to clarify that I didn’t work on the Rage 2 port to Stadia. As far as I know that port was no more or less difficult than a port to any other platform. I am only aware of this problem because I was working in the same office as the people who were working on the port. And the issue was easily resolved by using mutexes instead of spinlocks, which will become clear further down in the blog. All I did was further investigation on my own afterwards. edit end) The only thing those mysterious stalls had in common was that they were all using spinlocks. I was curious about that because I happened to be the person who wrote the spinlock we were using. The problem was that there was a thread that spent several milliseconds trying to acquire a spinlock at a time when no other thread was holding the spinlock. Let me repeat that: The spinlock was free to take yet a thread took multiple milliseconds to acquire it. In a video game, where you have to get a picture on the screen every 16 ms or 33 ms (depending on if you’re running at 60hz or 30hz) a stall that takes more than a millisecond is terrible. Especially if you’re literally stalling all threads. (as was happening here) In our case we were able to make the problem go away by replacing spinlocks with mutexes, but that leads to the question: How do you even measure whether a spinlock is better than a mutex, and what makes a good spinlock?
+
+If you search for this you’ll find lots of benchmarks that all come to the conclusion that spinlocks are better. (like this, this or this) What these benchmarks have in common is that they measure code in which there is nothing else to do except fight over the lock. In that environment the only thing that makes sense is to use a spinlock. Because if you go to sleep, all that will happen is that some other thread will wake up that will fight over the same lock.
+
+Is that realistic? It depends on your setup. Usually you’ll want to create one software thread per hardware thread and if you only have exactly that, then there really is no benefit of ever going to sleep. (as long as you make sure to not block the other hyper-thread running on the same core) But in practice it doesn’t work out that cleanly. Maybe a third party library has its own threads that run besides your threads (doing audio processing or physics calculations or who knows what) or maybe you’ll have some work that needs to run “at some point, as long as it doesn’t get in the way” which you’ll schedule to run at low priority “in the gaps” when other threads are blocked. If you don’t have that, and your cores are actually well-used, I would be very impressed. So none of these benchmarks are realistic because, at least in games, there is usually other work that could happen other than spinning until you get the lock.
+
+Even if you are in the situation where there is one software thread per hardware thread and you think you’re doing the right thing by using a spinlock, you might be making future code evolution harder. If in the future you use a library that does its own threading or somebody wants to come along and add a “low priority” thread that can run in the gaps and do some work that doesn’t need to get done immediately, they’ll have to go through and replace your spinlocks with mutexes. (there is probably also a battery-life argument to be made, but I don’t know enough about that)
+
+And finally, none of those benchmarks measure the problem that I ran into: A thread that took a crazy long time to acquire a lock. These benchmarks measure throughput, not latency. (to be fair I also wouldn’t have thought to measure latency until it became a problem)
+
+DEFINING MUTEXES AND SPINLOCKS
+
+But before we move on, I have already gone on for too long without describing the terms. When I say “mutex” I mean a synchronization primitive that will make the thread go to sleep if it’s blocked. Spinlocks do not go to sleep if they don’t acquire the lock, they just try again. There are also “adaptive mutexes” which will try to spin for a while and if they’re not successful, they’ll go to sleep to let other threads run. And finally all of these have “fair” versions which guarantee progress for all threads. Without fairness, if you have two threads, A and B, you could in theory get a situation where A keeps on getting the lock and B is always just a bit too late. This is never a problem with two threads, but the more threads you have, the more likely you are to get those cases where one thread is left out for a very long time.
+
+If you need a mutex in C++, std::mutex is actually really good on all the platforms that I know of. If you need a spinlock, you might be tempted to use std::atomic_flag, which looks like it’s perfectly intended for writing a spinlock (and that’s what my spinlock was using when we encountered the problem that started this investigation) but there is a subtle problem with atomic_flag. I learned about the problem by reading the slides of an AMD presentation at this years Game Developer Conference. On page 46 of those slides we find that you should prefer “test and test-and-set” over just test-and-set. To illustrate what that means, let me first implement a terrible spinlock using std::atomic_flag:
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+	
+struct terrible_spinlock
+{
+    void lock()
+    {
+        while (locked.test_and_set(std::memory_order_acquire))
+        {
+        }
+    }
+    void unlock()
+    {
+        locked.clear(std::memory_order_release);
+    }
+ 
+private:
+    std::atomic_flag locked = ATOMIC_FLAG_INIT;
+};
+
+To lock we call test_and_set which will return the old state. If it was false, nobody else has called test_and_set yet. If it was true, somebody else has already called this and we’ll have to try again. In unlock we just clear the flag again. The memory orderings tell the compiler and the CPU about which re-orderings are allowed. They are very important to avoid memory barriers and to keep the fast path (when the lock is free to take) fast, but they’re a big topic in themselves and will not be explained in this blog post.
+
+So why is this terrible? The first reason is that while we’re spinning like this, we appear to the CPU and to the OS like a very busy thread and we will never be moved out of the way. So if the thread that has the lock is not currently running, we could be blocking it from running, causing it to not give up the lock.
+
+But even if we added a way to indicate that other threads should take priority (like _mm_pause() or std::this_thread::yield()) we have a second problem that has to do with the ownership of cache lines on multi-core processors. To ensure correctness when multiple processors are writing to the same memory, there are protocols for which processor is allowed to write. All current processor use some variant of the MESI protocol, in which you have to force the “invalid” state on all other cores when modifying a cache line. That means that if multiple cores are banging on the spinlock above, they keep on fighting over who gets ownership and keep on invalidating the cache line for others. This leads to lots of coordination work and transferring of memory between the CPU caches, slowing down the whole system. In the AMD slides above they have a benchmark where one thread is doing a bunch of matrix multiplications, and fifteen threads are banging on a spinlock. On a terrible spinlock like this the matrix multiplications became ten times slower, even though they’re not even touching the same cache line. Completely unrelated work slows down.
+
+So here is a spinlock written according to the AMD recommendations:
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+	
+struct spinlock_amd
+{
+    void lock()
+    {
+        for (;;)
+        {
+            bool was_locked = locked.load(std::memory_order_relaxed);
+            if (!was_locked && locked.compare_exchange_weak(was_locked, true, std::memory_order_acquire))
+                break;
+            _mm_pause();
+        }
+    }
+    void unlock()
+    {
+        locked.store(false, std::memory_order_release);
+    }
+ 
+private:
+    std::atomic locked{false};
+};
+
+This fixes both of the issues above. (but we’ll still make one more improvement further down) It solves the first problem by calling _mm_pause() which the CPU uses as a hint that the other hyper-thread running on the same core should run instead of this thread, and it solves the second problem by loading the memory before attempting to make a change to it. In the MESI protocol this means that the cache line can be in the “shared” state on all cores which requires no communication between the CPU cores until the data actually changes.
+
+So now that we have a spinlock that’s not terrible lets try benchmarking this.
+
+MEASURING LATENCY
+
+It’s always difficult to try to reproduce one-off occurrences like the one that started my investigation. Just because we saw a thread taking milliseconds to acquire a spinlock doesn’t mean that the problem was actually with the spinlock. Maybe something else was wrong. How do you even measure rare things like that? First off lets start with the simplest possible thing. On multiple threads run this loop:
+
+1
+2
+3
+4
+5
+6
+7
+8
+	
+for (size_t i = num_loops; i != 0; --i)
+{
+    auto time_before = std::chrono::high_resolution_clock::now();
+    mutex.lock();
+    auto wait_time = std::chrono::high_resolution_clock::now() - time_before;
+    longest_wait = std::max(wait_time, longest_wait);
+    mutex.unlock();
+}
+
+So we take a timestamp before we call lock and a timestamp after we have succeeded in locking the mutex. (or a spinlock. It’s a template) Then we remember the longest time it took. In my benchmark num_loops is 16384 (no particular significance to that number, just something that doesn’t run too fast or too slow) and I repeat the entire test 100 times to get more than one measurement. Then I take the four runs out of the hundred that had the longest waits and print how long the longest wait in that run was. The results are shocking:
+
+Type	Average test duration	Four longest waits
+std::mutex	62 ms	2.9 ms, 2.8 ms, 1.5 ms, 1.4 ms
+terrible_spinlock	825 ms	103.5 ms, 90.6 ms, 77.1 ms, 75.7 ms
+spinlock_amd	68 ms	62.3 ms, 61.5 ms, 60.9 ms, 59.8 ms
+
+These are measurements for running the above test code on sixteen threads on a AMD Ryzen 7 1700. (which has eight cores, sixteen hyperthreads) The “average test duration” is the average time that it took to finish running the above loop in 16384 iterations on all cores. Based on that column we can confirm that using the terrible spinlock really does slow things down by a factor of 10, just like in the benchmark in the AMD presentation.
+
+In the “longest wait” column we see huge wait times for the spinlocks. One of the threads in the spinlock_amd test had to wait for 62.3 ms when the whole test only took 68 ms on average. Meaning most of the other threads probably got to finish their loops entirely before it even got to run once.
+
+There is one improvement we can easily make to the spinlock to help with the really bad latency cases, we can call std::this_thread::yield:
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+	
+struct spinlock
+{
+    void lock()
+    {
+        for (int spin_count = 0; !try_lock(); ++spin_count)
+        {
+            if (spin_count ❬ 16)
+                _mm_pause();
+            else
+            {
+                std::this_thread::yield();
+                spin_count = 0;
+            }
+        }
+    }
+    bool try_lock()
+    {
+        return !locked.load(std::memory_order_relaxed) && !locked.exchange(true, std::memory_order_acquire);
+    }
+    void unlock()
+    {
+        locked.store(false, std::memory_order_release);
+    }
+ 
+private:
+    std::atomic❬bool❭ locked{false};
+};
+
+It’s roughly the same code as before except I replaced compare_exchange with exchange and every once in a while I call std::this_thread::yield(). Why every 16 spins? I tried a lot of different options and this one did well. The difference between _mm_pause() and yield() is that _mm_pause() is a hint for the CPU while yield() is a hint for the OS. In theory I shouldn’t need to hint anything to the OS here since I’m running sixteen software threads on sixteen hardware threads, but in practice it helps a lot. The longest wait gets reduced to 11.4 ms.
+
+One question you may have is that since yield() is a OS call, don’t we lose the benefits of spinlocks? Because if we’re going to call into the OS anyway, why not use a full mutex? The answer is that yield() is actually a very cheap call. On my machine it takes roughly 130 nanoseconds, in both Linux and Windows. (that is of course if nothing else needs to run. If something else needs to run then we’ll have to wait longer to come back) We can afford to lose 130 nanoseconds every once in a while to keep the simplicity of a spinlock.
+
+In any case all of these are terrible results. The best thing we’ve seen so far, std::mutex, can still take 3ms to acquire the lock. I think it’s about time that we give these “fair” mutexes a look.
+
+The simplest fair exclusion mechanism to write is a ticket spinlock. The idea is that when you enter lock() you take a ticket and you wait for your number to be called. To implement that you just need to increment numbers, so the implementation is pretty simple:
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+	
+struct ticket_spinlock
+{
+    void lock()
+    {
+        unsigned my = in.fetch_add(1, std::memory_order_relaxed);
+        for (int spin_count = 0; out.load(std::memory_order_acquire) != my; ++spin_count)
+        {
+            if (spin_count ❬ 16)
+                _mm_pause();
+            else
+            {
+                std::this_thread::yield();
+                spin_count = 0;
+            }
+        }
+    }
+    void unlock()
+    {
+        out.store(out.load(std::memory_order_relaxed) + 1, std::memory_order_release);
+    }
+ 
+private:
+    std::atomic❬unsigned❭ in{0};
+    std::atomic❬unsigned❭ out{0};
+};
+
+When we enter we increment the “in” variable and then spin until the “out” variable has the same value. It looks more complicated than it is because of all the memory orderings and the spin count logic. Btw everyone gets the memory orderings on the unlock wrong. The load can be relaxed, and the increment does not have to be an atomic increment, but the store has to be a release. If you use an atomic fetch_add() here, the fast path (when the lock is free to take) will be twice as slow. Does the ticket_spinlock help? Here is the full table with all entries:
+
+Type	Average test duration	Four longest waits
+std::mutex	62 ms	2.9 ms, 2.8 ms, 1.5 ms, 1.4 ms
+terrible_spinlock	825 ms	103.5 ms, 90.6 ms, 77.1 ms, 75.7 ms
+spinlock_amd	68 ms	62.3 ms, 61.5 ms, 60.9 ms, 59.8 ms
+spinlock	69 ms	11.4 ms, 10.8 ms, 10.4 ms, 9.9 ms
+ticket_spinlock	93 ms	1.5 ms, 1.5 ms, 1.49 ms, 1.48 ms
+
+The ticket spinlock is worse on throughput, taking almost 50% longer to finish the test, but the wait time is pretty consistent. Where does that 1.5ms come from? I think it’s related to how long a scheduler time slice is on Linux, because it makes sense that the biggest outlier would be the time that it takes to get scheduled again. (remember these are outliers, the average wait is much shorter) We’ll see below that Windows does much better, because with the ticket_spinlock, when it’s your time to get the lock, there is no way that it takes 1.5 ms for all the other threads to go through that tiny critical section, so we are mostly measuring scheduler overhead here.
+
+Oh and if you want a fair mutex algorithm, (as opposed to a fair spinlock) they get much more complicated. You might be tempted to turn the ticket_spinlock into a ticket_mutex by using a futex, and this does work (it’s shown in this talk) but it’s not ideal since you have no way of waking up the right sleeper. So every time that you increment you have to wake all sleepers and all but one will immediately go back to sleep. So a good fair mutex will usually involve some kind of linked list built on the stack of the sleeping threads, but that is hard to do, especially since you don’t want to be 100% fair because that really slows you down. (it’s called a Lock Convoy) It’s too much for this blog post to cover.
+
+MEASURING IDLE TIME
+
+You may have noticed that I’m not actually measuring the exact situation that we had at work. I said that a spinlock was free to take but it still took several milliseconds to be acquired. That’s not what I’m measuring above. When I have a large delay of acquiring the spinlock in the above, that is probably because some other thread keeps on winning and keeps on making progress. So depending on how you spread the work between the threads, this might not be a problem.
+
+So how would we measure the situation I had at work? What I really want to measure is if nobody has the lock and somebody wants to take the lock, and it’s not being taken. It’s a bit harder to measure, but here is an attempt:
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+	
+for (size_t i = num_loops; i != 0; --i)
+{
+    mutex.lock();
+    auto wait_time = std::chrono::high_resolution_clock::now() - time_before;
+    if (first)
+        first = false;
+    else if (wait_time ❭ longest_idle)
+        longest_idle = wait_time;
+    time_before = std::chrono::high_resolution_clock::now();
+    mutex.unlock();
+}
+
+So I switched the order around. Instead of saving the timestamp before taking the lock, I save the timestamp just before releasing the lock. Then the next thread entering can measure how much time has passed since the last thread gave up the lock. The check for “if (first)” is necessary because in the first iteration of the loop the time wouldn’t have been set yet. Somebody has to give up the lock once for me to get a useful measurement. If there are long times where the lock is not being held even though a thread wants to take it, this would detect that.
+
+Before showing the results I have to mention that finding long times here is more rare, so I ran the entire benchmark 1000 times instead of 100 times, as above. But then I found crazy outliers like the one I noticed at work right away:
+
+Type	Average test duration	Four longest idle times
+std::mutex	86 ms	0.8 ms, 0.28 ms, 0.26 ms, 0.25 ms
+terrible_spinlock	852 ms	134.8 ms, 124.6 ms, 119.7 ms, 96.5 ms
+spinlock_amd	65 ms	7.0 ms, 6.9 ms, 0.54 ms, 0.45 ms
+spinlock	66 ms	1.4 ms, 1.2 ms, 0.33 ms, 0.32 ms
+ticket_spinlock	95 ms	13.0 ms, 3.3 ms, 2.6 ms, 2.4 ms
+
+So this table is different from the previous table in that it shows how long the mutex was not being held even though somebody was trying to enter. Meaning for the terrible spinlock there was literally a time where the spinlock wasn’t being held, somebody was trying to enter, and it took them 134 ms to do so. The other, better spinlock implementations do much better, but on all of them we see wait times of more than a millisecond. The spinlock that I had written at work was probably slightly worse than spinlock_amd in the table above, so no wonder we were seeing crazy long pauses. If I can reproduce these hitches in a couple of seconds in an artificial benchmark like this, of course you would see it if you profile a game for hitches for long enough. And we can also see why replacing the spinlock with a mutex solved the problem.
+
+I have to say that I am really weirded out by the ticket_spinlock performing this badly. I can’t explain what’s happening there. Why would that one in particular spend several milliseconds leaving the lock idle? Does the OS keep on giving time to the wrong threads? Does it ignore my yield calls? I actually can’t explain what’s happening with any of the spinlock cases. What is going on that we are literally spending more than a millisecond not holding the lock even though there are threads that would want to enter? It’s time to finally look at the Windows scheduler, because it does much better here.
+
+WINDOWS SCHEDULER
+
+Running the same benchmarks on the same machine in Windows, here are the results for the longest waits (the first table):
+
+Type	Average test duration	Four longest waits
+std::mutex	60ms	24.1 ms, 20.1 ms, 17.4 ms, 17.0 ms
+terrible_spinlock	168 ms	32.2 ms, 30.0 ms, 27.3 ms, 26.1 ms
+spinlock_amd	67 ms	61.1 ms, 57.8 ms, 57.0 ms, 56.5 ms
+spinlock	63 ms	48.0 ms, 40.0 ms, 40.0 ms, 36.2 ms
+ticket_spinlock	95 ms	0.78 ms, 0.34 ms, 0.27 ms, 0.2 ms
+
+Immediately we get a different feel. std::mutex makes individual threads wait longer, but runs faster overall. terrible_spinlock does better for some reason, and ticket_spinlock performs very well: It only has one outlier that isn’t all that bad, otherwise it has the best wait times we’ve seen yet.
+
+Where Windows really does better is in the idle times:
+
+Type	Average test duration	Four longest idle times
+std::mutex	56 ms	0.58 ms, 0.46 ms, 0.27 ms, 0.19 ms
+terrible_spinlock	188 ms	21.1 ms, 20.9 ms, 18.2 ms, 18.0 ms
+spinlock_amd	68 ms	17.3 ms, 6.6 ms, 5.0 ms, 4.9 ms
+spinlock	62 ms	0.16 ms, 0.14 ms, 0.14 ms, 0.14 ms
+ticket_spinlock	94 ms	0.38 ms, 0.35 ms, 0.26 ms, 0.25 ms
+
+These numbers look much better. With std::mutex and with a properly written spinlock, the lock never sits idle for long. This is exactly what you want and what you’d expect. spinlock_amd still has long times where the lock is free to take but nobody takes it. This just shows that you do need to call yield() while you’re spinning, even if you have one software thread per hardware thread. Otherwise the OS just might not schedule the right thread for some reason.
+
+ALTERNATIVE LINUX SCHEDULER
+
+Really the Windows results just shows us that the Linux scheduler might take an unreasonably long time to schedule you again even if every other thread is sleeping or calls yield(). The Linux scheduler has been known to be problematic for a long time. A popular alternative scheduler was BFS, which among other things had this in it’s FAQ:
+
+For years we’ve been doing our workloads on linux to have more work than we had CPUs because we thought that the “jobservers” were limited in their ability to utilise the CPUs effectively (so we did make -j6 or more on a quad core machine for example). This scheduler proves that the jobservers weren’t at fault at all, because make -j4 on a quad core machine with BFS is faster than *any* choice of job numbers on CFS
+
+BFS has since evolved into MuQSS, which is maintained by Con Kolivas here. In order to run this, I had to compile my own Linux kernel. I tried watching a video on the side and for most of the build that worked, but then at a certain point the build used all 16 cores to compress something and my video stuttered and the audio went bad and it just became totally unwatchable. Worse than anything I had ever experienced on Windows. Trying the same thing again with MuQSS I had no problems. The video kept on playing fine. So while subjectively it’s immediately better, let’s try running our benchmarks on it to see how it performs. First, here are the results for the longest wait time again:
+
+Type	Average test duration	Four longest waits
+std::mutex	60 ms	0.20 ms, 0.18 ms, 0.18 ms, 0.17 ms
+terrible_spinlock	813 ms	94.4 ms, 8.6 ms, 8.6 ms, 7.1 ms
+spinlock_amd	72 ms	63.9 ms, 63.8 ms, 59.7 ms, 57.3 ms
+spinlock	21 ms	7.3 ms, 6.6 ms, 4.2 ms, 4.0 ms
+ticket_spinlock	2538 ms	23.1 ms, 16.3 ms, 16.2 ms, 15.4 ms
+
+And once again they look very different. ticket_spinlock fell off a cliff and runs super slowly. std::mutex now performs great (slightly faster than before) and has very short wait times. spinlock somehow got crazy fast. Apparently this code can run three times faster. Who knew that the scheduler can have that much of an impact? (if I run this benchmark single-threaded, it finishes in just under 1 ms. So on sixteen threads it needs to take at least 16ms. 21ms is pretty close to ideal)
+
+Let’s also look at how this scheduler performs when the mutex is free to take and somebody wants to take it. How long does it sit idle?
+
+Type	Average test duration	Four longest idle times
+std::mutex	73 ms	0.15 ms, 0.11 ms, 0.10 ms, 0.09 ms
+terrible_spinlock	1433 ms	94.8 ms, 85.1 ms, 83.6 ms, 72.1 ms
+spinlock_amd	67 ms	4.8 ms, 4.7 ms, 4.0 ms, 2.9 ms
+spinlock	22 ms	4.4 ms, 4.3 ms, 3.8 ms, 3.7 ms
+ticket_spinlock	2518 ms	18.6 ms, 2.1 ms, 1.9 ms, 1.4ms
+
+MuQSS does not do as well here as Windows. ticket_spinlock performs terribly again, worse than terrible_spinlock. On all the spinlocks we see long times where the lock just sat idle even though somebody was trying to acquire it. Only by using std::mutex can we ensure that we don’t get random long stalls. But when we do use std::mutex, we get much better results than with the default Linux scheduler.
+
+So what conclusions can we draw from this? MuQSS is promising but it clearly has problems. It’s very impressive that the spinlock is suddenly three times faster than anything we saw with the other schedulers. But it’s a real problem that ticket_spinlock suddenly performs terrible. I am pretty sure that people use ticket_spinlocks in production.
+
+SCHED_RR AND SCHED_FIFO
+
+When you create a thread on Linux you can say that you want to use a different scheduler. So I switched back to the normal Linux scheduler and tried creating threads with SCHED_RR and SCHED_FIFO. The first result is that your system slows to a crawl because those threads take priority over everything else. Even mouse movement gets choppy. But the idle times were much better. The results for both options were similar, so I’ll just show the results for SCHED_RR. First lets get the wait times out of the way:
+
+Type	Average test duration	Four longest waits
+std::mutex	62 ms	4.4 ms, 4.3 ms, 1.5 ms, 1.5 ms
+terrible_spinlock	848 ms	10.3 ms, 4.9 ms, 3.3 ms, 3.0 ms
+spinlock_amd	73 ms	67.1 ms, 66.6 ms, 66.0 ms, 64.0 ms
+spinlock	66 ms	5.2 ms, 4.4 ms, 4.1 ms, 3.8 ms
+ticket_spinlock	97 ms	9.0 ms, 0.28 ms, 0.16 ms, 0.14 ms
+
+The results are actually pretty similar to the normal scheduler. The biggest difference is that ticket_spinlock has much shorter waits. (except for one huge outlier) But looking at the times that the mutex sat idle we can see a bigger difference:
+
+Type	Average test duration	Four longest idle times
+std::mutex	76 ms	0.13 ms, 0.12 ms, 0.12 ms, 0.12 ms
+terrible_spinlock	2043 ms	40.6 ms, 4.2 ms, 1.2 ms, 0.76 ms
+spinlock_amd	70 ms	0.13 ms, 0.09 ms, 0.09ms, 0.09 ms
+spinlock	62 ms	0.23 ms, 0.19 ms, 0.16 ms, 0.15 ms
+ticket_spinlock	97 ms	26.8 ms, 10.1 ms, 1.9 ms, 0.15 ms
+
+Here the results look very different. The biggest idle times for std::mutex look better than they looked on Windows. ticket_spinlock looks bad because it has three big outliers, but otherwise it was actually really stable. spinlock_amd has the shortest idle times yet. If you don’t yield with this scheduler, the OS will let you run so the lock never sits idle.
+
+So why isn’t this the default? The big problem is that these threads essentially run at a crazy high priority and you’re starving everything else on the system. I’ve heard stories of game developers trying to use SCHED_FIFO or SCHED_RR on Linux and while it seemed great for the game at first, they actually ran into problems because they were locking up other parts of the system, causing weird unexpected deadlocks for the game. They also ran into problems because not all of their threads needed the high priority thread options and those threads now never got to run. In the end it wasn’t worth it.
+
+FURTHER WORK AND BENCHMARK CODE
+
+I think this is a good point to end the blog post. There are many open questions remaining (How do adaptive mutexes perform? What makes a good mutex? What is the right way to benchmark mutex throughput?) but this blog post is already quite long and already covers a lot of different topics. Those other questions will either have to wait for a future blog post, or you’ll have to investigate them yourself with my benchmarking code, which is uploaded here. (it requires google benchmark)
+
+GUIDANCE
+
+So what should we do based on the above? I hope to have convinced you to avoid spinlocks, even for very short sections. Spinlocks are only a benefit if you really really care about the fast path and are certain that the lock will essentially always be free to take. On my computer the fast path on a spinlock is roughly 7ns and on a mutex it’s roughly 14ns, so both of those numbers are very fast. But when spinlocks go bad, the scheduler can be really confused, at least on Linux. Maybe future scheduler improvements will change the results on this. It was very interesting to see that the spinlock was three times faster using the MuQSS scheduler.
+
+But even taking that into account you get the problem that nothing else can run on your core. If you manage to use all your cores well using spinlocks, I would be very impressed. Chances are that if you want to fully utilize all your cores, you will eventually add work that can run “in the gaps” at low priority, and that’s only possible if you use mutexes, because you need to let the scheduler know what your gaps are. (of course this doesn’t apply if your work is very uniform, like you’re using 16 cores to compress a file or something like that. In that case there are no gaps to fill)
+
+The other conclusion to take so far is that schedulers are an open problem. The Windows scheduler certainly does best on not keeping the lock idle (as long as you use std::mutex or a good spinlock) but the Linux schedulers have problems. This was known for a while simply because audio can stutter on Linux when all cores are busy (which doesn’t happen on Windows) but it’s good to have benchmarks for this. It is really bad that a lock can sit idle for milliseconds even though somebody is trying to get it. Now that game developers are slowly moving onto Linux, I predict that hiccups like that will go away within a couple years, as more work will be done on the scheduler.
+
+EDIT: THE BMQ SCHEDULER
+
+In the comments below an anonymous commenter (or maybe their name is actually “Anon”) asked me if I had tried the BMQ scheduler. I hadn’t heard of it because apparently it’s fairly new. (it was announced here) But it performed well enough that I wanted to modify the blog post instead of just writing a comment. Here are the worst wait times:
+
+Type	Average test duration	Four longest waits
+std::mutex	63 ms	1.5 ms, 1.0 ms, 0.9 ms, 0.7 ms
+terrible_spinlock	949 ms	34.9 ms, 33.0 ms, 29.4 ms, 17.9 ms
+spinlock_amd	72 ms	70.4 ms, 69.5 ms, 69.5 ms, 67.5 ms
+spinlock	63 ms	3.7 ms, 3.6 ms, 3.6 ms, 3.5 ms
+ticket_spinlock	127 ms	1.3 ms, 1.1 ms, 0.95 ms, 0.70 ms
+
+This looks pretty good, but not great. (ticket_spinlock is noticeably slower than with the normal scheduler, but the worst wait times are better) Where it really shines though is in the times that the lock sits idle:
+
+Type	Average test duration	Four longest idle times
+std::mutex	77 ms	0.06 ms, 0.03 ms, 0.03 ms, 0.02 ms
+terrible_spinlock	1075 ms	35.1 ms, 32.1 ms 19.8 ms, 17.3 ms
+spinlock_amd	72 ms	4.0 ms, 4.0 ms, 4.0 ms, 4.0 ms
+spinlock	62 ms	0.39 ms, 0.37 ms, 0.25 ms, 0.24 ms
+ticket_spinlock	141 ms	12.3 ms, 12.0 ms, 1.8 ms, 1.8 ms
+
+The row for std::mutex looks better than anything we’ve seen so far. If you use a mutex with this scheduler, the lock will never sit idle. It will always correctly schedule a thread that wants to take the lock. In the spinlock_amd row we must have hit a case where there is some magic constant at 4.0ms. There were a lot more waits of 4.0 ms in the data. (not all of the values were this big, it’s just that when there was an outlier it was often 4.0 ms) Spinlock also does great in not keeping the lock idle. Only ticket_spinlock does poorly for some reason.
+
+So among the Linux schedulers I tested, this looks to be the best one, since we mostly care about std::mutex and spinlock, and it does best there. The only downside is that ticket_spinlock runs a bit slow. (and I have to admit I was hoping for a repeat of MuQSS running the spinlock three times faster, but it’s not a downside to not see that)
+
+Share this:
+ X Facebook
+Loading...
+Related
+
+Fine-grained Locking with Two-Bit Mutexes
+December 5, 2022
+In "Programming"
+
+Introducing the Asserting Mutex
+February 8, 2014
+In "Programming"
+
+Using TLA+ in the Real World to Understand a Glibc Bug
+October 31, 2020
+In "Programming"
+
+PUBLISHED: December 30, 2019
+FILED UNDER: Programming
+TAGS: C++ : Linux : mutex : scheduler : spinlock : Windows
+88 Comments to “Measuring Mutexes, Spinlocks and how Bad the Linux Scheduler Really is”
+Michael Meehan
+December 31, 2019 at 08:31
+
+Do the results change if you vary the Linux CFS scheduler tunable /proc/sys/kernel/sched_min_granularity_ns ?
+
+It’d be interesting to see what the current value is, and what changes if you halve/double it and retest. Thanks for the interesting article!
+
+REPLY
+Malte Skarupke
+December 31, 2019 at 12:27
+
+Great question. I didn’t know that there were knobs I could tweak. But after trying to mess around with that number for a bit, I don’t know if it works or if it affects my results at all. sched_min_granularity_ns is set to 3000000 on my machine by default, meaning 3ms. I tried setting it to 1ms instead and didn’t find much of a difference. Then I tried setting it to 0.1ms and the numbers still look pretty similar. The biggest outliers are roughly the same as in the table above.
+
+I also tried changing sched_latency_ns since I’m measuring latency and that sounded relevant. So I set that to 0.1ms, too. With those two changes mutexes started performing better, never leaving the lock idle for long. The results look more similar to the Windows scheduler. Here is the table:
+
+std::mutex 95 ms 0.24 ms, 0.14 ms, 0.14 ms, 0.12 ms
+terrible_spinlock 455 ms 76.0 ms, 68.0 ms, 49.5 ms, 47.2 ms
+spinlock_amd 64 ms 8.0 ms, 8.0 ms, 4.3 ms, 4.1 ms
+spinlock 58 ms 1.5 ms, 0.28 ms, 0.27 ms, 0.15 ms
+ticket_spinlock 115 ms 14.3 ms, 13.1 ms, 12.0 ms, 7.9 ms
+
+Let’s hope the formatting works at least somewhat… (edit: Nope the formatting is completely messed up… Can’t post tables in the comments I guess) The first number is the average run time, the last four numbers are the four longest idle times.
+
+ticket_spinlock does worse than before, spinlock_amd has this suspicious pattern of often coming in on exactly 8.0ms or 4.0ms. You can’t see it clearly here because I only show the top four, but after these come a lot of cases where the wait time was exactly 4.0 ms… spinlock ran slightly faster but still sometimes leaves the lock idle for long times.
+
+I actually don’t know enough about how the scheduler works internally. As I said above, this blog post already exploded because I ended up doing a lot of work on mutexes and spinlocks and benchmarking, so I didn’t have the energy to also look into the scheduler internals.
+
+REPLY
+Philip Rebohle
+January 1, 2020 at 04:55
+
+Thanks for doing this kind of research.
+
+What happens if you try lowering sched_migration_cost_ns as well? IIRC it defaults to 0.5ms, and lowering it does improve performance in some modern games on my Ryzen system since part of the problem seems to be that the scheduler really doesn’t like moving threads from one core to another due to cache locality concerns, but ends up with higher overall latency.
+
+It’s still worse than alternative schedulers in many cases (currently running PDS), but I haven’t tried the other knobs yet.
+
+vyazici
+December 31, 2019 at 13:32
+
+Thorough analysis, great read! Thanks for sharing it. Have you happened to check “Lightweight Contention Management for Efficient Compare-and-Swap Operations”[1] article by Dice et al?
+
+[1] https://arxiv.org/abs/1305.5800
+
+REPLY
+Con Kolivas
+December 31, 2019 at 19:08
+
+Hi Malte. Fascinating tests. Thanks for testing MuQSS which is normally below the radar. Yield is a very blunt tool and MuQSS uses a very light yield by default which likely explains the poor performance in any code that uses it. However, MuQSS also has a configurable yield in /proc/sys/kernel/yield_type if you read the documentation in Documentation/admin-guide/sysctl/kernel.rst, with 3 different implementations. It would be interesting to see how differently it performs with those.
+
+REPLY
+Malte Skarupke
+January 1, 2020 at 10:36
+
+Hi, thanks for responding. I tried setting the yield_type to “2: Expire timeslice and recalculate deadline.” because that is exactly the behavior I expect from yield. It does lead to a noticeable improvement for behavior with the yielding spinlock. The longest idle time goes from 4ms to 1.6ms, and there are far fewer outliers that are that big. But ticket_spinlock, which had the biggest problems, does not improve. It still runs weirdly slow.
+
+I think the default behavior for yield should be mode 2, because while it is a blunt tool, there are also few alternatives for me in a situation like this. I can call _mm_pause(), I can yield, or I can sleep. But when sleeping I wouldn’t know how long to sleep. When I call yield() I expect that to mean “do a sleep that’s exactly long enough to give others a chance to run.” Meaning for me it’s a short sleep where I don’t have to figure out what the ideal number would be, leaving it up to the scheduler instead. And people don’t call it lightly. They only call it when they really are blocked. So I don’t think it would be a problem to make the yield “stronger” by default.
+
+Btw I know that we were not the only developers who had problems with the scheduler on Stadia. And Google is very aware of the problem. They care a lot about latency because latency is super important for the Stadia experience. And one of the ways they’ve reduced latency is to run games at 60hz that run at 30hz on console. But that means you only have 16ms to get a frame on the screen, and if the scheduler gives you a random hitch of a millisecond, you’re screwed. So this might be an opportunity for you to get your scheduler used by more people and to maybe eventually get it into the mainline kernel. If you can solve the problem that ticket_spinlock ran into, I would recommend your scheduler over the default scheduler unreservedly. And maybe you can reach out to Google and see if they want to use your scheduler for Stadia.
+
+REPLY
+Con Kolivas
+January 1, 2020 at 12:39
+
+Unfortunately I’m only really maintaining MuQSS in my spare time because I like using it on the desktop and as a courtesy to those who have been using it for a long time now. I only spend a dozen hours per year keeping it in sync with the mainline kernel and not really interested in trying to convince anyone to adopt it.
+
+I’ll take your yield suggestion under consideration, thanks.
+
+Just as an aside, did you try disabling all CPU frequency power saving and ensure all threads are running at max frequency/performance? This can have dramatic effects on performance benchmarks involving any idle time.
+
+Paul Davis
+December 31, 2019 at 19:23
+
+There’s some potentially misleading information here. Background: I’ve spent the last 20+ years writing low-latency realtime audio applications, technically cross-platform but focused on Linux.
+
+If you care about low latency on any general purpose OS, you need to use a realtime scheduling policy. The default scheduling on these OS’s is intended to maximise some combination of bandwidth and/or fairness. Low latency requires ditching both of those in favor of limiting the maximum scheduling delay of a thread that is otherwise ready to run.
+
+Measuring how long synchronization primitives take without SCHED_FIFO is illustrative, but only of why, if you care about scheduling latency, you need SCHED_FIFO. There are several alternative schedulers for Linux – none of them remove the need for SCHED_FIFO if latency is important.
+
+It is absolutely not the case that using SCHED_FIFO automatically starves non-SCHED_FIFO threads. Scheduling policy is set per-thread, and SCHED_FIFO will only cause issues if the threads that use it really do “burn the CPU” (e.g. by using spinlocks). If you combine SCHED_FIFO with spinlocks you need to be absolutely certain that the locks have low contention and/or are held for extremely short periods (preferably just a few instructions). If you use mutexes (which ultimately devolve to futexes at the kernel level), the kernel will take care of you a little better, unless your SCHED_FIFO thread doesn’t block – if it doesn’t do that, that’s entirely on you. Blocking means making some sort of system call that will cause the scheduler to put the thread to sleep – could be a wait on a futex, waiting for data, or an explicit sleep.
+
+In particular, this: “This was known for a while simply because audio can stutter on Linux when all cores are busy (which doesn’t happen on Windows)” is NOT true. Linux actually has better audio performance than Windows or macOS, but only if the app developer understands a few basic principles. One of them is using SCHED_FIFO appropriately.
+
+Pro-audio/music creation scheduling is MUCH more demanding that video, and a bit more demanding than games. Linux handles this stuff just fine – it just gives you enough rope to shoot yourself in the foot if you don’t fully understand what you’re doing.
+
+REPLY
+Malte Skarupke
+January 1, 2020 at 13:47
+
+I will admit that this is my first experience with the Linux scheduler as a developer. But I do have years of experience as a user, and the audio definitely does stutter when all cores are busy. When I said that I was watching a video on the side while compiling the kernel, I was watching it on Youtube in Firefox. And it really became unwatchable at moments where the kernel compile used all cores fully. If Firefox is doing their audio wrong on Linux, you bet everyone is doing it wrong. (to reproduce run “make -j17 bindeb-pkg” after syncing the Linux kernel, then wait to the point where it actually builds the debian packages)
+
+I also don’t know what’s actually required to use SCHED_FIFO. When I first tried it I got “permission denied” errors. So I ran the program with sudo and it worked. I didn’t look into it beyond that. But if you do require root privileges to run SCHED_FIFO, then no wonder nobody is using it. (questions like this Stackoverflow question suggest you can’t use SCHED_FIFO as a normal user: https://stackoverflow.com/questions/27694250/why-does-sched-setscheduler-require-root-priveledges ) It’s not reasonable to tell people that they have to run Firefox as root. That would be a security nightmare.
+
+Also defaults are important. The default on Windows does better than the default on Linux. I’m sure if I ran into problems with the Windows scheduler there would also be some alternatives that I could have tried, but I didn’t need to and never had to.
+
+REPLY
+Paul Davis
+January 1, 2020 at 15:00
+
+Sadly, your years of experience as a user have almost certainly been mostly filled with using incorrectly/poorly written audio software. And yes, Firefox does their audio mostly wrong. I typically listen to music using a JACK-enabled player, and even with all 16 cores running at 100%, audio will only stutter due to disk bandwidth issues. Of course, I wrote JACK 
+
+You don’t need to be root to use SCHED_FIFO. For systems that use PAM: https://jackaudio.org/faq/linux_rt_config.html Linux reserves RT scheduling for priviledged users because of its historic implications (locking up the machine), even though these are no longer true. Several common Linux packages will set up permissions automatically for a given user group, which then just leaves you needing to put yourself in that group (a few even take care of that).
+
+The default on Windows is better than the default on J. Random Linux Distribution. But the default on Windows is worse than the default on (e.g.) AVLinux, a distribution specifically tweaked for audio/media creation workflows. Linux doesn’t wear one hat, but instead is highly customizable for specific sorts of work. If you go read up on the steps necessary to “tune” a Window system for use as a digital audio workstation platform, you’ll find all the same stuff. macOS s better in this regard but almost entirely because apples fully controls the hardware (and they’ve been getting worse at this in recent years too – some recent versions couldn’t play audio without stuttering unless manually reconfigured)
+
+krispyro
+January 2, 2020 at 02:08
+
+As already pointed by Paul, the “default” for Linux does very little sense. Most Linux vendor offer real-time customization of the kernel and you can find hundreds of Linux kernel configuration in the wild matching a large range of use.
+Something like the XanMod Kernel https://xanmod.org should handle perfectly your Youtube in Firefox scenario.
+And the real-time version of the XanMod kernel may give you better numbers for the benchmark app.
+
+neelx
+January 2, 2020 at 13:23
+
+Have you tried “make -j17 bindeb-pkg” also on Windows? Is it really stuttering due to scheduler? This never happens to me unless I run out of memory and the system starts swapping. And running such a make is gonna eat quite some RAM I guess.
+Have you also tried on server Windows version and desktop Linux kernel? Typically server builds are tuned to bias throughput-latency trade-offs towards the former while desktop builds the other way around. Though most Linux distributions use the same binary build and hence the same configuration (server kernel config) for Linux desktop as well. So you have to tune the defaults yourself or pay attention finding the right one already pre-tuned for your application (essentially tuned for desktop usage).
+Have you tried the real-time (CONFIG_PREEMPT_RT_FULL=y) Linux kernel flavor? That one is the desired kind for latency sensitive applications like audio recording/production or user interactive tasks. As Paul mentioned SCHED_FIFO is essential for reduction of latency and real-time kernel supports that perfectly.
+Have you tried pinning the threads to CPUs? So that two or more of them are not migrated to the same one? There can be a lot of reasons for doing so. It’s not just the test running, it’s the shell as well, it’s the terminal emulation application in your GUI, it’s your desktop environment, and the display server. And it’s the Firefox and your YouTube. All interfering.
+Have you tried some library spinlock implementation? Like from boost or pthread for example? What about pthread mutex?
+How is the locking even used? Your post lacks a lot of context.
+Why are you running a synthetic test instead of actually measuring the performance of different kinds of locking in Rage 2? This is really important, the level of contention matters. It would be better to see how it behaves in the real workload where more things are going on in the system. The full stack interaction is important… Moreover the test should run at least for couple seconds.
+
+Anyways, using spinlocks (as well as yield() call) with a high level of contention is not of the best practices and there’s no wonder system ‘penalizes’ you for doing that in such a test.
+
+There are reasons these alternative schedulers were never merged upstream. And all those reasons are very good. The CFS is not all that bad in the end, it servers hundreds of different purposes. After all, it’s being finely tuned for years now.
+
+Finally, from the results it looks that unlike the gcc implementation the msvc mutex version is unfair so that some threads are starved..
+
+Malte Skarupke
+January 3, 2020 at 20:11
+
+@neelx:
+That’s a lot of things to try. Unfortunately I probably won’t be able to try all of that.
+
+“Have you tried “make -j17 bindeb-pkg” also on Windows?”
+No but I’ve done a lot of compiling on both. I could probably write an artificial test that triggers this by fully using all cores, but I’ll leave that as an exercise for the reader.
+
+“Have you also tried on server Windows version and desktop Linux kernel?”
+This is on a desktop Linux kernel. It’s Ubuntu 18.04. I haven’t tried it on a server Windows version.
+
+“Have you tried some library spinlock implementation? Like from boost or pthread for example? What about pthread mutex?”
+Yes I have. I didn’t include it in the results because I wanted this to be cross-platform. pthread spinlock does well, sometimes better than my spinlock, sometimes worse. I recommend using it if you have it. pthread mutex is the same as std::mutex on Linux. Boost doesn’t have a spinlock any more. It never had one officially. There used to be one hidden in the detail namespace but last time I checked it was gone. (maybe there is a new one now? haven’t checked in a while)
+
+“How is the locking even used? Your post lacks a lot of context.”
+“Why are you running a synthetic test instead of actually measuring the performance of different kinds of locking in Rage 2?”
+
+I grouped these two questions together. The reason for synthetic benchmarks is that that makes it easier for others to understand. And to reproduce. If somebody wants to investigate the problem they can use the synthetic benchmark instead of having to debug things in a game where it might take a while to reproduce.
+
+Gabriel M. Beddingfield
+January 4, 2020 at 10:42
+
+I came here to say the same things as Paul Davis… and he beat me to it (and did a much better job of it). It’s worth spending the time to understand what he’s saying. I’ve been familiar with his work for the past 16 years, and when he speaks about software I always listen… and it’s made me a much better developer.
+
+François Guerraz
+January 2, 2020 at 01:32
+
+Hi Paul,
+
+It’s interesting reading you as usual. Do you have an opinion about Isochronous scheduling that MuQSS from Con Kolivas introduces?
+
+REPLY
+Wunk
+January 6, 2020 at 20:16
+
+I’m not a huge expert in “realtime” (to this day I can’t always give a fixed meaning) or anything surrounding it but had some similar thoughts. Particularly when he said what if the thread isn’t active then a hot thread will block it. I can’t rule out a thread being switched out at an inopportune time by chance but otherwise a thread with a lock being asleep seems a bit odd to me. Usually you lock something and you try to be done with it as soon as possible. Can’t rule anything out but that sounds like exactly the kind of case I’d try to avoid.
+
+I also agree that if you have particular scheduling concerns then you can’t just throw it to the wind and expect the default to sort things out.
+
+Regardless, it might be relevant if Linux offers no equivalence scheduler making porting more of a chore.
+
+REPLY
+fd
+December 31, 2019 at 22:24
+
+What is the source of the timing data returned by std::chrono::high_resolution_clock::now()?
+
+[Aside: This sentence from https://en.cppreference.com/w/cpp/chrono/high_resolution_clock piqued my interest: “The high_resolution_clock is not implemented consistently across different standard library implementations, and its use should be avoided.”]
+
+Are your testing threads affinitized to ensure there’s no migration?
+
+Assuming affinities are in effect, have you looked at rdtsc deltas in addition to deltas associated with library-based clock values? Through the years I’ve seen baffling timing results that made no sense until I realized that the cpu/cores in question weren’t running my code and only my code. Rare, large rdtsc delta outliers made clear that the cpus in question were occasionally doing much more than just running the code in focus. (interrupts? other gunk in the kernel’s system-call path? who knows?)
+
+REPLY
+Malte Skarupke
+January 1, 2020 at 13:58
+
+I do not have the threads locked to certain cores. The OS is free to migrate them if it thinks that that’s necessary. It shouldn’t do that too much though since I’m running sixteen software threads on sixteen hardware threads. If the OS messes that up, that would be a problem. It’s probably worth it to try if locking each software thread to its own hardware thread would help. I won’t be able to do it today, but if I remember, I’ll try to come back to it.
+
+Is high_resolution_clock precise enough? I think it uses rdtsc under the hood. It definitely uses something that’s precise enough to measure nanoseconds. It might occasionally be wrong by a few nanoseconds, but it should never be wrong by a microsecond or something like that. And it should especially never be wrong by a millisecond. So all the really big outliers are definitely not caused by the clock. Also if there were problems with the clock, we would see it on all benchmarks.
+
+As for other things running: I did notice that if I have Firefox open on Linux the benchmarks get noisier. So I closed as many other programs as I could when running the benchmarks. There is another thing here which I could try, which is to see if the results are less noisy if I just boot into a terminal and have nothing else running at all. But of course that’s not a thing that your average user would do, so it wouldn’t be a realistic benchmark. (but it might help understand where the problems come from)
+
+REPLY
+nolange
+January 1, 2020 at 14:57
+
+high_resolution_clock uses rdtsc if your CPU has a stable implementation (should be a given nowadays, use #1 to make sure).
+Whats problematic though, is that it does not use rdtsc directly, but interpolates a monotonic clock that is corrected towards incrementing at the same pace at your “wallclock”. That has 2 main implications:
+
+Stuff like NTP will correct its rate, potentially between your measurements.
+The interpolation will be updated regularly, at which point the readout calls will be stuck in a spinlock until the interpolation is completely updated.
+
+Quite possibly its a non-issue, likely way below 100µs jitter, even if the interpolation covers multiple clocks (#3).
+
+For reliable numbers with less jitter, you should read rtdsc yourself. Or use a framework like #2
+
+#1) cat /sys/devices/system/clocksource/clocksource0/current_clocksource
+#2) https://github.com/google/benchmark
+#3) https://linux.die.net/man/2/clock_gettime
+
+nolange
+January 1, 2020 at 15:01
+
+Oh, and run the kernel with “intel_idle.max_cstate=0 processor.max_cstate=1”
+Deeper C-States can take milliseconds to get the CPU back online.
+
+fd
+January 1, 2020 at 18:05
+
+Answering my own question, then, it looks like std::chrono::high_resolution_clock::now() compiles down to a call to std::chrono::_V2::system_clock::now() which, in the gnu libstdc++ library, at least, appears to be built on a call to clock_gettime(CLOCK_REALTIME,…).
+
+That’s probably why the cppreference.com documentation suggests staying well away from it. (clock_gettime(CLOCK_REALTIME,…) returns “wall clock” time; it’s not monotonic, and it can jump around if adjtime() and/or ntp are doing their things.) It’s not a matter of whether it’s precise enough; it’s a matter of whether it means what you think it means. And it sounds like it doesn’t. clock_gettime(CLOCK_REALTIME,…) might return very precise figures, but that makes little difference if it’s not at all accurate in the sense that you expect.
+
+I’ve learned not to trust phrases like “it shouldn’t do that too much” when talking about scheduling behavior. If your threads aren’t affinitized, in my experience it’s not a matter of whether they will migrate, but only a matter of when. The OS isn’t “messing it up” when it does that; it’s doing what some algorithm thinks is best given the circumstance.
+
+Given the time source you’re using, affinity is probably the least of your concerns right now. When you get a better handle on the timebase, affinity might be something worth accounting for.
+
+Fifo
+January 14, 2020 at 01:53
+
+I consulted a company 7 years ago to accelerate a software pipeline: the change from mutexes to spinlock+affinity resulted in 20 times better performance with the same features. Spinlock without affinity is just incorrect design pattern! You may further decide that your threads will be “alone” on the selected cores. That is the dpdk.org choice as the library can deal with 100Gbps networking.
+
+I think this is time for multicore programming (processor based synchronization techniques as opposed to OS based synchronization for multi-thread programming) to become standardized across architectures and compilers: the way you handle barriers on memory and IO memory can be tricky between Intel and Arm architectures and you end up fighting against compiler optimizations which is also a nightmare if you want to craft your own set of multi-core synchronization primitives.
+
+Having a kernel scheduler of multicore programming capable applications may be a nice thing to ease deployment of such applications.
+
+Malte Skarupke
+January 3, 2020 at 19:44
+
+I now tried measuring with thread affinities set. The results are pretty similar. So similar in fact that at first I thought it wasn’t working. But then I noticed that terrible_spinlock does much worse now. Which kinda makes sense because now we’re definitely guaranteed to hit the worst case of the cache line ownership changing. Anyway we don’t really care about terrible_spinlock, so here are the results for longest idle time. First number is how long the test took to run, last four numbers are four longest times where the lock sat idle even though somebody wanted to acquire it:
+
+std::mutex: 93 ms — 0.53 ms, 0.43 ms, 0.41 ms, 0.35 ms
+terrible_spinlock: 2145 ms — 144 ms, 144 ms, 136 ms, 135 ms
+spinlock_amd: 62 ms — 1.3 ms, 0.66 ms, 0.65 ms, 0.54 ms
+spinlock: 64 ms — 1.8 ms, 1.5 ms, 0.39 ms, 0.35 ms
+ticket_spinlock: 92 ms — 12.1 ms, 3.9 ms, 3.5 ms, 2.5 ms
+
+Still using std::chrono::high_resolution_clock though. I still think it would be awfully convenient if my clock kept on changing every time that I’m measuring spinlocks…
+
+REPLY
+Anon
+January 1, 2020 at 04:25
+
+Would be nice to see how https://gitlab.com/alfredchen/linux-bmq does. Thanks for the detailed report, anyway.
+
+REPLY
+Malte Skarupke
+January 1, 2020 at 20:21
+
+I gave it a try and it performed well enough that I decided to update the blog post. See the edit at the end of the blog post above. Thanks for bringing it up!
+
+REPLY
+Anon
+January 3, 2020 at 22:49
+
+Per the docs: “a compile time kernel config CONFIG_SCHED_TIMESLICE(default 4ms) is available”
+
+So that looks like it might be the culprit of the 4ms steps.
+
+aukkras
+January 1, 2020 at 04:42
+
+Did you try building kernel with CONFIG_PREEMPT_RT ?
+
+I’m guessing, you’re using CONFIG_PREEMPT_NONE, which “is the traditional Linux preemption model, geared towards throughput. It will still provide good latencies most of the time, but there are no guarantees and occasional longer delays are possible. “
+
+REPLY
+Pawel
+January 2, 2020 at 22:16
+
+No response tells it’s all. I wonder if he contacted Kernel developers at least.
+
+REPLY
+mrcsabatoth
+January 6, 2020 at 23:09
+
+Yea, also I’d be curious about tick time (Hz) variations. Also full preempt vs “half” preempt. I know that he wants to find out why an everyday gamer would experience a glitch, and that everyday user won’t have full preempt kernel. But as soon as we can narrow down the reason of the outliers to let’s say power state change delays, then he could focus on a solution which would put the kernel into Max perf mode (no power state change) with run-time kernel switches, and when stadia quits it can be set back to default.
+
+REPLY
+Jörn Engel
+January 1, 2020 at 09:06
+
+I forgot how I measured it, but the task switch overhead in Linux is about 1µs. So the overhead of a mutex is about 2µs. Caches will be cold once you return from the mutex. That overhead is hard to estimate, but it’s also on the order of 1-3µs. If a spinlock is spinning for less than 3-5µs, it has less CPU overhead than a mutex. Longer than that and it is wasting CPU. You might acquire the lock earlier, but there is less CPU for the rest of the system.
+
+If you want to go down the adaptive route, you can take that as a rough guideline. Every time you spin for less than 3µs and acquire the lock you saved overhead. Every time you spin and then go to sleep anyway you have added overhead. Goal should be to reduce overhead on average – which is tricky because it depends on contention and length of the critical section.
+
+And if you want to know what the kernel was doing to cause those long latencies, I can send you a tracing patch. We had similar issues and eventually I wrote instrumentation to track them down.
+
+REPLY
+Paul Davis
+January 1, 2020 at 16:28
+
+“task switching” has a fixed part (register restores) and a variable part (lookaside buffer refill for the MMU). The latter cost will vary depend on how much memory was touched by the tasks on either side of the switch. It can vastly outweigh the register restore in the “worst” cases (i.e. two tasks that each touch a lot of data every time they run).
+
+REPLY
+EO
+January 1, 2020 at 12:06
+
+Have you tried different kernels as described in https://askubuntu.com/questions/126664/why-choose-a-low-latency-kernel-over-a-generic-or-realtime-one ?
+
+Not sure you were using the right tools?
+
+REPLY
+David Walthour
+January 1, 2020 at 14:36
+
+I have been very interested in the results presented here, partly because of the counter-intuitive nature (to me, at least) of some of them. I didn’t see a complete program here to run on my own machine (Dell XPS9570 with in Intel i7-8750H @ 2.20GHz), so I took the snippets above and generated a full test app: https://github.com/dwalthour/mutex_test, compiled with gcc 9.2.1 (g++ –std=c++17 -pthread -O3 mutex_test.cpp -o mutex_test) and running under Fedora 31 with kernel 5.3.16. This CPU has 6 cores and 12 threads. To remove as much noise from other processes on the laptop (e.g. gnome), I booted into multi-user mode before running these results. The app also runs the test 4 times to ensure that the cache is properly warmed. Below, I give on the results from the final pass.
+
+The app tests all 5 lock variations across 12 threads for both the wait and idle versions of the test loop and shows results for running under SCHED_FIFO and SCHED_OTHER (the default linux scheduler). The first time in each row is the average run time of the loop and the comma separated list of times are the 4 longest wait or idle times.
+
+wait std::mutex SCHED_FIFO 36.07ms 0.31ms,0.30ms,0.30ms,0.30ms
+wait terrible_spinlock SCHED_FIFO 26.11ms 6.01ms,4.37ms,4.25ms,3.55ms
+wait spinlock_amd SCHED_FIFO 19.13ms 2.92ms,2.54ms,2.06ms,1.73ms
+wait spinlock SCHED_FIFO 19.90ms 1.99ms,1.39ms,1.18ms,1.12ms
+wait ticket_spinlock SCHED_FIFO 28.94ms 0.31ms,0.29ms,0.29ms,0.29ms
+wait std::mutex SCHED_OTHER 35.73ms 0.41ms,0.30ms,0.30ms,0.30ms
+wait terrible_spinlock SCHED_OTHER 28.01ms 2.77ms,2.68ms,2.04ms,2.02ms
+wait spinlock_amd SCHED_OTHER 24.90ms 0.45ms,0.38ms,0.35ms,0.32ms
+wait spinlock SCHED_OTHER 24.98ms 0.81ms,0.77ms,0.69ms,0.66ms
+wait ticket_spinlock SCHED_OTHER 41.37ms 0.32ms,0.31ms,0.31ms,0.30ms
+idle std::mutex SCHED_FIFO 56.31ms 0.03ms,0.02ms,0.02ms,0.02ms
+idle terrible_spinlock SCHED_FIFO 38.92ms 0.28ms,0.07ms,0.03ms,0.03ms
+idle spinlock_amd SCHED_FIFO 13.33ms 0.01ms,0.01ms,0.01ms,0.01ms
+idle spinlock SCHED_FIFO 20.15ms 0.28ms,0.27ms,0.03ms,0.03ms
+idle ticket_spinlock SCHED_FIFO 38.89ms 0.29ms,0.29ms,0.29ms,0.29ms
+idle std::mutex SCHED_OTHER 56.59ms 0.02ms,0.02ms,0.02ms,0.02ms
+idle terrible_spinlock SCHED_OTHER 55.50ms 0.30ms,0.30ms,0.29ms,0.28ms
+idle spinlock_amd SCHED_OTHER 13.16ms 0.01ms,0.01ms,0.01ms,0.01ms
+idle spinlock SCHED_OTHER 20.70ms 0.30ms,0.06ms,0.02ms,0.02ms
+idle ticket_spinlock SCHED_OTHER 40.62ms 0.30ms,0.30ms,0.30ms,0.30ms
+
+These results tell a rather different story to me that is more in line with my expectations but not so in line with the discussion above. Namely, the 3 variants of the standard spinlocks (terrible_spinlock, spinlock_amd, and spinlock) all outperform the std::mutex and the ticket_spinlock, with the winner being spinlock_amd, by a slight margin. I have also not seen any significant times in the longest_idle measurements for the spinlock_amd variant.
+
+These results, done in multi-user mode, do not show much difference between SCHED_FIFO and SCHED_OTHER. However, when I run this app within the gui environment, SCHED_FIFO makes a significant difference relative to SCHED_OTHER, producing results that are not far off from those shown above. SCHED_OTHER results in poorer results.
+
+I am not here to try and refute your thesis, but I would be interested to know how my test app and results compare to your’s. Am I doing something rather different than your test? Do you feel that my results are telling the same story and I am just not interpreting it the same way? Also, what did you do to isolate your test app from the rest of the system during your runs so that the app was not significantly preempted for other tasks that are not part of your testing? Or are you most interested in how the test app runs with all of that still up?
+
+REPLY
+Malte Skarupke
+January 1, 2020 at 21:13
+
+Hi, thanks for the comment. My code is uploaded here:
+https://github.com/skarupke/mutex_benchmarks
+There is a small link in the blog post, but I didn’t highlight it enough. It also doesn’t run by itself, requiring the google benchmark library. One of these days I need to find out how to package C++ code that is easier to run…
+
+I don’t know what multi-user mode is, but since you said that the other option is a GUI environment, I assume it means booting into a terminal, correct? So I figured out how to boot into a terminal on my machine and ran my benchmarks from there, without any GUI ever starting. The results did immediately look very different, confirming what you found. I’m just showing the idle times here. The first number is how long the test took on average, the four numbers after that are the four biggest outliers for how long the lock was idle:
+
+std::mutex: 94 ms — 0.019 ms, 0.018 ms, 0.013 ms, 0.013 ms
+terrible_spinlock: 561 ms — 0.82 ms, 0.53 ms, 0.53 ms, 0.53 ms
+spinlock_amd: 61 ms — 16.0 ms, 4.0 ms, 0.14 ms, 0.023 ms
+spinlock: 62 ms — 0.15 ms, 0.024 ms, 0.024 ms, 0.024 ms
+ticket_spinlock: 93 ms — 1.3 ms, 1.3 ms, 1.3 ms, 0.13 ms
+
+So they definitely all do better, but there are still some weirdly big outliers, like when the lock just sits idle for 16ms on spinlock_amd. But std::mutex and spinlock do much better.
+
+That being said I’m not sure if this is realistic. To answer your question of “are you most interested in how the test app runs with all of that still up?” my answer would be yes.
+
+When running my tests in the UI I was careful to have nothing else running. Because I did notice that just having Firefox open would make the benchmarks more noisy. So I closed that and as many other things as I could. I think that is a more “realistic” environment than booting into a terminal, because most users won’t boot into a terminal. I think these test results are helpful in trying to figure out what’s causing the problem, but they’re not a realistic approach for getting rid of the problem. Of course if users have ten things running, then that’s their problem. But as far as I could tell I had nothing running, and still my code had weird long hitches. That’s not good.
+
+REPLY
+Robert Mader
+January 2, 2020 at 02:45
+
+Just for completeness: do you mind sharing which exact distribution and desktop environment you are running? (Gnome Shell dev here, and we know that we have some issues on this front as well that might contribute to bad results)
+
+Malte Skarupke
+January 2, 2020 at 10:42
+
+I’m running Ubuntu 18.04 and the measurement in this comment was done with the latest default kernel in Ubuntu 18.04 (4.15.0-72-generic) and no other customization. The measurements in the blog post above were done with different kernel versions because I had to run different patches and had trouble with some patches for some kernel versions. (like my graphics card would have the wrong resolution using one kernel, and then MuQSS didn’t work with another version etc.) I think all the version were between version 5.1 and 5.4.
+
+oiaohm
+January 1, 2020 at 17:23
+
+https://www.techspot.com/review/1683-linux-vs-windows-threadripper-vs-core-i9/
+
+Something to consider here.
+
+Linux kernel scheduler is optimised for high count NUMA chips in most cases even when you only have a single NUMA it behaves about the same. Windows kernel scheduler is optimised for low NUMA count in fact anything more than 1 is bad at times. I guess you were using a CPU with a single NUMA zone.
+
+You don’t mention what you computer is. Current generation AMD threadripper pretends to be a single NUMA to keep windows happy but in UEFI you can turn on multi NUMA and watch windows performance straight up tank in different areas.
+
+It would be really interesting to run your terrible_spinlock test on windows on a high NUMA count system. Just in case this is skip NUMA thread allocation stuff.
+
+std::mutex under Linux is not standard Mutex. Its a futex. I know this is a different that turns up when you go from Linux to OS X where the std::mutex is way slower.
+
+http://www.sevangelatos.com/a-windows-mutex-is-not-a-mutex/
+Yes windows std::mutex is not a standard mutex either.
+
+Ouch miss understanding: With std::mutex and with a properly written spinlock, the lock never sits idle for long.
+
+A futex does consume more idle time with Linux std::mutex but its also why the 4 longest waits on the Linux std::mutex are so low and why it performance is so consistent with very few outliers.
+
+Please note your massive usage of std:: stuff on Linux does not help you either. Because the stdc++ library normally does not go straight to kernel instead goes by glibc. Platform neutral C++ is not a free lunch it costs you performance..
+
+REPLY
+oiaohm
+January 1, 2020 at 22:01
+
+You collected the 4 longest waits. You need to collect the 4 shortest waits as well.
+
+terrible_spinlock could be simply consistently bad because it doing something in particular that is totally horrible optimised.
+
+Same way with game benchmarking and you benchmark record the min frame rates and the max frame rates and put the operational average in the middle.
+
+REPLY
+Peter Mulholland
+January 1, 2020 at 17:26
+
+Don’t waste your time. This argument always falls on deaf ears – as far as the Linux community is concerned, their kernel is perfect and anyone who says otherwise is a Windows lamer.
+
+We now have experienced engineers at Google who are pretty much saying the same thing that I was saying while involved in porting games to Linux, and nothing changes – they are being rubbished and attacked by the community just as I was.
+
+REPLY
+Paul Davis
+January 1, 2020 at 20:58
+
+I’ve never encountered anyone who says that the Linux kernel is perfect. Anyone who says that almost certainly has little to no experience with kernel development or even interacting with the kernel in any significant manner.
+
+What it is, rather, is: (1) highly tunable (2) completely transparent (3) completely tweakable.
+
+Even back in 2004, when the standard kernel was fairly poor for low latency scheduling performance, you could patch it with the PREEMPT_RT patchset and get something better than anything except a true hard realtime kernel.
+
+This is the huge difference from the Windows and macOS kernels, which no matter what their attributes are, from a user/3rd party developer perspective, essentially immutable.
+
+REPLY
+Anton
+January 2, 2020 at 01:57
+
+The problem is that it all doesn’t matter. Users don’t write C code, or invent JACK, or develop a kernel. Users don’t use a special distribution per individual task. Instead, users do play a game while listening to a background music from Firefox and YouTube, while chatting through Discord and copying files over USB. And, unfortunately, users are struggling with Linux (not the kernel, but os/ecosystem).
+
+mrcsabatoth
+January 6, 2020 at 23:00
+
+I love that Linux is so tweakable. Certainly it can cause grief in some cases (like every other OS have it’s downsides), but that is true freedom
+
+shmerl
+January 5, 2020 at 00:22
+
+If you had problems, it doesn’t mean there is no solution. So you defeatists attitude isn’t helping anything.
+
+REPLY
+Marshall Midden
+January 1, 2020 at 18:09
+
+This can be seen via mounting a file system (mount -ro /dev/something /mnt), doing something like “find /mnt -size 0” {with no empty files} — with a file system containing hundreds of millions (or billions) of files. With nothing else running — do a “time umount /mnt” — you will find it taking 30 or more seconds. There will be some task switches — with nothing to do — that are 1/2 a second. There are crazy numbers of spinlocks happening. A console, single user mode, nothing happening.
+
+I stopped looking — because I figured someone had found it something for 5.4 — but it appears “not”. sigh.
+
+REPLY
+Marshall Midden
+January 1, 2020 at 18:10
+
+(With 512g or more of ram — so that everything is cached … fix the NUMA first.)
+
+REPLY
+Roger Larsson
+January 1, 2020 at 18:28
+
+Very interesting article, a new type of developers enters in force – kernel will adapt if you find a way to describe your problems, and this is a great start!
+
+If you want to use SCHED_RR or SCHED_FIFO
+You should do it using the rtkit-daemon
+– does not require root priviledges
+– supervises amount of RT execution
+(Have not checked that it works)
+
+I did a simple server like this a long time ago, found references from 2003, called rt_monitor (rts might have been used too) see lalists.stanford.edu/lad/2003/01/0089.html
+
+The point is to not having to ship audio apps or games as suid root, but still get RT execution where it matters most – audio!
+
+REPLY
+Paul Davis
+January 1, 2020 at 21:01
+
+the rtkit-daemon is one way to get access to SCHED_FIFO, but it is far from the only way to do this, and probably isn’t even recommended any more. Just put yourself in a group with ulimit/rtprio at about 95.
+
+back in the day, SCHED_FIFO could lock up the system, which made it a notable security risk. this hasn’t been true for about a decade.
+
+if you install several packages on any debian-based distribution, they will set SCHED_FIFO access up for you automagically (one of the JACK packages being the most obvious)
+
+REPLY
+Roger Larsson
+January 2, 2020 at 13:35
+
+(Re)found your configuration page: https://jackaudio.org/faq/linux_rt_config.html
+Yes, I would say this is the recommended way now!
+
+But, the safety measure… https://lwn.net/Articles/296419/
+
+Wouldn’t these tests as written run right into the kernel 5% reservation, as there are 16 threads all wanting to execute 100% (spinning for lock or releasing lock)?
+
+I get the feeling that these game developers brings a new class of requirements (from cooptimization with windows scheduler)
+
+If there are 1 ms idle time, use it for something!
+=> Don’t let your thread go to sleep, as it easily might costs more than 1 ms…
+
+I imagine there is an internal work queue where the execution threads gets their next work fragment from, spinning on that work queue lock when running on Linux will only result in your thread being considered a CPU hog and not being considered nice = reducing your priority… (unless running on SCHED_FIFO, but thus guaranteed to hit the 5% reservation)
+
+Maybe we should let the RT processes use 100% and reserve one core for other scheduling principles instead? The current is like giving the RT threads a 5% slower processor – but not really as the 5% comes with regular intervals… (and that is not really the same thing…) – Isn’t this actually very close to what consoles does?
+
+Low latency audio scheduling on the other hand are short burst and long waits between.
+
+darksylinc
+January 1, 2020 at 19:32
+
+Hi!
+
+This is only a guess:
+
+Most common Linux configurations default to a 250hz tickless kernel.
+Since Windows 8, the Windows kernel became allegedly tickless, but the implementation may differ vastly from Linux’s, thus I’d suggest trying non-tickless versions.
+
+Windows allows changing the tick rate at runtime, globally (system wide) using timeBeginPeriod. It’s quite common for a single app sneaking timeBeginPeriod( 1 ); at init, which ruins battery for everyone.
+
+The Linux equivalent of that is to recompile with 1000hz instead of the default 250hz. AFAIK it cannot be switched at runtime like Windows’ does.
+
+My guess is that you could try testing with a custom-built 1000hz non-tickless kernel; which may give you much more similar behavior to Windows’.
+
+IIRC a 1000hz non-tickless kernel is what Ubuntu refers to as “lowlatency kernel” package
+
+Btw you may find useful information Googling “The Linux Scheduler: a Decade of Wasted Cores” (no quotes)
+
+REPLY
+Wunk
+January 6, 2020 at 20:30
+
+Just 250 might be enough. I was wondering the same as it always used but be a kernel build option. It seems like something that could be a boot option.
+
+REPLY
+matklad
+January 1, 2020 at 19:44
+
+Looks like we also have a thundering herd of spinlock blog posts problem, as I’ve written one independently 
+
+https://matklad.github.io//2020/01/02/spinlocks-considered-harmful.html
+
+Happy new year!
+
+REPLY
+joshua simmons
+January 2, 2020 at 01:05
+
+This benchmark will perform worse if the scheduler does a better job of keeping the cores active. You have 16 threads banging on a single cache line, if the scheduler puts 15 threads to sleep it will perform better. Spin locks are not to be used under contention because they provide zero information to the scheduler, it cannot know whether you’re doing useful work or not. The reason your code improves when you put a sleep(0) in there is just because a sleeping core won’t contend on that lock anymore. You should never have an OS sleep in your spinlocks because they should never be used in a situation where they can contend like this anyway.
+
+Basically you’re not exactly measuring what you think you’re measuring at all, as far as I can see. No scheduler can save you.
+
+REPLY
+oiaohm
+January 2, 2020 at 04:13
+
+The more I read this post the result I am coming up with is the following.
+
+If you are using terrible_spinlock is bad on Windows and Linux is making code using that even worse.
+
+.
+ticket_spinlock may behave worse on Linux because with futex support the Linux kernel scheduler try not to give cpu time to something in a lock. Looking up a changing ticket value may in fact be harmful on Linux. Because the more complex ticket spinlock code is not as readable to the scheduler as the simpler spinlock code.
+
+std::mutex on Linux is going to be a futex so it had all the advantages of a yielding ticket spinlock with the scheduler understanding what is going on.
+
+std::mutex on windows is using critical sections so it still part spinlock. But the scheduler does not know as much of what is going on.
+
+So more complex spinlock ideas on Linux seam just like a path to fail. The Linux kernel scheduler with the alterations to futex well just seam not to agree with the complex spinlock options.
+
+I wrong to come to this result.
+
+Remember a futex under Linux if you are putting a lock somewhere that will always be open to be taken without the over head of a std::mutex stuff its going do better than a spin lock. Also its not going to have the scheduler dive off into hell.
+
+http://man7.org/linux/man-pages/man7/futex.7.html
+Futex operation occurs entirely in user space for the noncontended case. The kernel is involved only to arbitrate the contended case. As any sane design will strive for noncontention, futexes are also optimized for this situation.
+
+“Spinlocks are only a benefit if you really really care about the fast path and are certain that the lock will essentially always be free to take.”
+
+This may in fact be wrong on Linux. Futex is what is designed for a fast path that you are certain that a lock will always be free take and if you wrong Futex will not go stupid and give the scheduler the best information.
+
+Yes std::mutex on Linux can be using futex in background but you have picked up some overhead there.
+
+REPLY
+Malte Skarupke
+January 2, 2020 at 07:19
+
+Hi, thanks for your comment. I mostly agree with what you’re saying but there is one small correction: Microsoft switched their std::mutex to be a SRW lock now:
+https://docs.microsoft.com/en-us/windows/win32/sync/slim-reader-writer–srw–locks
+
+So it no longer uses a CriticalSection internally and it actually spins a lot less. It builds a linked list on the stacks of the sleeping threads where each thread writes their thread ID and can be directly woken up. But it’s not a fair mutex: If a thread takes a while to wake up, a faster thread can always sneak in and take the lock instead. It’s a very interesting model and I actually want to write something similar on Linux just to see how it performs. I don’t know if there is a similar thing on Linux where you can directly wake a thread, but you can emulate that behavior with futexes.
+
+In any case SRW locks do much better in my benchmark than the old CriticalSection. If you can run my benchmarks (you need Google Benchmark) you can actually see the behavior of both. I just didn’t include their results in the blog post because it was already quite long:
+https://github.com/skarupke/mutex_benchmarks
+
+Also as far as I can tell the fast path of a mutex will always be slower than the fast path of a spinlock. At least I could not come up with a mutex algorithm that is as fast as a spinlock in the uncontended case. (the reason is that the unlock has to be more complicated because you have to be certain that you never forget to wake somebody up. I couldn’t do that using only cheap instructions) So there might be situations where you really really care and you’re certain that the lock won’t be taken. But it is very rare, and I do recommend using a mutex almost always. One example I had was where we had some code that wasn’t using mutexes because we were sure that there were no threading problems. Except then we found a threading problem during initialization time, which will only happen exactly once. At that point we could have tried fixing the startup logic, or we could have just added a mutex. But the mutex was never needed otherwise. So in that situation, depending on how performance sensitive the code is, a spinlock might be fine because we know that it will only ever be contended once during startup, then never again. And if the spinlock has to be taken somewhere that has to be really fast, where 7ns vs 14ns matters, (like code that gets inlined in a lot of places) it’s probably a fine choice.
+
+But also if you can come up with a mutex algorithm that has a faster fast path, that would be a really big deal. I’m not sure if it’s impossible, I just know that I couldn’t do it. (I came up with a compromise though where one thread spins and other threads can go to sleep. Then the fast path is as fast as a spinlock. It sometimes performs well)
+
+REPLY
+oiaohm
+January 2, 2020 at 19:10
+
+I looked over your futex mutex code.
+
+Click to access 01-futex.pdf
+
+https://eli.thegreenplace.net/2018/basics-of-futexes/
+It does not match the recommend white paper for how to implement futex mutex
+
+I don’t know how well in performance does state.exchange compare to Linux macro cmpxchg.
+
+The main point of attack is the problem that spinlocks usually do better in simple benchmarks. If you can figure out a way for mutexes to do better in those benchmarks, or if you can find benchmarks where spinlocks don’t do well (like I found in the “idle time” benchmarks above) then the field might shift.
+
+The key word here is simple benchmarks. Mostly on low core count systems. Stadia is a high core count system.
+
+This is from the white paper on futex
+
+One of the most damaging effects of running a multi-threaded application on a multi-processor machine is re-peated transfer of memory cache lines from one proces-sor to the other (a.k.a. cache line ping-pong).
+
+Using spinlock provides no protection from this under Linux. Futex or Mutex does under Linux. In theory you could lock your spinlock using process to a single core and avoid this but you have just lost the advantage of the multi core system.
+
+Yes cache line ping-pong problem risk with spinlocks increase as system load goes up because the scheduler does not have the information it needs. This is made worse if system has multi NUMA zones.
+
+Also you have the Priority Inversion problem. Again spinlocks scheduler does not know what is going on. So cannot use Priority Inheritance to fix this.
+
+Yes there is a reason why well code Linux futex is doing a syscall on unlock that costs time this allow priority inheritance to be used.
+
+Spinlock implementations are buggy. You cannot really make a Mutex or a futex do better if it results in either cache line ping pong or priority inversion problems.
+
+Priority inversion on spinlocks is one of the things that cause dead locking of them so your absolute worse performance outcome.
+
+Also your simple benchmark is kind of wrong.
+
+You are recording just the worst and the average. When you watch game benchmarks on FPS.
+
+They record the min and the max benchmarks in lot of cases.
+
+When you say average there are 3 different averages.
+
+https://www.purplemath.com/modules/meanmode.htm
+
+Mean, Median, Mode averages and range gives you a lot more idea what you are looking at.
+
+“weirdly big outliers” that you have talked about in other posts. I don’t find strange at all on spinlocks on multi core systems.
+
+Futex and Mutex will have a high idle time under Linux but that is because they are doing extra things to result in narrow range. This is the problem of averaging the run and not keeping the min and max value to get range.
+
+25 75 have a average of 50 so does 0 100. So average run-time does not tell you how predictable you program will run. Range is the value for predictability narrower the range the better.
+
+So your benchmarks are too simple and your test program is throwing away key information if you objective is not to have breaking up audio and other issues like it.
+
+Looking at the 4 slowest and the 4 fastest would also allowed seeing range.
+
+Just because a blog with limited testing say spinlock perform better does not mean they have not made the same mistakes as you of really losing the data to properly see the worst cases.
+
+Malte Skarupke
+January 3, 2020 at 17:32
+
+I appreciate the long comment, but there are a lot of inaccuracies in here…
+
+About the code from the paper from 2004: My code doesn’t look like that because that code is slow and we know how to do better by now. My code is a small tweak on existing futex-based mutexes and it performs very well in most benchmarks. (I benchmarked against all kinds of different mutexes) It performs much better than the code from the paper. I might go into how to write a mutex in a future blog post. But my work on that isn’t done, that’s why I didn’t cover it in this blog post.
+
+For the “spinlocks only do well in simple benchmarks on low core count” comment: What is that based on? I can’t find that backed up by anything, looking at other people’s benchmarks or my own. Also what is “low core count”? Because if that means what I’m running above, 8 cores and 16 hyper threads, then that is the number that we’ll be stuck with for many years to come, because the new consoles are shipping with those numbers.
+
+The cache line ping pong problem you’re talking about from the paper there is addressed in the blog post. It’s the part where I talk about the AMD recommendations.
+
+About priority inversions: Yes, that’s a potential problem, but that’s not what we were seeing in these benchmarks. All threads run at the same priority. So I don’t understand how it’s relevant. Are you just mentioning it because it’s a potential problem, or can you elaborate?
+
+As for how to benchmark this and why I don’t mention the best case: I do mention the best case. It’s 7ns for a spinlock and 14ns for a mutex on my machine. The reason why I don’t talk more about that is that nobody cares about the best case. People care how long their code runs on average, and they care that there are no big outliers that are too different from the average case. If your code sometimes runs faster, that’s nice, but it doesn’t win you anything. You have to lay out your work for the average case plus some tolerance. If you want to learn about how to measure code and why nobody cares about the best case, and why you want to be very careful with doing statistics on your measurements, I recommend the talk “How Not to Measure Latency” by Gil Tene.
+
+CALIN CULIANU
+January 2, 2020 at 08:03
+
+When and why are userspace developers resurrecting spinlocks again? They never have any business in userspace code.
+
+This matter was settled back in the 1990s and again in the 2000s, now I see younger developers talkimg about spinlocks in their userspace apps.
+
+They have no business there. The only time to use them is in the kernel, with interrupts off, when you KNOW you are going to be waiting for a short time (because the contending code is also CPU-bound). You only really know this is if you’re in the kernel in a device driver ISR.
+
+I was surprised to hear programmers are brining back spinlocks in userspace… with predictable results.
+
+This article just proves the thing older programmers knew already: spinlocks in userspace are a bad idea and almost always a waste of resources.
+
+REPLY
+Malte Skarupke
+January 2, 2020 at 11:28
+
+The first reason why they came back is that they do great in benchmarks. Near the beginning of the blog post I linked to three benchmarks where people tried to find out whether a spinlock or a mutex is better, and the spinlock almost always does better.
+
+Part of the goal of this blog post was to collect data that no, you still shouldn’t use spinlocks. (plus those artificial benchmarks aren’t necessarily realistic)
+
+But if you’re a new programmer and you just want to see which one you should use in your code, and you write a simple benchmark to test which one is better, you’ll usually find spinlocks performing better. (or you’ll google for it and find those blog posts that say that spinlocks are better)
+
+Btw I suspect that adaptive mutexes have a similar problem. They do better in those benchmarks, too. But is that really realistic? I still haven’t found really good benchmarks, but all of my attempts at benchmarking fall into two categories: 1. mutexes always do better, 2. spinlocks and adaptive mutexes always do better. And most importantly, in all my benchmarks that fall into category 2, spinlocks do better than adaptive mutexes. So adaptive mutexes only do better than normal mutexes in the same benchmarks in which spinlocks do even better. I haven’t finished my investigation, but it might end up with adaptive mutexes not looking all that good…
+
+The second reason is that spinlocks are smaller (one byte in size) and run faster when your lock is uncontested. (7ns vs 14ns) I’m trying to get a patch into the Linux kernel to support smaller futexes so that mutexes can also be one byte in size, thus taking away one of the benefits of spinlocks. (does 1 byte vs 4 bytes really matter? Definitely. For example WebKit went through great pains to make their mutexes one byte in size, and their reason was “The small size of WTF::Lock means that there’s rarely an excuse for not having one, or even multiple, fine-grained locks in any object that has things that need to be synchronized” https://webkit.org/blog/6161/locking-in-webkit/ )
+I also tried finding a way to make the fast path of mutexes faster, but I have been unsuccessful at that. (I did however come up with a spinlock where some of the threads can go to sleep on a futex, kinda as a middle ground to have a fast fast path while still cooperating with the OS. It doesn’t always do well though)
+
+Also I suspect that game developers in particular like using spinlocks because on consoles you have full control over what’s happening. In my time at Avalanche I would often replace spinlocks with mutexes, but they kept on popping up. And I mean who can blame the other developers? Often there was literally nothing else to do other than spin on the current task. Nothing else would take over the core even if I went to sleep. That’s slowly changing though as we get more cores and the threading code is getting more complicated. The more cores you have, the more idle “gaps” there are where you can’t find things to schedule. So you end up finding work that could run “at any time” and try to run that “in the gaps”, but for that you can’t be using spinlocks.
+
+When presented with a problem like this I actually like to do two approaches in parallel:
+1. Try to get rid of spinlocks. Take all their benefits away. Make futexes smaller, make the fast path of mutexes faster, see if I can come up with benchmarks where mutexes clearly win. Improve adaptive mutexes to always beat spinlocks.
+2. Try to make spinlocks better. Why do they bother me so much? What are their problems? Maybe they could be improved to get rid of those problems. Like what if, when locking a spinlock the thread writes its thread ID into the spinlock. Then we could add a call to the OS so other threads could say “yield until that thread had a chance to run” or something like that. Maybe they wouldn’t be so bad then. Or maybe their problem is mostly related to bad schedulers. The spinlock class did amazing in MuQSS, running this code three times faster than mutexes. If that was the norm, and if people who maintain schedulers were more aware of spinlocks, maybe they wouldn’t be so bad. (of course there is still a power saving argument to be made, but you obviously wouldn’t use a spinlock for a long critical section)
+
+These are very contradictory approaches, but it is actually good to do both at the same time. You never know which one will win at the end. Or maybe both will stick around forever… That’s why I actually had to spend a good amount of time just finding out what makes a good spinlock.
+
+So what can you do if you want to get rid of spinlocks? The main point of attack is the problem that spinlocks usually do better in simple benchmarks. If you can figure out a way for mutexes to do better in those benchmarks, or if you can find benchmarks where spinlocks don’t do well (like I found in the “idle time” benchmarks above) then the field might shift.
+
+REPLY
+EO
+January 3, 2020 at 00:55
+
+Quick one – wouldn’t having a lock of 1 byte imply that it’s cacheline may be used for other variables and so having more contention on it on multi-CPU machines?
+Wouldn’t you want to use 64 bytes to avoid this?
+
+What am I missing?
+
+oiaohm
+January 3, 2020 at 02:36
+
+https://lwn.net/Articles/704843/
+
+Futex under Linux have been implemented by many different developers many different ways where multi different performance shapes.
+
+Futex give you options to deal with issues that spinlocks will just dead lock on.
+
+Also I suspect that game developers in particular like using spinlocks because on consoles you have full control over what’s happening.
+
+That the problem. Its really simple to think you are in full control with spinlocks where in reality you have shot self in foot random-ally.
+
+Please note “robust futexes” in fact need the full 32 bits for the lock.
+
+Lot of ways I support getting rid of spinlocks completely and focus on tuning the heck out the futex system.
+
+Maybe they could be improved to get rid of those problems. Like what if, when locking a spinlock the thread writes its thread ID into the spinlock. Then we could add a call to the OS so other threads could say “yield until that thread had a chance to run” or something like that.
+
+That is basically what a Linux kernel futex is doing. So you here are asking for a Linux futex.
+
+Malte Skarupke
+January 3, 2020 at 13:14
+
+@EO yes, the cacheline may be used for other variables and there may be contention for it. But depending on your use case that may not be or problem. (or it may be a big problem, depends) So you wouldn’t want to make the mutex bigger just in case it’s a problem for someone. Also in C++ you can align the type when you use it. Meaning if it is a problem for someone, they can easily fix it.
+
+@oiaohm:
+
+With my patch robust futexes would continue to be 32 bits. Also for the comment “That is basically what a Linux kernel futex is doing”: no, it really isn’t. Can you explain what you mean with that?
+
+John C.
+January 2, 2020 at 16:32
+
+tl;dr – if you use use spinlocks where mutexes are needed, you suffer all the performance problem you deserve.
+
+REPLY
+Tom
+January 3, 2020 at 01:10
+
+It is really funny to see reinvented wheel again and again. Have you ever heard about libpthread ? You are creating ineffective locking primitives instead of use system one. And for last, but not least. Spinlocks and mutexes should be used in different cases. Spinlocks are for locking small amount of code with very low contention. Mutexes are for locking bigger code blocks with higher probability of concurrent access.
+
+REPLY
+oiaohm
+January 3, 2020 at 11:17
+
+Tom really spinlocks should not be used at all. Mutex are one thing futex has multi forms.
+
+Key change in a futex on Linux is that a yield is giving the scheduler information that it just does not start thread to have it straight up yield again because the lock it was waiting on is not ready yet.
+
+Futex design options does not forbid spinning a few times before calling the futex syscall to yield. This is called adaptive spinning on Mutex and Futex by the way.
+
+‘very low contention’ arguement with spinlocks is basically hey we know if we have contention its going to break badly at times. Old school spinlock wastes way to much power.
+
+The generic scheduler yield on a Linux system is saying I am done I don’t need CPU time in a hurry I am not waiting on a lock. Windows on the other hand presumes you might be.
+
+Basically mutex or futex yield on Linux will get a higher priority. Scheduler knows in both of those cases that you yield due to some lock you could not acquire. Yes the next issue time slice to your process while it block in lock yield by a futex goes to the process holding the lock until it releases lock not to your process this is priority inversion correction.
+
+Spinlocks no matter the form don’t deal correctly with contention.
+
+Adaptive spinning mutex/futex is the half way between a spinlock and a old school OS mutex.
+
+Adaptive spinning mutex/futex fairly much all the advantages of a yielding spinlock without all the different ways of contention failure. Why because if lock of Adaptive spinning mutex/futex hits contention it going back to old school futex/mutex that handle the contention problems and this gives the OS scheduler way more information to work with. Yes adaptive spinning still wastes some cpu time spinning before going to yield.
+
+With futex under Linux if you are willing to pay extra syscall once you can set robust mode that means if a thread dies while holding the lock the kernel will unlock the lock so you don’t deadlock even in the worst possible case.
+
+Very low contention is basically a bad arguement that basically should be written we don’t care if it completely fails if for some reason the lock has a lot of contention we were not expecting.
+
+If you have not worked out very low contention lack of it is why spinlocks on a loaded system go to hell. You have to remember performing a scheduler yield in any form is because you expect the system to have contention over cpu processing time(even if that is contention with cpu going into low power to save power). So low contention on modern day systems basically does not exist anywhere near as much as one would think.
+
+When you have contention over cpu time waking a thread up only to have it go I am yielding again is not really a help.
+
+Also you are not looking for absolute dead lock protection. Absolute dead lock protection under Linux you will be using Linux futex.
+
+Lot of basic yield spinlock benchmarks that say they are good are run when the system is not running adversely loaded so get a false reading that they are better than what they really are in real world usage.
+
+Please note this its important. On modern day systems it is possible to make your locks faster while at the same time make your complete program slower. The fun of CPU boost clocks.
+
+So system is lightly loaded spinlock is in contention with the cpu sleep mode. The more cpu can sleep the cooler in temperature the cpu can be the highly the clock speed it can boost to.
+
+Basically there is no such thing as low contention any more. We need the OS scheduler to be aware of locks so that the OS scheduler can keep the contention over cpu time as low as possible to get as much boost clock as possible out cpu.
+
+Technology has moved on.
+
+REPLY
+Tom
+January 3, 2020 at 12:03
+
+Technology has moved on, but if you need to handle milions of events per second and each five minutes do some short async maintenance, than spinlock, combined with trylock is best solution (nothing is faster, than few instruction unlocked spinlock).
+
+oiaohm
+January 4, 2020 at 19:10
+
+“Technology has moved on, but if you need to handle milions of events per second and each five minutes do some short async maintenance, than spinlock, combined with trylock is best solution (nothing is faster, than few instruction unlocked spinlock).”
+
+Linux Futex something is better. The atomic operation to acquire spinlock is the same operation to acquire a Futex and same operation used to free a spinlock can also be used to free futex. This removes the trylock storage next to the spinlock.
+
+syscall(SYS_futex, (int*)&atom_, FUTEX_WAIT, 2, 0, 0, 0);
+this one is fairly straight forward tell scheduler you are waiting on
+
+syscall(SYS_futex, (int*)&atom_, FUTEX_WAKE, 1, 0, 0, 0);
+Pays to look close at this. So we see this syscall in the unlock at lot in the common futex implementations. Does it in fact have to be in unlock answer is no. Does this really need to be called if the futex value is less than 2 in theory no but its done mostly to avoid a race condition.
+
+This syscall that says wake up 1 other thread that is waiting for the lock. Does that value have to be 1 answer no so its possible to be waking up like 128 threads at a time.
+
+Adaptive futex can get very interesting to tune.
+
+mrcsabatoth
+January 6, 2020 at 22:45
+
+The purpose of the whole article is to describe why someone might want to use mutexes instead of spinlocks. Look at the measurements: basically it’s better to “misuse” mutex for spinlock purposes.
+As for implementation, I have a feeling the OP may took a look at pthread? Are those better? I’d love to read a blog post about it, maybe peek at it if I’ll have time.
+
+REPLY
+Maxim Egorushkin
+January 3, 2020 at 08:36
+
+In my unrelated benchmarks pthread_spinlock_t performs better than ticket_spinlock.
+
+REPLY
+Malte Skarupke
+January 3, 2020 at 16:25
+
+Yes, that’s also what I found. I didn’t include pthread_spinlock because I wanted to run the same benchmarks on Windows and Linux. Also the spinlock class in this blog post performs better than pthread_spinlock in these benchmarks, so it wouldn’t have added anything to include pthread_spinlock.
+
+REPLY
+Kimo Crossman
+January 3, 2020 at 20:02
+
+A new paper on more minimal performance logging in Linux and issues with the multicore scheduler and CPU scaling with task switching.
+
+Fork/Wait
+and Multicore Frequency Scaling: a Generational Clash. 10th Workshop on Programming Languages
+and Operating Systems, Oct 2019, Huntsville, Canada. pp.53-59, ff10.1145/3365137.3365400ff. ffhal-
+02349987ff
+
+https://hal.inria.fr/hal-02349987/document
+
+REPLY
+Antoine
+January 4, 2020 at 05:13
+
+Linus Torvalds just replied to this post:
+https://www.realworldtech.com/forum/?threadid=189711&curpostid=189723
+
+Excerpt:
+“””
+So the code in question is pure garbage. You can’t do spinlocks like that. Or rather, you very much can do them like that, and when you do that you are measuring random latencies and getting nonsensical values, because what you are measuring is “I have a lot of busywork, where all the processes are CPU-bound, and I’m measuring random points of how long the scheduler kept the process in place”.
+
+And then you write a blog-post blamings others, not understanding that it’s your incorrect code that is garbage, and is giving random garbage values.
+
+And then you test different schedulers, and you get different random values that you think are interesting, because you think they show something cool about the schedulers.
+
+But no. You’re just getting random values because different schedulers have different heuristics for “do I want to let CPU bound processes use long time slices or not”? Particularly in a load where everybody is just spinning on the silly and buggy benchmark, so they all look like they are pure throughput benchmarks and aren’t actually waiting on each other.
+“””
+
+REPLY
+Malte Skarupke
+January 4, 2020 at 11:59
+
+Thanks for linking that. It really means a lot to me that Linus responded, even if the response is negative. I responded to him on the same website, here:
+
+https://www.realworldtech.com/forum/?threadid=189711&curpostid=189747
+
+REPLY
+Tero M
+January 5, 2020 at 04:51
+
+It really means a lot to me that Linus responded, even if the response is negative
+
+Quoting the title of your blog post:
+
+… how Bad the Linux Scheduler Really is
+
+I wouldn’t be surprised at getting a negative response to that kind of claim.
+
+If the Windows kernel is better tuned for poorly implemented custom locking mechanisms when under contention, and those mechanisms happen to be in widespread use in games, and that causes those games to not perform as well on Linux, then it’s more nuanced than the Linux scheduler somehow being bad in general.
+
+john
+January 6, 2020 at 14:00
+
+How about changing your blog post now that you know you were basically wrong about everything?
+
+Just asking.
+
+Joshua Simmons
+January 4, 2020 at 14:12
+
+To answer the original question, it has nothing to do with the scheduler really, just how yield gets handled in different operating systems.
+
+More details here:
+
+https://twitter.com/dotstdy/status/1213583205779021824
+
+(and for the love of god don’t put a sleep(1) in your spinlock)
+
+REPLY
+DANIEL A JOYCE
+January 5, 2020 at 11:07
+
+https://www.realworldtech.com/forum/?threadid=189711&curpostid=189723
+
+Tldr: unless you’re a kernel God userspace spinlocks considered harmful. They interact poorly with the scheduler because the scheduler has no idea they exist and is free to reschedule threads in the middle of a spinlocks. That’s why you’re seeing mutexs being more consistent. The ones provided by the standard library use facilities making them visible to the kernel.
+
+Linux is not windows. Expecting windows techniques to work on Linux means pain.
+
+REPLY
+Wouter van Kleunen
+January 6, 2020 at 11:44
+
+You should actually use the dead schedule to get real, realtime scheduling behaviour. But this would require configuring the deadline and running times per task/thread
+
+Click to access Using_SCHED_DEADLINE.pdf
+
+REPLY
+ya
+January 6, 2020 at 16:52
+
+15 minutes of fame, nothing to see here folks, move along!
+
+REPLY
+Roger Larsson
+January 6, 2020 at 19:40
+
+I think I have verified the reason why RT scheduling (SCHED_FIFO) does not work as expected, as root try
+
+echo 100000 > /proc/sys/kernel/sched_rt_runtime_us
+echo 500000 > /proc/sys/kernel/sched_rt_period_us
+
+Now rerun tests with SCHED_FIFO priority
+
+This should result in worse LongestIdle limits the available RT to 100 ms every 500 ms = reach 100 ms, wait 400 ms – would be better to do like consoles (reserve one or two CPUs for non RT work, then the others COULD (but should not) busywait as much as they like… And at least a printk should hint about that this feature has kicked in – but on the other hand printk’s in scheduler are tricky… performance counter?)
+
+With this setting things might improve (at least when adding sleeps between test steps)
+echo 3800000 > /proc/sys/kernel/sched_rt_runtime_us
+echo 4000000 > /proc/sys/kernel/sched_rt_period_us
+
+It is quite difficult to see how much time will be executed in one go (Note that one test step can affect next, as the scheduler record process behaviour and use that)
+
+Sleep added like this (I have some other code added so lines will not match)
+
+@@ -1298,6 +1407,7 @@ void BenchmarkLongestIdle(benchmark::State& state)
+while (state.KeepRunning())
+{
+runner.full_run();
++ std::this_thread::sleep_for(std::chrono::milliseconds(60));
+}
+runner.shut_down();
+
+REPLY
+mrcsabatoth
+January 6, 2020 at 22:33
+
+There so much more than just the schedulers. Since you are compiling kernels ranyway, I’d be curious to see some combination of time tick settings, RT settings. I have a feeling those would greatly affect the results. Cheers!
+
+REPLY
+mrcsabatoth
+January 6, 2020 at 22:39
+
+Oh, someone also mentioned here C states. In your scenario, when no lock is held there’s a higher chance that one core might switch to some lower power state. I’m monitoring that and it happens all the time. Maybe that’s the answer to the mystery? To find out you can disable are power state changes and force max performance with the power scheduler / manager.
+
+REPLY
+Roger Larsson
+January 7, 2020 at 14:55
+
+Forked your github project https://github.com/RogerJL/mutex_benchmarks
+
+needs RT to avoid scheduler playing games itself, but it might behave better even without it
+
+Add code to set process RT
+
+added Makefile !
+Minimize impact of realtime trottling (turning off trottling helps, but will result in long lockups)
+New circular_work_queue class (and circular_futex for simple test)
+
+REPLY
+Roger Larsson
+January 7, 2020 at 15:09
+
+@Malte Skarupke Forked your github project https://github.com/RogerJL/mutex_benchmarks
+
+needs RT to avoid scheduler playing games itself, but it might behave better even without it
+
+Add code to set process RT
+
+added Makefile !
+Minimize impact of realtime trottling (turning off trottling helps, but will result in long lockups)
+New circular_work_queue class (and circular_futex for simple test)
+
+I have been building several systems where round robin queues worked well, wondered if it could help here too.
+
+Assumptions:
+– there will usually be more work than processors
+– get a new work package should be possible without any blocking (not true for benchmark)
+– might easily result in RT trottling, more RT work than allowed
+– do not run the games lowest prio stuff as RT
+– one work can add multiple new works to queue
+– works are FIFO (non prioritized, this is a base to work from…)
+– circular_futex (does not work as a mutex if more than one slot is unlocked at creation
+
+REPLY
+Ma Ling
+January 19, 2020 at 06:47
+
+We optimize new spinlock, which considered cache ping-pong among cores, could you please give us your benchmark
+
+REPLY
+Malte Skarupke
+January 21, 2020 at 11:03
+
+The code is here:
+https://github.com/skarupke/mutex_benchmarks
+It requires Google Benchmark:
+https://github.com/google/benchmark
+
+REPLY
+Stoyan Stoyanov
+April 13, 2020 at 12:57
+
+While I appreciate the work that went into this post, the spinlock implementations are actually pretty bad!
+
+First off all Test Test-and-Set (TTAS) locks are actually susceptible to two major issues:
+
+The actual load is not that cheap when the cache line keeps getting invalidated.
+They can run into thundering herd issues where multiple waiting threads see the unlock and attempt to acquire the lock at the same time.
+
+The solution is to use the primary atomic only for fast synchronisation and then wait on another location. All fast locks follow this principle as bus traffic when synchronising on a single atomic can completely kill your throughput.
+
+The busy waiting mechanism is essentially the same as a ticket lock, but without the memory synchronisation. You can also have your atomic sit right next to a pointer to the spin queue, which is actually a significant throughput factor if the data you’re guarding sits on the same cache line as the lock itself – 48 bytes on x64.
+
+Lastly, fair spinlocks like the ticket lock aren’t designed to be fast – fairness is important for unbounded workloads (servers, routers etc.), even if it’s bad for throughput. That said, you can easily create a fast ticket lock by following the same principle – map the ticket/counter to a ring of atomic integers and have each thread wait on a slot – naturally, this uses a fair bit of memory if you want to avoid false sharing.
+
+I’m writing a library for high performance locks at the moment, feel free to email me if you want code samples (project is still private). The spinlock I outlined is 4-5 times faster than std::mutex in my raw throughput benchmarks, and I have an even faster adaptive mutex and shared mutex. The array ticket lock is about 30% faster than std::mutex (worth noting that the STL mutex is also fair, so it’s naturally not that fast).
+
+REPLY
+Alessandro
+July 12, 2024 at 15:43
+
+Did you try to add padding between std::atomic<unsigned> in and std::atomic<unsigned> out (e.g., by aligning to std::hardware_destructive_interference_size) in your implementation of the ticket_spinlock, to avoid false sharing between the two atomic variables?
+
+REPLY
+Malte Skarupke
+July 16, 2024 at 19:12
+
+I don’t remember if I tried it. I don’t expect it to help a lot since the bad case is not limited by the hardware, it’s limited by the scheduler. If you want to try it though, I think it’s worth doing: The happy path for the ticket_spinlock should be limited by hardware, not by the scheduler.
+
+REPLY
+Leave a comment
+
+This site uses Akismet to reduce spam. Learn how your comment data is processed.
+
+« Previous Post
+Next Post »
+Search for:
+ 
+RECENT POSTS
+Book Review: Babel by R.F. Kuang
+Apple is Holding my Pictures Hostage Until I Accept Their New Terms of Service
+President Graph – FRED Data Broken Down by Party and President
+I’m Getting a Whiff of Iain Banks’ Culture
+Word Map – A Game About Hill Climbing and Stepping Stones
+ARCHIVES
+May 2026
+April 2026
+March 2026
+February 2026
+January 2026
+November 2025
+September 2025
+August 2025
+June 2025
+May 2025
+February 2025
+October 2024
+April 2024
+October 2023
+September 2023
+April 2023
+December 2022
+September 2022
+June 2022
+February 2022
+January 2022
+October 2021
+July 2021
+April 2021
+January 2021
+November 2020
+October 2020
+August 2020
+July 2020
+June 2020
+May 2020
+April 2020
+March 2020
+January 2020
+December 2019
+September 2019
+August 2019
+June 2019
+April 2019
+March 2019
+June 2018
+May 2018
+April 2018
+January 2018
+December 2017
+November 2017
+October 2017
+September 2017
+August 2017
+February 2017
+January 2017
+December 2016
+November 2016
+June 2016
+April 2016
+March 2016
+February 2016
+December 2015
+September 2015
+July 2015
+June 2015
+May 2015
+February 2015
+January 2015
+December 2014
+November 2014
+October 2014
+September 2014
+August 2014
+June 2014
+May 2014
+April 2014
+March 2014
+February 2014
+January 2014
+October 2013
+September 2013
+August 2013
+May 2013
+February 2013
+January 2013
+December 2012
+November 2012
+October 2012
+August 2012
+July 2012
+April 2012
+March 2012
+February 2012
+January 2012
+October 2011
+September 2011
+August 2011
+July 2011
+June 2011
+May 2011
+CATEGORIES
+Apartment
+Children
+Games
+Links
+Math
+Politics and Economics
+Programming
+Uncategorized
+META
+Create account
+Log in
+Entries feed
+Comments feed
+WordPress.com
+ 
+
+Blog at WordPress.com.
+
+Comment
+ 
+Reblog
+ 
+Subscribe
+
+IMAGES
+https://2.gravatar.com/avatar/8b429dba3c4431b9779e4ca2b48ded918df0b26e83fa5a03eaa8e112401b0bd6?s=48&d=identicon&r=G
+https://2.gravatar.com/avatar/ee7110bc70d8ac628b157c947ab9ff65ba60c57c5b771c71bc85f5589803bd28?s=48&d=identicon&r=G
+https://0.gravatar.com/avatar/6fc76eab0e28f0bea2a3f3f0e3d4cc5308abc92279086a6da7e131dff5046a49?s=48&d=identicon&r=G
+https://1.gravatar.com/avatar/a61b7468020f85fc4d721f3c2d1094611d688973166067987f62eac9584cb7af?s=48&d=identicon&r=G
+https://0.gravatar.com/avatar/0fc838fc5a9c2994850519e5feadef2c61cacf71dfe2f236e7390b062923c22d?s=48&d=identicon&r=G
+https://2.gravatar.com/avatar/e616ddadd68927ec74e28d44edb6ef2912314df20a368dcb28c7d0882322c9cf?s=48&d=identicon&r=G
+https://s0.wp.com/wp-content/mu-plugins/wpcom-smileys/twemoji/2/svg/1f642.svg
+https://2.gravatar.com/avatar/bc9e95f23dd35c51a86588f7d05fb7720125b98c469fc188b891b888c1bb696a?s=48&d=identicon&r=G
+https://0.gravatar.com/avatar/c8fdcd35361aa924ecbf9088b7f59acf976c60d3a38903ae85d93343dc33c3a6?s=48&d=identicon&r=G
+https://2.gravatar.com/avatar/5f13d99519c14287521428fc7d093fe6a4b0d732d008a8823f0b724632efae21?s=48&d=identicon&r=G
+https://2.gravatar.com/avatar/b237da66c33fa1f08ce8ffdbf8f6bc566a90be9c020bb322283974f90a02ae2b?s=48&d=identicon&r=G
+https://2.gravatar.com/avatar/5b42ddf55084b11eadd3cb192717ab0c5f943015d094106541ce0a6902973f80?s=48&d=identicon&r=G
+https://0.gravatar.com/avatar/fc843239287c093ce1b29652e2fc525b15596292e779de536efa53bfce236d4d?s=48&d=identicon&r=G
+https://1.gravatar.com/avatar/12c8631967867f317c39d66c4e7c8dee46ba95accec33bea843d3e08d70fd638?s=48&d=identicon&r=G
+https://1.gravatar.com/avatar/a75d0378e7d59782712f7a313380b98ea31916a9d2a38ed713ed14429dafd169?s=48&d=identicon&r=G
+https://1.gravatar.com/avatar/485633fccdef2542558958bdd8699118f3a390676f678e6ace3cbfd01c859da7?s=48&d=identicon&r=G
+https://2.gravatar.com/avatar/5e6d39d89de3d093989ae867ff96354eb5e1432509e3cfd90ddf01a74f7c4f7c?s=48&d=identicon&r=G
+https://2.gravatar.com/avatar/2ed43c018d92976afabfa3fd3d13b18fd18099882bcce63f323bce1250ed677d?s=48&d=identicon&r=G
+https://0.gravatar.com/avatar/cc0396a2f73cbe69242d483708e48b46fb5029cf434da2b7a20567be616e2080?s=48&d=identicon&r=G
+https://0.gravatar.com/avatar/c21793be1df75966cd4a6ed939219e4fb15e4c2cd7d62b2ae4238c0dc2271128?s=48&d=identicon&r=G
+https://2.gravatar.com/avatar/20f86699f03ffe4b77cd842a0bb5f3bcab9620c49f3e25072dd80c302ea56f85?s=48&d=identicon&r=G
+https://0.gravatar.com/avatar/9345b0a46fefe27c13380481e4a4ead5355fac181adcbcbbe924af3ab0396488?s=48&d=identicon&r=G
+https://1.gravatar.com/avatar/185dc8fe27babfcf419aced0f95006da18f9d9d787fbd4837c0fe5c292e0e2cc?s=48&d=identicon&r=G
+https://0.gravatar.com/avatar/3379121d64d67c8f1716aca3c15da16494f60831330ace2e8cf10f3c536f4bf6?s=48&d=identicon&r=G
+https://2.gravatar.com/avatar/5e4cb9f629f6bf6872e05aee8da325c4c8c8b714d7c83b13eff050d3935e9eb5?s=48&d=identicon&r=G
+https://graph.facebook.com/v2.9/10157695648509089/picture?type=large&_md5=93b1f12ee79fa006c7525b7c7f3b3eab
+https://2.gravatar.com/avatar/85f11a4a7edbb360cb23ebf5fbb378e46f82391ea8545948c07560ccff98e82f?s=48&d=identicon&r=G
+https://0.gravatar.com/avatar/f6a3fee416262498253c58887cc74c1e69a8f71347c868645a61e14ec2e3a41e?s=48&d=identicon&r=G
+https://0.gravatar.com/avatar/6f1e80ebe80c85c31d07d591ff3401659fbe281170761e3be50289935938e266?s=48&d=identicon&r=G
+https://2.gravatar.com/avatar/8696918b7eb104f0ee0911e64b98425e19f2ff854e6b085eea32d0cb06a074d3?s=48&d=identicon&r=G
+https://1.gravatar.com/avatar/4f8660a6f7aa8289a350739feb410b539972010640c805f092940d8544659ef9?s=48&d=identicon&r=G
+https://2.gravatar.com/avatar/b7310ddcd52d4463b3d800233863720784da06704d6023d975d35bc61b3b8bef?s=48&d=identicon&r=G
+https://2.gravatar.com/avatar/b378ea36e66e9ee65cc489a2d3925083f90068788994635270bf1e5cfa7d5b60?s=48&d=identicon&r=G
+https://0.gravatar.com/avatar/688a6ec460cbd1a89419e4756b4ea5f9a2efc3c2335aaae52dcdfdf133776c3a?s=48&d=identicon&r=G
+https://1.gravatar.com/avatar/a8b8db060c4f5651d42929a4577a408667351d99ff0f09d4f2d1c9131c2f9337?s=48&d=identicon&r=G
+https://0.gravatar.com/avatar/caa54d96bb8a5c1732cd1768203c84e038082ece2f2658f617529c4ff87be8ae?s=48&d=identicon&r=G
+https://2.gravatar.com/avatar/2c2e6d2ec685e313024ad5c243d3b363005652cf5964f5c8141a9b57643320f9?s=48&d=identicon&r=G
+https://0.gravatar.com/avatar/9114622c34eb730876a4d997d575ba73de053e045ca60963f50aabf9c8b3d3ba?s=48&d=identicon&r=G
+https://1.gravatar.com/avatar/7c85caf8250d6e29b1fc800ab93a4b18caa20aa4c7b35835af4924a86d9dd207?s=48&d=identicon&r=G
+https://0.gravatar.com/avatar/6c5e8574badc65857281357cae8c425d73165313612cfbede27552117a46ccd8?s=48&d=identicon&r=G
+https://2.gravatar.com/avatar/5c34b3ffbb126d0f624434866378b4d290eb22f788be16479546abb2aacdf3d3?s=48&d=identicon&r=G
+https://1.gravatar.com/avatar/a9d862305c6acdebcfe2ac6cc8557dcceda1e2004575fc316162f68a23e985d7?s=48&d=identicon&r=G
+https://2.gravatar.com/avatar/5f44cc9835e9b9a09f905cc30adbfbd2c06ac718ece6828bf9cd7ef5596e87fb?s=48&d=identicon&r=G
+https://2.gravatar.com/avatar/55747374fdb974433fe65d936f05c5c74dc6b85c1c9f652bcdefc497b7377acd?s=48&d=identicon&r=G
+https://2.gravatar.com/avatar/ec28aa7957c1c4aa3c850b48b10f04aaf10b916251d3bbc10465067f6c02bc3d?s=48&d=identicon&r=G
+https://1.gravatar.com/avatar/1874df7f3fec3e5748efd8145b5a3da832831396db6764cd7e36e8755d27152d?s=48&d=identicon&r=G
+https://0.gravatar.com/avatar/338917f79f5dbd255dbfc2b4f1ab5bad233233b5783e24083579b572b7b16dbe?s=48&d=identicon&r=G
+https://s0.wp.com/i/logo/wpcom-gray-white.png?m=1479929237i
+https://pixel.wp.com/g.gif?blog=22872755&v=wpcom&tz=-7&user_id=0&post=9804&subd=probablydance&host=probablydance.com&ref=&rand=0.8596624111828014

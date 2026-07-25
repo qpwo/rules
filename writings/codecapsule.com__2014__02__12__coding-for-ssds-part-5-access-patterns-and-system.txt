@@ -1,0 +1,298 @@
+Skip to content
+Code Capsule
+
+A blog by Emmanuel Goossaert
+
+twitter
+ 
+linkedin
+Archives
+About
+Sidebar
+Join my email list
+
+Hi, I’m Emmanuel!
+
+I’m the author of this blog. I am CTO at New10.com, and I’m based in Amsterdam, Netherlands.
+
+Recent Posts
+Requirements-as-Code for AI-Augmented Software Engineers
+Solving the Prompt Management Problem
+My Takeaways on Vibe Coding
+What Special Forces Can Teach Us About High-Impact Engineering Teams
+How Many Reports For Engineering Managers & Other Bedtime Stories
+Performative Leadership: From Cargo Cults to OKRs
+Solution-Oriented Coaching, or the Lost Art of Effective Conversations
+Part 4: Beyond The Code and What I’ve Learned – Ethereum Payment
+Part 3: Processing Payments – Ethereum Payment
+Part 2: Product Data Models – Ethereum Payment
+Coding for SSDs – Part 5: Access Patterns and System Optimizations
+Published by Emmanuel Goossaert on February 12, 2014
+
+This is Part 5 over 6 of “Coding for SSDs”, covering Sections 7 and 8. For other parts and sections, you can refer to the Table to Contents. This is a series of articles that I wrote to share what I learned while documenting myself on SSDs, and on how to make code perform well on SSDs. If you’re in a rush, you can also go directly to Part 6, which is summarizing the content from all the other parts.
+
+Now that I have covered most of the inner workings of solid-state drives in the previous sections, I can provide data that will help build an understanding of which access patterns should be used and why they are indeed better than others. In this part, I explain how writes should be done, how reads should be done, and why concurrent read and write operations are interfering. I also cover a few optimizations at the level of the filesystem which can improve performance.
+
+Translations: This article was translated to Simplified Chinese by Xiong Duo and to Korean by Matt Lee (이 성욱).
+
+7. Access patterns
+7.1 Defining sequential and random I/O operations
+
+In the following sub-sections, I will be referring to accesses as being “sequential” or “random”. An I/O operation is said to be sequential if its starting logical block address (LBA) directly follows the last LBA of the previous I/O operation. If this is not the case, then the operation is said to be random. It is important to note that due to the dynamic mapping performed by the FTL, contiguous addresses in the logical space may refer to addresses that are not contiguous in the physical space.
+
+7.2 Writes
+
+Benchmarks and manufacturer data sheets show that random writes are slower than sequential writes, though it is not always true as it depends upon the exact type of random write workload. If the size of the writes is small, and by small I mean less than the size of a clustered block (i.e. < 32 MB), then yes, random writes are slower than sequential writes. However, if the random writes are both multiple of and aligned to the size of a clustered block, then they perform just as well as sequential writes.
+
+The explanation is as follows. As seen in Section 6, the internal parallelism in SSDs allows for clustered blocks to be written at once using a combination of parallelism and interleaving. Therefore, whether they are sequential or random, the writes will be striped over multiple channels and chips in the same way internally, and performing a write that has the size of the clustered block guarantees that all of the internal parallelism will be used. Write operations on clustered blocks will be covered in Section 7.3 below. Now on the performance side, as shown in Figures 8 and 9 reproduced from [2] and [8] respectively, random writes reach a throughput as high as the one of sequential writes when the size of the benchmark write buffer is equal or greater to the size of the clustered block, which is 16 or 32 MB for most SSDs.
+
+Figure 8: Comparison of the effects of a sequential write workload versus a random write workload over four SSDs — Reproduced from Kim et al., 2012 [2]
+
+Figure 9: Comparison of the effects of a sequential write workload versus a random write workload over three SSDs — Reproduced from Min et al., 2012 [8]
+
+However, if the writes are small — by small I mean smaller than a NAND-flash page, i.e. < 16 KB — then the controller has more work to do in order to maintain the metadata necessary for the block mapping. Indeed, some SSDs are using tree-like data structures to represent the mapping between logical block addresses and physical block addresses [1], and a lot of small random writes will translate into a lot of updates to the mapping in RAM. As this mapping is being persisted from RAM to flash memory [1, 5], all those updates in the RAM will cause a lot of writes on the flash memory. A sequential workload incurs less updates to the metadata, and therefore less writes to the flash memory.
+
+Random writes are not always slower than sequential writes
+
+If the writes are small (i.e. below the size of the clustered block), then random writes are slower than sequential writes.
+
+If writes are both multiple of and aligned to the size of a clustered block, the random writes will use all the available levels of internal parallelism, and will perform just as well as sequential writes.
+
+Another reason is that if the random writes are small, they will cause a higher number of copy-erase-write operations on the blocks. On the other hand, sequential writes of at least the size of a block allow for the faster switch merge optimization to be used. Moreover, small random writes are known to invalidate data randomly. Instead of having a few blocks fully invalidated, many blocks will have only one page invalidated, which causes stale pages to be spread out in physical space instead of being localized. This phenomenon is known as internal fragmentation, and causes the cleaning efficiency to drop, by requiring a larger number of erase operations to be run by the garbage collection process to create free pages.
+
+Finally regarding concurrency, it has been shown that writing a large buffer with one thread is just as fast as writing many smaller buffers with many concurrent threads. Indeed, a large write guarantees that all of the internal parallelism of the SSD is used. Therefore, trying to perform multiple writes in parallel will not improve the throughput [1, 5]. However, many parallel writes will cause the latency to increase compared to a single thread access [3, 26, 27].
+
+A single large write is better than many small concurrent writes
+
+A single large write request offers the same throughput as many small concurrent writes, however in terms of latency, a large single write has a better response time than concurrent writes. Therefore, whenever possible, it is best to perform large writes.
+
+When the writes are small and cannot be grouped or buffered, multi-threading is beneficial
+
+Many concurrent small write requests will offer a better throughput than a single small write request. So if the I/O is small and cannot be batched, it is better to use multiple threads.
+
+Join my email list
+
+7.3 Reads
+
+Reads are faster than writes. As for sequential reads versus random reads, it all depends. The FTL is mapping logical block dynamically to physical blocks, and stripes writes across channels. This approach is sometimes referred to as “write-order-based” mapping [3]. If the data is read completely randomly in a way that does not match the way it was originally written to, then there is no guarantee that consecutive reads are spread across different channels. It is even possible that consecutive random reads are accessing different blocks from a single channel, thus not taking advantage of the internal parallelism. Acunu has written a blog article on this which shows, at least for the drive they tested, that read performance is directly linked to how closely the read access patterns matches how the data was originally written [47].
+
+To improve the read performance, write related data together
+
+Read performance is a consequence of the write pattern. When a large chunk of data is written at once, it is spread across separate NAND-flash chips. Thus you should write related data in the same page, block, or clustered block, so it can later be read faster with a single I/O request, by taking advantage of the internal parallelism.
+
+Figure 10 below shows an SSD that has two channels and four chips with one plane per chip. Note that this is technically invalid as SSDs always have two or more planes per chip, but for the sake of keeping the schematic compact and simple, I decided to show only one plane per chip. Capital letters represent data which has the size of a NAND-flash block. The operation represented at the top of Figure 10 is writing four blocks sequentially, [A B C D], which in this example is the size of the clustered block. The write operation is being striped over the four planes using parallelism and interleaving, making it faster. Even though the four blocks are sequential in the logical block address space, they are stored in four distinct planes internally.
+
+With write-order-based FTLs, all blocks in a plane are equally-likely to be chosen for incoming writes, therefore a clustered block will not necessarily have to be formed of blocks that have the same PBN in their respective planes. For example in Figure 10, the first clustered block is formed of blocks from four different planes, the PBNs in their respective planes being 1, 23, 11, and 51.
+
+Two read operations are represented at the bottom of Figure 10, [A B E F] and [A B G H]. For [A B E F], A and E belong to the same plane, and B and F belong to another plane, thus [A B E F] is forced to read from only two planes over one channel. In the case of [A B G H], A, B, G, and H are stored on four different planes, therefore [A B G H] can read from four planes over two channels at the same time. Reading from more planes and more channels enables to take advantage of more of the internal parallelism, therefore granting better read performance.
+
+Figure 10: Exploiting the internal parallelism of SSDs
+
+A direct consequence of the internal parallelism is that trying to read data concurrently using multiple threads will not necessarily result in increasing performance. Indeed, if the locations accessed by the threads do not have knowledge of the internal mapping and do not take advantage of it, they could end up accessing the same channel. It has also been shown that concurrent read threads can impair the readahead (prefetching buffer) capabilities of SSDs [3].
+
+A single large read is better than many small concurrent reads
+
+Concurrent random reads cannot fully make use of the readahead mechanism. In addition, multiple Logical Block Addresses may end up on the same chip, not taking advantage or of the internal parallelism. Moreover, a large read operation will access sequential addresses and will therefore be able to use the readahead buffer if present. Consequently, it is preferable to issue large read requests.
+
+SSD manufacturers generally do not communicate the sizes of the page, block and clustered block. It is however possible to reverse engineer most of the basic characteristics of an SSD with great confidence by running simple workloads [2, 3]. This information can then be used to optimize the size of the buffer with which reads and writes are made, and also to align partitions to the underlying SSD characteristics when formatting the drive, as it is covered in Section 8.4.
+
+7.4 Concurrent reads and writes
+
+Interleaving small reads and writes causes performance to decrease [1, 3]. The main reason for is that reads and writes are competing for the same internal resources, and that mixing them prevent some mechanism such as the readahead to be exploited fully.
+
+Separate read and write requests
+
+A workload made of a mix of small interleaved reads and writes will prevent the internal caching and readahead mechanism to work properly, and will cause the throughput to drop. It is best to avoid simultaneous reads and writes, and perform them one after the other in large chunks, preferably of the size of the clustered block. For example, if 1000 files have to be updated, you could iterate over the files, doing a read and write on a file and then moving to the next file, but that would be slow. It would be better to reads all 1000 files at once and then write back to those 1000 files at once.
+
+8. System optimizations
+8.1 Partition alignment
+
+As explained in Section 3.1, writes are aligned on page size. A write request that is the size of a page and which is also aligned on the page size will be written to an NAND-flash physical page directly. A write request that is the size of a page but which is not aligned will require writing to two NAND-flash physical pages, and incur two read-modify-write operations [53]. Therefore, it is critical to ensure that the partition used to write to an SSD is aligned with the size of the physical NAND-flash page of the drive used. Various guides and tutorials show how to align a partition to the parameters of an SSD when formatting [54, 55]. A quick search on Google will generally reveal the sizes of the NAND-flash page, NAND-flash block and clustered block for a specific SSD model. And in case this information is not available, it is still possible to use some reverse engineering to uncover those parameters [2, 3].
+
+It has been shown that performance improves significantly with partition alignment [43]. It has also been shown in a test on one drive that by-passing the filesystem and writing directly to the drive improved performance, although the improvement was very tiny [44].
+
+Align the partition
+
+To ensure that logical writes are truly aligned to the physical memory, you must align the partition to the NAND-flash page size of the drive.
+
+8.2 Filesystem parameters
+
+Not all filesystems support the TRIM command [16] as explained in Section 5.1. On Linux 2.6.33 and above, ext4 and XFS support TRIM, which still needs to be enabled using the discard parameter. From there, a few other tweaks are also to disable the updating of the metadata if it is not needed for anything, by removing the relatime parameter if present and adding noatime,nodiratime [40, 55, 56, 57].
+
+Enable the TRIM command
+
+Make sure your kernel and filesystem support the TRIM command. The TRIM command notifies the SSD controller when a block is deleted. The garbage collection process can then erase blocks in background during idle times, preparing the drive to face large writes workloads.
+
+8.3 Operating system I/O scheduler
+
+The default I/O scheduler on Linux is the CFQ scheduler (Completely Fair Queuing). CFQ was designed to minimize the seek latenties in spinning hard disk drives by grouping I/O requests that are physically close together. Such I/O request re-ordering is not necessary for SSDs as they have no mechanical parts. Various guides and discussions advocate that changing the I/O schedular from CFQ to NOOP or Deadline will reduce latencies on SSDs [56, 58]. However since the version 3.1 of Linux, CFQ offers some optimizations for solid-state drives [59]. Benchmarks are also are showing that the performance of the schedulers depends on the workload applied to an SSD (i.e. the application), and on the drive itself [40, 60, 61, 62].
+
+My personal take on the matter is that unless the workload is very specific and that application-specific benchmarks are here to show the advantage of a scheduler over another, it’s a safe bet to stick to CFQ.
+
+8.4 Swap
+
+Due to the high numbers of I/O requests incurred by swapping pages to the drive, a swap partition on an SSD can increase the rate at which the drive wears off, and significantly reduce its lifespan. In the Linux kernel, the vm.swappiness parameter controls how often pages should be swapped to the drive. It can have a value between 0 and 100, 0 meaning that the kernel should avoid swapping as much as possible, and 100 meaning that the kernel should swap as much as possible. On Ubuntu for example, the default swappiness is 60. When using SSDs, reducing the swappiness to the lowest possible value, which is 0, will avoid incurring unnecessary writes to the drive and increase its lifespan [56, 63]. Some guides recommend the value 1, which in practice is essentially the same as 0 [57, 58].
+
+Other options are to use a RAM disk for swap, or to avoid swap altogether.
+
+8.5 Temporary files
+
+All temporary files and all log files that do not need to be persisted are wasting P/E cycles on SSDs. Such files can be stored into RAM using the tmpfs filesystem [56, 57, 58].
+
+What’s next
+
+Part 6, which is summarizing the content from all the other parts, is available here. You can also go to the Table of Content for this series of articles.
+
+To receive a notification email every time a new article is posted on Code Capsule, you can subscribe to the newsletter by filling up the form at the top right corner of the blog.
+As usual, comments are open at the bottom of this post, and I am always happy to welcome questions, corrections and contributions!
+
+Join my email list
+
+References
+
+[1] Understanding Intrinsic Characteristics and System Implications of Flash Memory based Solid State Drives, Chen et al., 2009
+[2] Parameter-Aware I/O Management for Solid State Disks (SSDs), Kim et al., 2012
+[3] Essential roles of exploiting internal parallelism of flash memory based solid state drives in high-speed data processing, Chen et al, 2011
+[4] Exploring and Exploiting the Multilevel Parallelism Inside SSDs for Improved Performance and Endurance, Hu et al., 2013
+[5] Design Tradeoffs for SSD Performance, Agrawal et al., 2008
+[6] Design Patterns for Tunable and Efficient SSD-based Indexes, Anand et al., 2012
+[7] BPLRU: A Buffer Management Scheme for Improving Random Writes in Flash Storage, Kim et al., 2008
+[8] SFS: Random Write Considered Harmful in Solid State Drives, Min et al., 2012
+[9] A Survey of Flash Translation Layer, Chung et al., 2009
+[10] A Reconfigurable FTL (Flash Translation Layer) Architecture for NAND Flash-Based Applications, Park et al., 2008
+[11] Reliably Erasing Data From Flash-Based Solid State Drives, Wei et al., 2011
+[12] http://en.wikipedia.org/wiki/Solid-state_drive
+[13] http://en.wikipedia.org/wiki/Write_amplification
+[14] http://en.wikipedia.org/wiki/Flash_memory
+[15] http://en.wikipedia.org/wiki/Serial_ATA
+[16] http://en.wikipedia.org/wiki/Trim_(computing)
+[17] http://en.wikipedia.org/wiki/IOPS
+[18] http://en.wikipedia.org/wiki/Hard_disk_drive
+[19] http://en.wikipedia.org/wiki/Hard_disk_drive_performance_characteristics
+[20] http://centon.com/flash-products/chiptype
+[21] http://www.thessdreview.com/our-reviews/samsung-64gb-mlc-ssd/
+[22] http://www.anandtech.com/show/7594/samsung-ssd-840-evo-msata-120gb-250gb-500gb-1tb-review
+[23] http://www.anandtech.com/show/6337/samsung-ssd-840-250gb-review/2
+[24] http://www.storagereview.com/ssd_vs_hdd
+[25] http://www.storagereview.com/wd_black_4tb_desktop_hard_drive_review_wd4003fzex
+[26] http://www.storagereview.com/samsung_ssd_840_pro_review
+[27] http://www.storagereview.com/micron_p420m_enterprise_pcie_ssd_review
+[28] http://www.storagereview.com/intel_x25-m_ssd_review
+[29] http://www.storagereview.com/seagate_momentus_xt_750gb_review
+[30] http://www.storagereview.com/corsair_vengeance_ddr3_ram_disk_review
+[31] http://arstechnica.com/information-technology/2012/06/inside-the-ssd-revolution-how-solid-state-disks-really-work/
+[32] http://www.anandtech.com/show/2738
+[33] http://www.anandtech.com/show/2829
+[34] http://www.anandtech.com/show/6489
+[35] http://lwn.net/Articles/353411/
+[36] http://us.hardware.info/reviews/4178/10/hardwareinfo-tests-lifespan-of-samsung-ssd-840-250gb-tlc-ssd-updated-with-final-conclusion-final-update-20-6-2013
+[37] http://www.anandtech.com/show/6489/playing-with-op
+[38] http://www.ssdperformanceblog.com/2011/06/intel-320-ssd-random-write-performance/
+[39] http://en.wikipedia.org/wiki/Native_Command_Queuing
+[40] http://superuser.com/questions/228657/which-linux-filesystem-works-best-with-ssd/
+[41] http://blog.superuser.com/2011/05/10/maximizing-the-lifetime-of-your-ssd/
+[42] http://serverfault.com/questions/356534/ssd-erase-block-size-lvm-pv-on-raw-device-alignment
+[43] http://rethinkdb.com/blog/page-alignment-on-ssds/
+[44] http://rethinkdb.com/blog/more-on-alignment-ext2-and-partitioning-on-ssds/
+[45] http://rickardnobel.se/storage-performance-iops-latency-throughput/
+[46] http://www.brentozar.com/archive/2013/09/iops-are-a-scam/
+[47] http://www.acunu.com/2/post/2011/08/why-theory-fails-for-ssds.html
+[48] http://security.stackexchange.com/questions/12503/can-wiped-ssd-data-be-recovered
+[49] http://security.stackexchange.com/questions/5662/is-it-enough-to-only-wipe-a-flash-drive-once
+[50] http://searchsolidstatestorage.techtarget.com/feature/The-truth-about-SSD-performance-benchmarks
+[51] http://www.theregister.co.uk/2012/12/03/macronix_thermal_annealing_extends_life_of_flash_memory/
+[52] http://www.eecs.berkeley.edu/~rcs/research/interactive_latency.html
+[53] http://blog.nuclex-games.com/2009/12/aligning-an-ssd-on-linux/
+[54] http://www.linux-mag.com/id/8397/
+[55] http://tytso.livejournal.com/2009/02/20/
+[56] https://wiki.debian.org/SSDOptimization
+[57] http://wiki.gentoo.org/wiki/SSD
+[58] https://wiki.archlinux.org/index.php/Solid_State_Drives
+[59] https://www.kernel.org/doc/Documentation/block/cfq-iosched.txt
+[60] http://www.danielscottlawrence.com/blog/should_i_change_my_disk_scheduler_to_use_NOOP.html
+[61] http://www.phoronix.com/scan.php?page=article&item=linux_iosched_2012
+[62] http://www.velobit.com/storage-performance-blog/bid/126135/Effects-Of-Linux-IO-Scheduler-On-SSD-Performance
+[63] http://www.axpad.com/blog/301
+[64] http://en.wikipedia.org/wiki/List_of_solid-state_drive_manufacturers
+[65] http://en.wikipedia.org/wiki/List_of_flash_memory_controller_manufacturers
+[66] http://blog.zorinaq.com/?e=29
+[67] http://www.gamersnexus.net/guides/956-how-ssds-are-made
+[68] http://www.gamersnexus.net/guides/1148-how-ram-and-ssds-are-made-smt-lines
+[69] http://www.tweaktown.com/articles/4655/kingston_factory_tour_making_of_an_ssd_from_start_to_finish/index.html
+[70] http://www.youtube.com/watch?v=DvA9koAMXR8
+[71] http://www.youtube.com/watch?v=3s7KG6QwUeQ
+[72] Understanding the Robustness of SSDs under Power Fault, Zheng et al., 2013 — [discussion on HN]
+[73] http://lkcl.net/reports/ssd_analysis.html — [discussion on HN]
+
+Published inAlgorithms and Programming
+access patternsalign filesystemclustered blockscodingmulti-threadingOptimizationperformanceprogrammingreadssolid-state drivesssdsystem optmizationwrites
+Previous Post
+Coding for SSDs – Part 4: Advanced Functionalities and Internal Parallelism
+Next Post
+Coding for SSDs – Part 6: A Summary – What every programmer should know about solid-state drives
+6 Comments
+Eric Shaw
+
+You mention making sure partition is aligned to page size, but not that cluster size should be a multiple of page size.
+
+Most(all?) modern OSes are currently formatting drives with 4KB cluster size by default. But there are very few SSDs still using 4KB pages! While the start of partitions are aligned to multiples of 16KB (multiples of 100MB in fact) in Vista, Win7, and Win8, the default cluster size of 4KB somewhat defeats that. Formatting with other cluster sizes during install is possible, but not staying within the GUI.
+
+February 20, 2014 Reply
+storen
+
+since all logical block address will be mapped by ftl with an random way, I am wondering why sequential write is faster than random write when the write size is small , can you explain it more detailed?
+
+July 2, 2014 Reply
+Emmanuel Goossaert
+
+With the Hybrid Log-Block Flash Translation Layer (log-block FTL), incoming writes are written sequentially into log blocks. You can think of it as a buffering system. When a log block is full, it is merged with the data block it refers to into a free block, to create a new up-to-date data block. With small writes that are sequential — i.e. that have contiguous Logical Block Addresses, LBAs — will resolve to the same Physical Block Addresses, PBAs. In that case, updating the data will require very few merging operations, because those merging operations can be “factorized” among the writes as they have similar PBAs. With small writes that are random, the FTL will need to maintain more log-blocks, and access a larger set of PBAs, thus causing more merging operations.
+
+Section 4.2 and Figure 5 in Part 3 will give you more details about that: http://codecapsule.com/2014/02/12/coding-for-ssds-part-3-pages-blocks-and-the-flash-translation-layer/
+
+July 17, 2014 Reply
+storen
+
+the graph you draw is very elegant, can you show me which software do you use?
+
+July 2, 2014 Reply
+Emmanuel Goossaert
+
+I made the diagrams with Omnigraffle on Mac.
+
+July 17, 2014 Reply
+Hasan
+
+So, if the write request size is less than the clustered block size (say half of the clustered block size), would this mean that the write request won’t use the internal parallelism? I just can’t understand why.
+
+July 15, 2017 Reply
+Leave a Reply
+
+Your email address will not be published. Required fields are marked *
+
+Comment
+
+Name*
+
+Email*
+
+Website
+
+ Save my name, email, and website in this browser for the next time I comment.
+
+ Notify me of follow-up comments via e-mail. You can also subscribe without commenting.
+
+ 
+Scroll to the top
+
+IMAGES
+https://codecapsule.com/wp-content/uploads/2020/12/codecapsule_logo.png
+https://i0.wp.com/codecapsule.com/wp-content/uploads/2020/12/profile-pic-2-copy.png?resize=150%2C150&ssl=1
+https://i0.wp.com/codecapsule.com/wp-content/uploads/2014/02/ssd-presentation-05.jpg?w=720&ssl=1
+https://i0.wp.com/codecapsule.com/wp-content/uploads/2014/01/writes-random-01.jpg?w=720&ssl=1
+https://i0.wp.com/codecapsule.com/wp-content/uploads/2014/01/writes-random-02.jpg?w=720&ssl=1
+https://i0.wp.com/codecapsule.com/wp-content/uploads/2014/02/ssd-exploiting-parallelism.jpg?resize=720%2C1158
+https://secure.gravatar.com/avatar/1a3bc9cf04813cf59ffc830935434c32382769c661024cd2c08868ea6d8051a7?s=48&d=identicon&r=g
+https://secure.gravatar.com/avatar/5a84f674c36ae84ca6efcab1f51ec3d71885624335da241f7ebaf6746a6afe91?s=48&d=identicon&r=g
+https://secure.gravatar.com/avatar/fd1f104619cf7ca7bc1f582d36f58ff498dde5e1a7b0758f95a37453d98d5ada?s=48&d=identicon&r=g
+https://secure.gravatar.com/avatar/bfef076f145a1ec33aa82676796102020e176e333ace6e5bf7f34436cf0be60b?s=48&d=identicon&r=g
+https://pixel.wp.com/g.gif?v=ext&blog=78704685&post=1858&tz=0&srv=codecapsule.com&j=1%3A13.1.4&host=codecapsule.com&ref=&fcp=0&rand=0.004036359968776826

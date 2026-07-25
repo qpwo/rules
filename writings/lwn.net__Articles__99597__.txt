@@ -1,0 +1,114 @@
+LWN
+.net
+News from the source
+Content
+Weekly Edition
+Archives
+Search
+Kernel
+Security
+Events calendar
+Unread comments
+LWN FAQ
+Write for us
+Edition
+Return to the Kernel page
+User:  Password:   |  | 
+CacheFS - general filesystem cache
+From:	 	David Howells <dhowells@redhat.com>
+To:	 	torvalds@osdl.org, akpm@osdl.org
+Subject:	 	[PATCH] CacheFS - general filesystem cache
+Date:	 	Fri, 27 Aug 2004 01:23:03 +0100
+Cc:	 	linux-kernel@vger.kernel.org, steved@redhat.com, dwmw2@redhat.com
+
+Hi Linus, Andrew,
+
+I've packaged my generic filesystem cache filesystem into patches and also
+produced patches for my AFS filesystem to use it. Work is also in progress to
+alter the NFS client use this interface too, and I think the ISO9660
+filesystem could also benefit.
+
+I've put a tarball of them on my Red Hat webpage because one of them is rather
+large. If you grab:
+
+	http://people.redhat.com/~dhowells/cachefs/cachefs-patche...
+
+You'll find the following patches contained therein:
+
+    (1) cachefs-nullfileptr-2681mm4.diff
+
+	Fix a bug introduced into do_generic_mapping_read() by which a file
+	pointer becomes required. I had arranged things so that it was
+	optional so that I could call it directly on an inode.
+
+    (2) cachefs-rastateinit-2681mm4.diff
+
+	Revert the change made to file_ra_state_init() that removed the symbol
+	export that I'd put in, and also make it fully initialise the state
+	again.
+
+	This was also done so that do_generic_mapping_read() could be called
+	directly on an inode.
+
+    (3) cachefs-fs-2681mm4.diff
+
+	The cachefs filesystem source and interface header file.
+
+    (4) cachefs-doc-2681mm4.diff
+
+	Documentation about using cachefs.
+
+    (5) cachefs-wppageop-2681mm4.diff
+
+	Add a notification operation to the address space that gets invoked
+	when a read-only protected page is about to be made writable. I've
+	shown this to Rik van Riel who seems happy with it.
+
+	Using a combination of (5) and (6), I can have cachefs write a netfs
+	page into the cache in the background whilst the netfs readpage
+	completes and passes the now unlocked page back to userspace.
+
+	Previously, the netfs readpage function had to be synchronous with
+	respect to writing the page to disc. Now it can use this callback and
+	prepare_write() to synchronise upon the page being modified in the
+	page cache before it gets DMA'd to cachefs's disc block.
+
+	David Woodhouse is also interested in using this to do lazy
+	reservations in JFFS2 shared writable mapping support.
+
+    (6) cachefs-fspagesync-2681mm4.diff
+
+	This adds another page flag for intra-filesystem synchronisation, to
+	operate in a manner similar to PG_writeback.
+
+	I've made my AFS client use this to indicate that a page has now been
+	written to the backing cache and can now be safely modified.
+
+    (7) cachefs-afs-2681mm4.diff
+
+	This changes my AFS client so that it can make use of cachefs.
+
+Signed-Off-By: David Howells <dhowells@redhat.com>
+
+I've also put a utility on my webpage for dumping the cachefs update journal
+contents:
+
+	http://people.redhat.com/~dhowells/cachefs/dump-journal.c
+
+It just needs the fs/cachefs/cachefs-int.h header file placing in the same
+directory to compile.
+
+David
+-
+To unsubscribe from this list: send the line "unsubscribe linux-kernel" in
+the body of a message to majordomo@vger.kernel.org
+More majordomo info at  http://vger.kernel.org/majordomo-info.html
+Please read the FAQ at  http://www.tux.org/lkml/
+
+Copyright © 2004, Eklektix, Inc.
+Comments and public postings are copyrighted by their creators.
+Linux is a registered trademark of Linus Torvalds
+
+IMAGES
+https://static.lwn.net/images/logo/barepenguin-70.webp
+https://static.lwn.net/images/lcorner-ss.png

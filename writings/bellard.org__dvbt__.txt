@@ -1,0 +1,108 @@
+Analog and Digital TV (DVB-T) Signal Generation
+News
+(Jun 13, 2005) First public release
+
+What is it ?
+This is not a hoax ! With a PC running Linux and a recent VGA card, you can emit a real digital TV signal in the VHF band to your DVB-T set-top box.
+
+DVB-T emitters are usually very expensive professional devices. Now with a standard PC you can broadcast real DVB-T channels !
+
+Examples to transmit PAL or SECAM analog signals directly to your TV are also presented.
+
+What do you need ?
+A good knowledge of X Window and Linux and basic knowledge in electronics.
+A DVB-T set-top box able to receive VHF signals with a bandwidth of 8 MHz (unfortunately most decoders sold in UK only receive UHF signals). You can use French DVB-T receivers which accept VHF and UHF RF signals.
+A PC with a recent VGA card able to display in resolutions up to 4096x2048 with 8 bit per pixel with a pixel clock of exactly 76.5 MHz. ATI Radeon 9200SE are reported to work (their PLL can generate every frequency which is a multiple of 2.25 MHz up to 400 MHz). Other VGA cards may work too. If your card cannot generate a 76.5 MHz pixel clock, I can provide alternate images to do some testing.
+A cable connecting the VGA output to the set-top box RF input. It is possible to use antennas, but since the transmit power is very low, it is better to begin with a cable connection.
+15 pin VGA connector                 9.5mm RF connector
+-------------------                 -----------------------
+1 (red signal)         <----->      RF signal   (central pin)
+6 (red ground)         <----->      GND
+
+Screenshots
+Here are some screenshots showing the transmitted pictures. A Netgem iplayer DVB-T set-top box was used as receiver. The On Screen Display of the set-top box shows the signal parameters and quality. The pictures were grabbed using a PC TV grabber connected to the composite video output of the set-top box.
+
+How to proceed ?
+Add the following configuration at the end of your X Window server configuration file (usually /etc/X11/XF86Config or /etc/X11/Xorg.conf):
+#########################################
+#VGA modulator config
+Section "Monitor"
+        Identifier   "MonitorDAC"
+        VendorName   "Monitor Vendor"
+        HorizSync    1.0 - 200.0
+        VertRefresh  1.0 - 200.0
+        Mode "dac1"
+        DotClock 76.50
+        # PAL/SECAM
+        HTimings 4064 4064 4072 4080
+        VTimings 748 748 749 750
+        EndMode
+ 
+        Mode "dac2"
+        # DVB-T
+        DotClock 76.50
+        HTimings 3656 3656 3664 3672
+        VTimings 1307 1307 1308 1309
+        EndMode
+EndSection
+ 
+Section "Screen"
+        Identifier "ScreenDAC"
+        Device     "Videocard0"
+        Monitor    "MonitorDAC"
+        DefaultDepth     8
+        SubSection "Display"
+                Depth     8
+                Modes    "dac2"
+        EndSubSection
+EndSection
+#########################################
+
+This configuration won't be used by default by the X Window server, so you can leave it in your default X Window configuration. VideoCard0 is assumed to be the name of your default video card.
+Launch an X server using this configuration (we assume the display :0 is your already running X11 display):
+ 
+X :1 -ac -screen ScreenDAC
+
+Your monitor will of course not be able to display anything because the timings are far from correct VESA timings. Unless you are using a very old monitor, there is no chance you can destroy it...
+
+Wait a few seconds and switch back to the starting X11 display (in most Linux distributions Ctrl-F7 does it). Then look at the X11 log file to see if everything was OK (usually in /var/log/XFree86.1.log or /var/log/Xorg.1.log).
+
+Download the following gray level image: dvbt.pgm.gz and decompress it.
+
+Display it on the :1 X11 display:
+
+display -display :1 -window root dvbt.pgm
+
+Switch to the :1 display (usually with Ctrl-F8 or Ctrl-F9, your monitor will blank) and connect the set-top box RF input to the VGA output using the cable you made.
+Configure your DVB-T set-top box to do a manual scan on channel 5 (178.75 MHz central frequency). After a few seconds, it should find a valid DVB-T signal (parameters: QAM 16, fft=2K, guard=1/32, conv=2/3). Two new channels should appear: Lena Picture and Balears Picture. Each one should display a nice still picture.
+You can also try the PAL (pal.pgm.gz) or SECAM (secam.pgm.gz) analog signals. You need to connect the VGA cable directly to your TV RF input and to use the dac1 X11 mode instead of dac2 (edit the X11 configuration file):
+...
+        SubSection "Display"
+                Depth     8
+                Modes    "dac1"
+        EndSubSection
+...
+
+Then by tuning your TV on the VHF channel 5 (176.00 MHz image frequency) you should see a black and white Lena picture.
+How does it work ?
+Every VGA card contains high speed Digital to Analog Converters (DACs), one for each Red, Blue and Green component. Here we use only the red DAC. The provided images have been computed so that the signal output to the DAC is a valid RF signal.
+
+As we did not want to generate a 176 MHz signal directly, we use the fact that the VGA DACs generate a lot of harmonics. The real generated DVB-T signal has a central frequency of 25.71 MHz. Then the second harmonic has a frequency of 25.71+2*76.5 = 178.71 MHz which is almost exactly the central frequency of the VHF TV channel 5.
+
+The DVB-T signal is generated with a DVB-T and DVB-H modulator I wrote from scratch. This is the most complicated step because the DVB-T modulation is quite complicated (COFDM modulation). A custom polyphase filter is used to interpolate the baseband COFDM complex signal. Then it is translated to the 25.71 MHz frequency.
+
+I used a patched version of FFmpeg to generate a custom DVB Transport Stream containing two DVB services. Each one contains a still MPEG picture. One of the still picture is the very nice Lena.
+
+For PAL and SECAM, I also wrote a simple TV black and white PAL encoder. Adding color would be possible, but I am not motivated enough to do it :-)
+
+Related links
+Tempest for Eliza is an AM radio modulator also using a VGA card. I got the idea of transmitting TV signals with a VGA card by looking at this project.
+The GNU Radio project contains source code for several modulators.
+Source Code
+I am sorry to announce that the source code won't be available any time soon.
+Copyright (c) 2005 Fabrice Bellard.
+Fabrice Bellard - https://bellard.org/
+
+IMAGES
+https://bellard.org/dvbt/lena.jpg
+https://bellard.org/dvbt/balears.jpg

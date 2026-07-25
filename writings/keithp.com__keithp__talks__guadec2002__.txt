@@ -1,0 +1,11 @@
+Font Configuration and Customization for Open Source Systems
+
+Font configuration and customization has traditionally been left to each application. Fontconfig is a library designed to provide a common system that can serve to ease application development and provide users with the ability to confidently install new fonts with the expectation that they will be used by most applications. Fontconfig provides the ability for multiple configuration interfaces to affect a wide range of systems without requiring custom code for each new system. Fontconfig provides a range of services to allow applications to pick those appropriate without being forced to use the entire interface. Wide acceptance of the Fontconfig mechanisms will improve system consistency without requiring a radical redesign of existing applications.
+
+HTML
+
+PostScript
+
+PDF
+
+Gnome Users And Developer European Conference, 2002

@@ -1,0 +1,292 @@
+index
+next |
+previous |
+envytools git documentation »
+nVidia hardware documentation
+
+Contents:
+
+nVidia GPU introduction
+GPU chips
+nVidia PCI id database
+MMIO register ranges
+PCI/PCIE/AGP bus interface and card management logic
+PMC: Master control unit
+PTIMER: Timer engine
+PCI BARs and other means of accessing the GPU
+PBUS area
+Hardware sequencer
+PRMA: Real mode BAR access
+PFUSE: Configuration fuses
+PRING: Card internal bus
+PUNITS: Card subunit disable control
+PCI configuration space
+Power, thermal, and clock management
+Clock management
+NV1:NV40 clocks
+NV40:G80 clocks
+G80:GT215 clocks
+GT215:GF100 clocks
+GF100+ clocks
+PDAEMON: card management microprocesor
+falcon parameters
+IO register space
+PCOUNTER signals
+Second-level interrupts
+User busy indication
+Host <-> PDAEMON communication
+Hardware mutexes
+CRC computation
+The timer
+Channel switching
+PMC interrupt redirection
+PTHERM interface
+Idle counters
+General MMIO register access
+Engine power gating
+Input/output signals
+NV43:G80 thermal monitoring
+G80+’s Thermal and power monitoring and capping
+NV1 audio engine
+GPU external device I/O units
+PSTRAPS: straps readout and override
+PROM: VBIOS ROM access
+PNVIO: external device interface
+NV10:G80 GPIO lines
+G80:GF119 GPIO lines
+PEEPROM: NV1 configuration/key EEPROM
+PMEDIA: Video capture and external MPEG decoder interface
+Memory access and structure
+Memory structure
+NV1 VRAM structure and usage
+NV1 DMA engine
+NV1:G80 surface formats
+NV3 VRAM structure and usage
+NV3 DMA objects
+PFB: NV3:NV10 memory controller
+NV4:G80 VRAM structure and usage
+NV4:G80 DMA objects
+PFB: NV10:NV40 memory controller
+PEEPHOLE: indirect memory access from host
+PFB: NV40:G80 non-TC memory controller
+PFB: NV44:G80 TURBOCACHE memory controller
+NV44 host memory interface
+G80 surface formats
+Tesla virtual memory
+G80:GF100 host memory interface
+G80:GF100 VRAM structure and usage
+G80 VRAM compression
+G80:GF100 P2P memory access
+G80:GF100 BAR1 remapper
+PFB: G80:GF100 memory controller
+GF100 virtual memory
+GF100- host memory interface
+GF100- VRAM structure and usage
+GF100 VRAM compression
+GF100- P2P memory access
+PFFB: GF100 front memory controller
+PMFB: GF100 middle memory controller
+PBFB: GF100 back memory controller
+PXBAR: GF100 memory crossbar
+PFIFO: command submission to execution engines
+FIFO overview
+PIO submission to FIFOs
+DMA submission to FIFOs on NV4
+Puller - handling of submitted commands by FIFO
+NV1:NV4 PFIFO engine
+NV4:G80 PFIFO engine
+Tesla PFIFO engine
+GF100+ PFIFO engine
+GF100+ PSPOON engines
+PCOPY copying engine
+PGRAPH: 2d/3d graphics and compute engine
+PGRAPH overview
+The memory copying objects
+2D pipeline
+Overview of the 2D pipeline
+2D pattern
+Context objects
+2D solid shape rendering
+2D image from CPU upload
+BLIT object
+Image to/from memory objects
+NV1 textured quad objects
+GDI objects
+Scaled image from memory object
+YCbCr blending objects
+NV1 graphics engine
+NV1 PGRAPH: graphics engine
+NV1 XY logic
+NV1 ROP - per-pixel operations
+NV1 PGRAPH DMA logic
+NV3 graphics engine
+NV3 PGRAPH: 2d/3d graphics engine
+NV3 PDMA: PGRAPH’s DMA engine
+NV3 3D objects
+NV4 graphics engine
+NV4 PGRAPH: 2d/3d graphics engine
+NV4 3D objects
+NV10 Celsius graphics engine
+NV10 PGRAPH: 2d/3d graphics engine
+NV10 Celsius 3D objects
+NV20 Kelvin graphics engine
+NV20 PGRAPH: 2d/3d graphics engine
+NV20 Kelvin 3D objects
+NV30 Rankine graphics engine
+NV30 Rankine 3D objects
+NV40 Curie graphics engine
+NV40 PGRAPH: 2d/3d graphics engine
+NV40 Curie 3D objects
+G80 Tesla graphics and compute engine
+G80 PGRAPH: 2d/3d graphics and compute engine
+G80 PGRAPH context switching
+G80 Tesla 3D objects
+G80 Tesla compute objects
+Tesla CUDA processors
+Tesla CUDA ISA
+Data movement instructions
+Integer arithmetic instructions
+Floating point instructions
+Transcendential instructions
+Double precision floating point instructions
+Control instructions
+Texture instructions
+Misc instructions
+Per-MP performance counters
+Vertex fetch: VFETCH
+PCOUNTER signals
+Pre-ROP: PROP
+PCOUNTER signals
+Color raster output: CROP
+PCOUNTER signals
+Zeta raster output: ZROP
+PCOUNTER signals
+Fermi graphics and compute engine
+GF100 PGRAPH: 2d/3d graphics and compute engine
+Fermi macro processor
+Fermi context switching units
+Fermi context switching units
+Fermi CUDA processors
+Fermi CUDA ISA
+GF100 Fermi 3D objects
+GF100 Fermi compute objects
+GK104 Kepler graphics and compute engine
+GK104 Kepler 3D objects
+GK104 Kepler compute objects
+GM107 Maxwell graphics and compute engine
+GM107 Maxwell 3D objects
+GM107 Maxwell compute objects
+Maxwell CUDA processors
+Maxwell CUDA ISA
+Integer Arithmetic Instructions
+Pipeline Bundles
+XF: The vertex transform & lighting engine
+XF overview
+XF context RAMs
+XF mode selection
+XF instruction set
+falcon microprocessor
+Introduction
+ISA
+Arithmetic instructions
+Data space
+Branch instructions
+Processor control
+Code virtual memory
+Interrupts
+Code/data xfers to/from external memory
+IO space
+Timers
+Performance monitoring signals
+Debugging
+FIFO interface
+Memory interface
+Cryptographic coprocessor
+Video decoding, encoding, and processing
+VPE video decoding and encoding
+PVPE: video decoding/encoding engine control
+PMPEG: MPEG1/MPEG2 video decoding engine
+PME: motion estimation
+Overview of VPE motion estimator
+PVP1: video processor
+Overview of VP1 video processor
+Scalar unit
+Vector unit
+Branch unit
+Address unit
+DMA transfers
+FIFO interface
+VP2/VP3 vµc processor
+Overview of VP2/VP3/VP4 vµc hardware
+VP2/VP3/VP4 vµc ISA
+VP2/VP3/VP4 vµc MVSURF
+VP2/VP3/VP4 vµc video registers
+VP2 vµc output
+vµc performance monitoring signals
+VP2 video decoding
+VP2 xtensa processors
+PVP2: video processor
+PBSP: H.264 bitstream processor
+VLD: variable length decoding
+MBRING format
+VP2 command macro processor
+PCIPHER: AES encryption engine
+VP3/VP4/VP5 video decoding
+PVLD: variable length decoding engine
+PPDEC: picture decoding engine
+PPPP: video post-processing engine
+PSEC: AES cryptographic security engine
+VP3 MBRING format
+PVDEC: video decoding engine
+PVCOMP: video compositor engine
+PVENC: video encoding engine
+PVDEC: VP6 video decoding engine
+Performance counters
+PCOUNTER: performance counter engine
+NV10:NV40 signals
+NV40:G80 signals
+G80:GF100 signals
+Fermi+ signals
+Display subsystem
+NV1 display subsystem
+PFB: NV1 native display and VRAM controller engine
+PDAC: NV1 DAC and external devices control
+PRM: NV1 Real Mode engine
+NV3:G80 display subsystem
+VGA registers and memory
+PCRTC: scanout engine
+PRAMDAC: display output engine
+PVIDEO: video overlay
+PTV: on-chip tv encoder
+VGA stack
+G80 display subsystem
+PDISPLAY: G80 display engine
+PDISPLAY’s monitoring engine
+G80 VGA emulation
+G80 VGA mutexes
+PUNK1C3: ???
+PCODEC: GT215- HDA codec for HDMI audio
+PKFUSE: Fuse-based key storage
+
+Todo
+
+ 
+
+convert glossary
+
+Previous topic
+
+Notational conventions
+
+Next topic
+
+nVidia GPU introduction
+
+This Page
+Show Source
+Quick search
+index
+next |
+previous |
+envytools git documentation »
+© Copyright 2013, Marcelina Kościelnicka. Created using Sphinx 1.8.6.

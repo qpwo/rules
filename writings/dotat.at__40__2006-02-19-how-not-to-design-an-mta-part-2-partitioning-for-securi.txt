@@ -1,0 +1,47 @@
+Tony Finch – blog
+ home  search  archive  recent  feed  links  elsewhere
+2006-02-19 – How not to design an MTA - part 2 - partitioning for security
+⇐ 2006-02-17 ⫤
+ 
+⊨ 2006-02-20 ⇒
+https://fanf.livejournal.com/51349.html
+https://fanf.dreamwidth.org/50984.html
+
+In this article the kind of security that I am concerned with here is total compromise. The other major security problem is denial of service, which I’ll cover separately.
+
+Both problems arise from buggy code, typically buggy string handling code, so anything that reduces the likelihood of code to have string handling bugs, the better. The most effective thing to do is not to use traditional low-level C style: no pointer arithmetic, no fixed-size buffers (especially on the stack!). Instead, use higher-level constructs so that you can write your code as if you were using a scripting language.
+
+However vulnerabilities will remain, so we should consider further.
+
+For example, DJB has a maxim “Don’t parse”. He argues that parsers should be reserved for user interfaces, and that good program-to-program interfaces should not need parsers. But this is impossible: he actually means that they should only need the simplest possible parsers.
+
+Most program-to-program interfaces involve some kind of protocol, and all protocols need parsing. This is true in the DJB sense for many Internet protocols (including SMTP and HTTP) which are designed to be friendly to humans as well as programs, but it is also true for protocols that are designed only for software, such as ASN.1. Binary protocols are just as vulnerable to catastrophic implementation errors as textual protocols, but less amenable to our huge stable of text-handling tools. So perhaps DJB’s dichotomy of “good interfaces” and “user interfaces” should be joined with “bad interfaces”.
+
+Not only do protocols need parsers, but other requirements often mean that you can’t take the DJB approach of paring the parser to the bone. Full implementations of SMTP need a fair amount of parsing, not just of commands and responses, but also of the message (especially for message submission). Furthermore, these days spam and viruses are a much bigger problem with email than buggy MTAs, so an MTA needs adequate defences against them, and these defences should be deployed as early in the message handling sequence as possible. You want to minimize effort wasted handling the junk and other bad effects such as collateral spam.
+
+This is a lot of code to expose to the big bad net. Can’t we partition it in an attempt to keep vulnerabilities contained? Yes, but this approach has limitations. It isn’t enough to just separate the MTA into multiple programs or processes: if they are running under the same UID they are within the same security boundary, and even if the other processes can’t be compromised through bugs, they can be through ptrace().
+
+For example, except for its privileged parts Postfix runs under a single unprivileged UID, so it does not have any internal partitions. It allows you to run various of its daemons in a chroot, but this does not increase safety much. Code insertion attacks via ptrace() work between any programs running under the same UID, in the chroot or not, so they can be used by a compromised program to escape from its chroot even without root privilege.
+
+Partitioning increases complexity, because you have to invent a protocol for the partitions to communicate with each other. For a modern MTA this protocol can’t be DJB-bare-bones-simple, because of the features you must support. For example, the SMTP server must be able to verify addresses, which is less complicated than delivering a message, but cannot be deferred. You need something more than just dropping a file in a queue directory.
+
+Given that you have written a robust protocol engine fit for exposing to the big bad world, it’s tempting to re-use it for the MTA’s internal communications. This would be a mistake. Bugs in this engine are the ones that will lead to compromise, so if you can compromise the server’s front end you can probably use the same bug to hop the next security boundary into the MTA’s core.
+
+For example, Postfix has a single record format used for queue files and IPC. Postfix’s sendmail command generates a queue file in the context of the calling user and drops it in the queue using a privileged program. A (hypothetical) serious bug in Postfix’s record handling code could be exploited by a malicious user who crafts a file that triggers the bug and thereby gains control of the drop directory. It’s likely that the same bug could be used to compromise the rest of the MTA from that beach head, via a queue file or via IPC. This attack is much easier because Postfix exposes its internal communications protocol - if it didn’t, the user couldn’t do anything useful with the crafted file.
+
+So, to summarize, if you are going to partition for security:
+
+use different UIDs for each partition;
+don’t use the same UID inside and outside a chroot;
+use different protocols across different trust boundaries;
+That last suggestion requires enormous faff, but in fact it happens as a matter of course for much of the code we are worried about: for example, separate anti-virus and anti-spam daemons such as SpamAssassin will have their own IPC protocols. This extends to the MTA’s routing engine too, with more protocols for querying the DNS, or LDAP or a SQL database etc.
+
+So the question is whether these boundaries are adequate, or if it makes sense to further partition the MTA. There are essentially two routes via which malicious people can talk to us - the SMTP server and the SMTP client - so we might want to partition them off from the routing code. The SMTP server is both the most vulnerable and the most complicated, but it still needs to talk to other software on the system. So it’s difficult to significantly reduce our exposure, it would cost a lot in complexity, and therefore it’s probably not worth it - and in fact only DJB thinks it’s worth having more than one UID for his MTA.
+
+⇐ 2006-02-17 ⇐ LMTP and EXDATA ⇐
+⇒ Nominative determinism ⇒ 2006-02-20 ⇒
+
+Tony Finch <dot@dotat.at>
+
+IMAGES
+https://dotat.at/graphics/dotat-64.png

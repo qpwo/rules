@@ -1,0 +1,360 @@
+ColinFinck.de
+Tools & Systems Programming
+since 2003
+Home
+About
+Posts
+Software
+nt-load-order Part 1: WinDbg'ing our way into the Windows bootloader
+2025-01-19
+• by Colin Finck
+This is the first part of a two-part blog series on WinDbg fundamentals, the Windows driver load order, and my nt-load-order crate:
+
+Part 1: WinDbg’ing our way into the Windows bootloader
+Part 2: More than you ever wanted to know
+
+Project on GitHub
+Download nt-load-order-gui 0.1.0
+
+There are close to zero reasons to reverse-engineer the Windows driver load order. Which is exactly why I’m doing it. And if you are as crazy as me and want to write a Windows bootloader in Rust, you inevitably need to deal with this topic. Likewise, if you want to know what happens under the hood when booting Windows, this post is for you. While Mark Russinovich’s LoadOrder tool got us covered for a long time, that tool is now past its prime and doesn’t know about the changes in Windows of a quarter century. I also don’t know of anyone else who had a recent in-depth look into the load order, hence I took on this task myself.
+
+In this post, I’m presenting my findings on the load order of Windows 10 21H2 along with an implementation of the logic in Rust. To my knowledge, the insights are also applicable to the latest Windows 11 releases. My Rust library comes with a Win32 GUI tool to explore the load order of local and target Windows installations. If any of that sounds interesting to you, read on.
+
+Contents
+What it is and why it matters
+Setting up the debugging environment
+Configuring WinDbg
+Dumping LOADER_PARAMETER_BLOCK
+When SynTypes.js doesn’t work
+Boot Debugging – We need to go deeper
+A bunch of helpers
+What it is and why it matters
+
+One of the fundamental tasks of the Windows bootloader is to load the kernel along with its initial boot drivers into memory before handing over control to it. At that early point, the bootloader uses firmware-provided functions (i.e. UEFI’s Block I/O Protocol) to read files from disk. When the kernel takes over, the loaded boot drivers need to be sufficient to let the kernel access the disk on its own and read the remaining files without resorting to generic firmware-provided functions.
+
+As a consequence, this list of boot drivers is not set in stone. It very much depends on the hardware and software configuration of your computer. One of the first loaded drivers already depends on your CPU, which is likely of the x86 architecture, but may still be an AMD or Intel one. Windows ships with different CPU drivers to account for their specific microcode updaters and power management capabilities. This is followed by drivers for bus systems and disk controllers until we climbed the tree high enough to access the boot disk. An additional driver is required for the filesystem of the boot partition – which is exclusively NTFS these days, but that used to be different. Security products may also decide to add their drivers to this list in order to scan for malware at the earliest possible stage (a technique known as Early-Load Anti-Malware or shortly ELAM). Finally, Microsoft’s passion for telemetry and security supplements adds further drivers to this list.
+
+Windows maintains all boot drivers in the HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services registry key. This is not just a simple list, but a multi-level organization spread among several keys and subkeys – complex enough to justify its own section in a follow-up post.
+
+The boot drivers are regular PE binaries and can have dependencies. This means that the Windows bootloader needs to look into each driver and load all their dependencies too. Since Windows 10, kernel binaries may also have API Set dependencies, and that feature is actively used by current boot drivers. A modern Windows bootloader therefore needs to check if a dependency is an API Set dependency, and possibly translate it to the target module of the operating system flavor. Flavors are another concept introduced quite recently: Remember that Windows went beyond the client and server markets and now also runs on Microsoft hardware products such as Xbox or HoloLens.
+
+API Sets in the boot process is another indicator for a trend that has evolved over the recent years: More and more OS features need to be supported by the bootloader, whereas they were previously only relevant for the kernel and upper layers of the stack.
+
+Most of what I’m publishing here is not officially documented by Microsoft. The Windows Internals book covers some aspects, and independent bloggers have researched some other parts of the boot process. But getting the full picture of the modern Windows boot process is not possible without firing up the debugger and your favorite reverse-engineering tool.
+
+Even with a debugger, the finalized boot driver load order isn’t handed over to us on a silver platter. The Windows bootloader embeds it into the LOADER_PARAMETER_BLOCK structure that it passes to the kernel. The kernel then parses that structure and discards it shortly afterwards. It’s too late at this stage to view the structure in a debugger.
+
+To know what was really inside the LOADER_PARAMETER_BLOCK, we need to debug-break into the kernel at the earliest possible stage. And this is exactly what we’re going to do now.
+
+Setting up the debugging environment
+
+Windows comes with an excellent graphical kernel debugger called WinDbg. It has matured since the early Windows NT times and has recently been rewritten as a Windows Store app with a modern UI. While it can debug various kernel-mode and user-mode targets on our host computer (including the kernel of the locally running system), we actually want to use it to break into the kernel early at boot. This requires an extra target Windows machine that is connected to our host and that we can start and stop at will. A Virtual Machine obviously comes to mind here.
+
+I chose to install Windows 10 21H2 on a QEMU virtual machine using one of the precompiled QEMU builds available at qemu.weilnetz.de. As we’re debugging the boot process here, the bootloader choice becomes very important, and I decided for the UEFI-based Windows bootloader. Our QEMU VM therefore needs to come with a UEFI firmware. I may also need to transfer data from and to the virtual hard disk of the VM, so I decided for the only virtual hard disk format that Windows supports out of the box, namely VHD. Finally, the emulated mouse pointer is much more precise when emulating an absolute positioning device like a USB tablet, so you also want to enable that.
+
+Taking all of this together, my complete QEMU commands look like:
+
+"C:\Program Files\qemu\qemu-img.exe" create -f vpc win10.vhd 40G
+
+"C:\Program Files\qemu\qemu-system-x86_64.exe" -nodefaults -m 4096 -smp 4 -vga std -drive if=pflash,format=raw,unit=0,readonly=on,file="C:\Program Files\qemu\share\edk2-x86_64-code.fd" -hda win10.vhd -cdrom win10_installation.iso -usbdevice tablet
+
+Use these commands to install Windows 10. And, most importantly, have patience: QEMU can be very slow with Windows 10 as host and guest. When you are finally done, you can remove the -cdrom parameter as we won’t need the installation ISO anymore.
+
+To prepare the newly installed system for debugging, open a Command Prompt with Administrator privileges and use BCDEdit to duplicate the default bootloader entry:
+
+bcdedit /copy {default} /d "Windows 10 Debug"
+
+The command displays a message like:
+
+The entry was successfully copied to {aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee}.
+
+Use that {aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee} identifier in subsequent commands to set up kernel debugging for the newly created entry:
+
+bcdedit /set {aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee} debug on
+
+bcdedit /set {aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee} dbgsettings serial debugport:1 baudrate:115200
+
+Now that kernel debugging over the serial port is set up, we need to add the corresponding virtual serial port to our QEMU Virtual Machine. I’m doing this by appending -serial tcp::13337,server to my qemu-system-x86_64 command line. When you now start QEMU again, it will wait for WinDbg to connect to that TCP port before booting up the VM. Plenty of time for us to set up WinDbg on the other end.
+
+Configuring WinDbg
+
+Forget everything you know about the antiquated classic WinDbg GUI if you already used it before. The new WinDbg from the Windows Store has been rewritten entirely and it comes with a brand new user interface as well as JavaScript automation support. It was still a preview version when I began my research, but is now stable and production-ready (at least they say so).
+
+For our case, we need to set it up for kernel-debugging a serial target connected over network. The Net and Serial tabs of WinDbg’s Attach to kernel window look appealing, but sadly both are not suitable for our case: Net only works for targets connected natively over Ethernet, but our VM actually has a serial port. And although Serial does support more than just physical serial ports, there are no fields to enter IP addresses and TCP ports. We therefore need to go via the Paste connection string tab and enter:
+
+com:ipport=13337,port=127.0.0.1
+
+Make sure to also tick the Break on connection box. This is our ticket to debug-break into the kernel as early as possible to still get hold of the LOADER_PARAMETER_BLOCK.
+
+When you now click OK, QEMU instantly continues booting up the system. Select the newly created Windows 10 Debug entry in the bootloader and WinDbg will break into the kernel in a subcall of KiSystemStartup.
+
+Dumping LOADER_PARAMETER_BLOCK
+
+Debugging the Windows kernel can be a very thankful task. Despite the closed-source nature of Windows, Microsoft provides downloadable symbol files for most operating system components. Even better, WinDbg automatically detects the exact versions of all loaded modules and downloads the corresponding symbol files. And independent sites like Vergilius Project have made the symbol file contents easily accessible over the web.
+
+Depending on your WinDbg settings, all this detection and download magic may have already happened in the background. My WinDbg always fetches missing kernel symbols once it breaks into the debugger. You can verify this by entering lm in the Command Window and checking the nt line. If your WinDbg does not show pdb symbols for nt, try the following commands to reset the symbol path and download missing symbols:
+
+.sympath srv*
+
+.reload
+
+Now that the setup is finally complete, it’s time to dump the infamous LOADER_PARAMETER_BLOCK structure. At this early stage of booting, it is still stored in the global variable KeLoaderBlock. Calling
+
+dt poi(nt!KeLoaderBlock) nt!_LOADER_PARAMETER_BLOCK
+
+reveals it along with all its fields:
+
+Some clickable links in this output also invite you to explore further subfields. But that fun doesn’t last long: Clicking the LoadOrderListHead field only displays the Flink and Blink subfields, but lacks any information about the actual element contents and further elements. We somehow need to know the underlying structure of each element and traverse the doubly-linked list.
+
+This is the point where we can thank the sloppiness of some Microsoft developers. If you happen to have the Windows Driver Kit (WDK) of the early Windows 10 versions 1507 and 1511, and rigorously check their installation, you will find a nicely populated C:\Program Files (x86)\Windows Kits\10\Include\10.0.10586.0\um\minwin folder that is not shipped with any later WDK release. It must be assumed that these headers were shipped by mistake. This folder is a treasure of information about the bootloader. In our case, the file arc.h is particularly interesting as it defines a structure BLDR_DATA_TABLE_ENTRY, which turns out to be the type of the LoadOrderListHead elements:
+
+typedef struct _BLDR_DATA_TABLE_ENTRY {
+    KLDR_DATA_TABLE_ENTRY KldrEntry;
+    UNICODE_STRING CertificatePublisher;
+    UNICODE_STRING CertificateIssuer;
+    PVOID ImageHash;
+    PVOID CertificateThumbprint;
+    ULONG ImageHashAlgorithm;
+    ULONG ThumbprintHashAlgorithm;
+    ULONG ImageHashLength;
+    ULONG CertificateThumbprintLength;
+    ULONG LoadInformation;
+    ULONG Flags;
+} BLDR_DATA_TABLE_ENTRY, *PBLDR_DATA_TABLE_ENTRY;
+
+During my research, Microsoft silently pulled the plug and no longer offers WDK 1507 and 1511 for download. If you’re an enterprise customer, you may still be lucky and request it from your Microsoft representative: After all, Windows 10 version 1507 is still supported for the enterprise until 2025 in the form of “Windows 10 LTSB”. For everybody else, Microsoft’s universal dump for source code of all kinds and licenses (commonly known as GitHub) saves the day: Someone was kind enough to upload the header files of a WDK 1507 installation to GitHub at https://github.com/tpn/winsdk-10/tree/master/Include/10.0.10240.0/um/minwin.
+
+Now that we know the type of the list elements, how to make use of it? We know the structure of BLDR_DATA_TABLE_ENTRY, but it’s not shipped with any PDB that WinDbg could easily use. For these scenarios, Microsoft has come up with the SynTypes.js script that reads arbitrary structures from header files and makes them available to WinDbg.
+
+To get SynTypes.js, clone the https://github.com/microsoft/WinDbg-Samples repo (e.g. to C:\WinDbg-Samples). Then type the following command into the WinDbg Command window:
+
+.scriptload "C:\WinDbg-Samples\SyntheticTypes\SynTypes.js
+
+This makes the powerful albeit unergonomic Debugger.Utility.Analysis.SyntheticTypes namespace available in your WinDbg session. A simple header file can now be read via
+
+Debugger.Utility.Analysis.SyntheticTypes.ReadHeader("C:\Experiments\MyHeader.h", "nt")
+
+and its structures will be available as synthetic types of the kernel. You can then dump a structure at a specific memory address by calling e.g.
+
+dx Debugger.Utility.Analysis.SyntheticTypes.CreateInstance("MY_STRUCTURE", 0xfffff806`43656300)
+
+Let’s get back to the BLDR_DATA_TABLE_ENTRY structure we are interested in. If you put it exactly as above into a file bldr.h and load it via SynTypes, you will notice that ReadHeader happily parses the header, but you’re later unable to use it with CreateInstance. The particular error I’m getting is:
+
+Unable to get property 'size' of undefined or null reference [at SynTypes (line 102 col 5)]
+
+As it’s often in Computer Science, this error message doesn’t really help us to pinpoint the problem, but it makes sense once you know the solution. Recall that we needed to add a leading underscore for LOADER_PARAMETER_BLOCK when dumping it via dt poi(nt!KeLoaderBlock) nt!_LOADER_PARAMETER_BLOCK. In this case, we only define BLDR_DATA_TABLE_ENTRY in our file and rely on all other types coming from the loaded PDB. But the PDB already doesn’t know about the typedef from _LOADER_PARAMETER_BLOCK to LOADER_PARAMETER_BLOCK, and the same applies to the structures we try to use in BLDR_DATA_TABLE_ENTRY.
+
+We therefore need to add a leading underscore to the three structure fields in BLDR_DATA_TABLE_ENTRY:
+
+typedef struct _BLDR_DATA_TABLE_ENTRY {
+    _KLDR_DATA_TABLE_ENTRY KldrEntry;
+    _UNICODE_STRING CertificatePublisher;
+    _UNICODE_STRING CertificateIssuer;
+    PVOID ImageHash;
+    PVOID CertificateThumbprint;
+    ULONG ImageHashAlgorithm;
+    ULONG ThumbprintHashAlgorithm;
+    ULONG ImageHashLength;
+    ULONG CertificateThumbprintLength;
+    ULONG LoadInformation;
+    ULONG Flags;
+} BLDR_DATA_TABLE_ENTRY, *PBLDR_DATA_TABLE_ENTRY;
+
+You can update the structure in your bldr.h accordingly, but calling ReadHeader on the same file again won’t reload it. Your only option is to .scriptunload and .scriptload the entire SynTypes.js script before also reloading bldr.h.
+
+Now that we finally have a working BLDR_DATA_TABLE_ENTRY type in WinDbg, it’s time to dump all LoadOrderListHead elements. WinDbg provides the !list command for that, which follows the links of a linked list and executes a command for each element. Together with the functions of SynTypes.js, we end up with this monster of a WinDbg command:
+
+dx @$instance = "BLDR_DATA_TABLE_ENTRY"
+
+!list -t _LIST_ENTRY.Flink -x "r @$t0 = @$extret; dx -r2 Debugger.Utility.Analysis.SyntheticTypes.CreateInstance(@$instance, Debugger.State.PseudoRegisters.Temporaries.t0)" 0xfffff806`43656300
+
+These commands need some explanations. The !list command is pretty handy to walk a linked list. It takes a type parameter -t, set to the Flink field of the LIST_ENTRY structure to walk in forward direction, and it takes an additional parameter -x with a command string to execute for each element.
+
+But !list also comes from the early days of WinDbg and has multiple shortcomings, which are going to make our life miserable. For instance, it doesn’t support additional quotation marks inside the -x parameter, which rules out passing "BLDR_DATA_TABLE_ENTRY" to the CreateInstance call. The only workaround I can think of is declaring it as a variable and then passing that variable.
+
+Then there are actually two worlds of variables: The “traditional” one with pseudo-registers like @$t0 that are read and written via the r command. And there is the modern “Debugger Object Model” accessible via the dx command. Both worlds are not always compatible.
+
+An example for that is !list itself, which defines a pseudo-register @$extret to pass the address of the current element. However, that pseudo-register is not accessible from the Debugger Object Model via Debugger.State.PseudoRegisters. Furthermore, !list expects you to use @$extret at least once within the -x parameter or it will be appended to the end of the command string (where it usually causes a syntax error).
+
+I needed multiple attempts, but I finally navigated through all these constraints by setting the known user-defined pseudo-register @t0 to the value of @$extret on every iteration, and then accessing that register via Debugger.State.PseudoRegisters.Temporaries.t0 in the dx call.
+
+I initially thought only the !list command was particularly broken here and the rest of WinDbg would be alright. But after reading Thomas Weller’s detailed StackOverflow answer on WinDbg scripting issues, I come to the conclusion that these limitations are common in the WinDbg world, and we’re likely going to see more such workarounds in the future.
+
+For completeness, I have to say that all of this only works, because KldrEntry.InLoadOrderLinks is the very first field of BLDR_DATA_TABLE_ENTRY and contains the links we want to walk. If that is not the case, we would need an additional CONTAINING_RECORD command to calculate the offset of the list element. I’m going to show that in the next section.
+
+As soon as you run the commands above, we get a nicely formatted dump of all LoadOrderListHead elements:
+
+When SynTypes.js doesn’t work
+
+I had my trouble with SynTypes.js during this project and asked Yarden Shafir, who wrote an excellent blogpost series on WinDbg (kudos to her). She referred me to WinDbg developer Will Messmer from Microsoft, who could eventually reproduce my problem. It turned out that my used Preview version of WinDbg had a bug where SynTypes.js and other commands didn’t work early at boot. This was finally fixed in the production release of WinDbg, but it took a few months until I got hold of it.
+
+For the time being, I needed a temporary solution and mine was to simply dump LoadOrderListHead using the KLDR_DATA_TABLE_ENTRY which is part of the PDB. I would miss the certificate, hash, and flags added in BLDR_DATA_TABLE_ENTRY, but otherwise get a good overview of all data table entries. My used command was:
+
+!list -t _LIST_ENTRY.Flink -x "dt nt!_KLDR_DATA_TABLE_ENTRY" 0xfffff806`43656300
+
+This command also uses entirely classic WinDbg features and no Debugger Object Model. With the fortunate result that I didn’t need any of the ugly workarounds described above.
+
+For completeness, I promised an example with CONTAINING_RECORD, which would also work if InLoadOrderLinks was not the first field of the structure. That example looks like this:
+
+!list -t _LIST_ENTRY.Flink -x "dt nt!_KLDR_DATA_TABLE_ENTRY @@(#CONTAINING_RECORD(@$extret, nt!_KLDR_DATA_TABLE_ENTRY, InLoadOrderLinks))" 0xfffff806`43656300
+
+As InLoadOrderLinks is the first field, this line delivers exactly the same result as the shorter command.
+
+Boot Debugging – We need to go deeper
+
+Now we have all means to determine the final load order. But how is it actually constructed in the bootloader?
+
+To figure that out, we need to go deeper and debug the actual bootloader and not just the kernel. And we’re lucky: Although WinDbg has been created to debug the Windows kernel, the bootloader also comes with a WinDbg stub and can be debugged likewise.
+
+This first requires another entry in the boot menu, let’s call it Windows 10 BootDebug:
+
+bcdedit /copy {default} /d "Windows 10 BootDebug"
+
+That command outputs a GUID again. Subsequently, you enable bootloader debugging for this entry via:
+
+bcdedit /set {aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee} bootdebug on
+
+bcdedit /set {aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee} dbgsettings serial debugport:1 baudrate:115200
+
+When you now reboot your Windows VM and connect WinDbg, it breaks into winload.efi somewhere in the early-called DebugService2 function. The Microsoft Symbol Server thankfully delivers PDBs for that binary again, providing our WinDbg session with names for all public and even private functions. Nice!
+
+Let’s now figure out where we actually want to set breakpoints. This is where your favorite decompiler joins the party. I’ve been a huge fan of Ghidra since its public release and used it for the entire further analysis of winload.efi. But Binary Ninja, IDA, Radare2, etc. should also do the job if you prefer them. In fact, my version of Ghidra at that time had trouble importing the symbols from the PDB, so I had to do a detour: I imported winload.efi into IDA, used the xml_exporter.py plugin that ships with Ghidra to export IDA’s analysis as XML, and finally imported that XML data in Ghidra again. You probably don’t need to repeat that these days, but it’s good to know this trick.
+
+We now have over 5000 named functions. Where do we actually start? This is the moment where the meticulous work of my colleagues at ReactOS comes into play. For over two decades, the people of the ReactOS Project have done a tremendous job of reverse-engineering the most complex operating system in the world (Windows) and creating an open-source alternative. It’s not sufficient for them to just create a functional equivalent, but all available public information is used to keep the internals as close to the original as possible. This is especially true for the kernel and adjacent components like the bootloader. And despite ReactOS' traditional focus on the now obsolete Windows Server 2003, many parts of the bootloader are still similar and give a hint where to start looking.
+
+A good first start is CmpDoSort, which exists in both the ReactOS kernel and the Windows bootloader under the same name. As the name and the function-level comment suggest, this private function is used to sort the drivers based on the ordering criteria. Jumping to the caller of CmpDoSort and its parent callers, we can quickly establish a call tree of all relevant functions:
+
+OslpLoadAllModules
+-> OslLoadImage                         // ntoskrnl.exe
+-> OslLoadImage                         // hal.dll
+-> OslLoadApiSetSchema
+-> OslKdInitialize
+-> OslLoadImage                         // mcupdate.dll
+-> OslGetBootDrivers
+   -> OslHiveFindDrivers
+      -> CmpFindDrivers
+      -> CmpFindPendingDrivers
+      -> CmpAddDependentDrivers
+      -> CmpSortDriverList
+         -> CmpDoSort
+   -> OslpFilterDriverListOnGroup       // for EarlyLaunchListHead
+   -> OslpFilterDriverListOnServices    // for CoreDriverListHead
+   -> OslpFilterDriverListOnServices    // for TpmCoreDriverListHead
+   -> OslFilterCoreExtensions
+-> OslLoadDrivers                       // CoreDriverListHead
+-> OslLoadDrivers                       // TpmCoreDriverListHead
+-> OslLoadDrivers                       // EarlyLaunchListHead
+-> OslLoadDrivers                       // CoreExtensionDriverListHead
+-> OslFilterCoreExtensions
+-> OslLoadDrivers                       // BootDriverListHead
+
+Bingo! This gives us more than enough ideas where to put breakpoints, which in turn let us examine intermediate states while the bootloader is constructing the load order.
+
+Some of these functions also take the LOADER_PARAMETER_BLOCK as the first parameter. Thanks to arc.h and the public PDBs, we know the full structure of the LOADER_PARAMETER_BLOCK and can add it to Ghidra. Having function and field names, we can now read many parts of the bootloader almost as if we had the original source code.
+
+No project in 2025 is complete until some custom JavaScript is involved. You won’t believe it, but this also applies to our bootloader research: Although we just learned how to dump structures in memory, even adding synthetic structures and working around WinDbg shortcomings, all that knowledge is useless during bootloader debugging. For once, the kernel isn’t loaded yet, which is why all nt PDB symbols aren’t available. But even worse, the SynTypes.js script doesn’t work at this early stage.
+
+Fortunately, modern WinDbg comes with a simple editor to write our own JavaScript – and this actually works even during bootloader debugging. You need to write the boilerplate code yourself, but once you’ve done that, parsing any structure is pretty simple. Let’s try that out.
+
+A bunch of helpers
+
+All the fun begins by switching to the Scripting tab in WinDbg, clicking New Script and choosing JavaScript → Imperative Script. This presents us with a template that only contains an initializeScript and an empty invokeScript function. Let’s have a first “Hello world” in WinDbg by extending the invokeScript function:
+
+host.diagnostics.debugLog('Hello world\n');
+
+This long call quickly gets awkward, so I created a helper function:
+
+function log(msg) {
+    host.diagnostics.debugLog(msg);
+    host.diagnostics.debugLog('\n');
+}
+
+We’re going to need it a few times.
+
+Let’s now move past static text and output something dynamic, like the value at a memory address. Reading a 32-bit value in WinDbg’s JavaScript dialect goes like this:
+
+let address = 0x12345;
+let value = host.memory.readMemoryValues(address, 1, 4)[0];
+log('Value: ' + value);
+
+Looks simple, huh? Well, wait until you want to use that in a real-world scenario. I quickly realized that WinDbg’s JavaScript dialect doesn’t natively support 64-bit math. My example won’t work if you replace 0x12345 by a 64-bit memory address.
+
+WinDbg comes with multiple workarounds though. One of them is the host.parseInt64 function, which creates a 64-bit integer value from a string:
+
+let address = host.parseInt64('0xfffff80012345f90');
+
+Most of the time, you don’t want to read a static address though. I usually break into the debugger at a time when the address to read is stored in a register. This can be realized via:
+
+let regs = host.currentThread.Registers.User;
+let address = regs.rcx;
+
+Now if you need to add an offset to the register value, do so via the .add function, e.g. let address = regs.rcx.add(0x10). Native JavaScript math would mess up the 64-bit value again.
+
+We are going to read 16-bit, 32-bit, and 64-bit integer values a few times, so it makes sense to also add helpers for them. They are relatively simple one-liners though:
+
+function read_u16(address) {
+    return host.memory.readMemoryValues(address, 1, 2)[0];
+}
+
+function read_u32(address) {
+    return host.memory.readMemoryValues(address, 1, 4)[0];
+}
+
+function read_u64(address) {
+    return host.memory.readMemoryValues(address, 1, 8)[0];
+}
+
+Several structures we’re going to examine also contain UNICODE_STRINGs. BLDR_DATA_TABLE above is one example, but we’re going to encounter many more. As strings are often the most interesting fields to view in a debugger, we also need a function to read UNICODE_STRINGs. Let’s recall the structure of a UNICODE_STRING:
+
+typedef struct _UNICODE_STRING {
+    USHORT Length;
+    USHORT MaximumLength;
+    PWSTR  Buffer;
+} UNICODE_STRING, *PUNICODE_STRING;
+
+Unlike traditional C strings, UNICODE_STRINGs don’t necessarily terminate with a NUL character. The actual length of a UNICODE_STRING is stored in the first field instead. The MaximumLength field is only relevant when modifying a string, which we won’t be doing though.
+
+Let’s transform this knowledge into a WinDbg JavaScript helper:
+
+function read_unicode_string(address) {
+    let length = read_u16(address);
+    let buffer_address = read_u64(address.add(8));
+    let buffer = host.memory.readMemoryValues(buffer_address, length / 2, 2);
+    return String.fromCharCode(...buffer);
+}
+
+Looking closely, you may notice an oddity: Why are we reading the buffer address from field offset 8 when Length and MaximumLength each are only 2-byte fields? This is the point where you need to consider the architecture we are debugging on: The ABI of the x64 architecture mandates that each structure field is aligned on a multiple of its size. With PWSTR being a pointer to a wide-string buffer and pointers being 8 bytes long, this field ends up on offset 8, adding 4 bytes of padding after the MaximumLength field.
+
+Now we’re finally armored with all necessary tools to read arbitrary structures, even at a time before the kernel has been loaded. It’s time for part 2!
+
+‹ Previous Post
+A Decade After Stuxnet: How Siemens S7 is Still an Attacker's Heaven
+Next Post ›
+nt-load-order Part 2: More than you ever wanted to know
+Categories
+C++ Nonprofits PLCs ReactOS Rust Windows
+Archives
+2025 (2)
+2024 (2)
+2023 (2)
+2022 (6)
+2021 (5)
+2020 (5)
+2018 (1)
+2017 (2)
+2016 (1)
+2015 (1)
+2010 (1)
+
+Copyright © 2003-2025 Colin Finck
+
+Legal / Impressum
+
+IMAGES
+https://colinfinck.de/icons/favicon-128.png
+https://colinfinck.de/icons/calendar.svg
+https://colinfinck.de/img/software/nt-load-order.svg
+https://colinfinck.de/img/nt-load-order/nt-load-order-gui.png
+https://colinfinck.de/img/nt-load-order/windbg-connect.png
+https://colinfinck.de/img/nt-load-order/windbg-keloaderblock.png
+https://colinfinck.de/img/nt-load-order/windbg-loadorderlisthead.png

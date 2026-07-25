@@ -1,0 +1,507 @@
+MaskRay
+Home
+Archives
+Feeds
+TIL
+Presentations
+
+2026-06-28
+Optimizing LLVM's bump allocator
+
+BumpPtrAllocator is LLVM's bump allocator (arena allocator): each allocation bumps a pointer within a slab, and everything is freed at once when the allocator dies. It backs Clang's ASTContext, lld's make<T> object pools, TableGen records, and many other arenas.
+
+Here is the fast path before three recent changes:
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+
+	
+__attribute__((returns_nonnull)) void *Allocate(size_t Size, Align Alignment) {
+  BytesAllocated += Size;                               // (3) accounting RMW
+  uintptr_t AlignedPtr = alignAddr(CurPtr, Alignment);  // (1) always realign
+  size_t SizeToAllocate = Size;
+#if LLVM_ADDRESS_SANITIZER_BUILD
+  SizeToAllocate += RedZoneSize;
+#endif
+  uintptr_t AllocEndPtr = AlignedPtr + SizeToAllocate;
+  if (LLVM_LIKELY(AllocEndPtr <= uintptr_t(End)
+                  && CurPtr != nullptr)) {              // (2) bound + null check
+    CurPtr = reinterpret_cast<char *>(AllocEndPtr);
+    ...
+    return reinterpret_cast<char *>(AlignedPtr);
+  }
+  return AllocateSlow(Size, SizeToAllocate, Alignment);
+}
+
+Three changes streamline the three marked lines.
+
+A minimum alignment skips the realign (#205240)
+
+alignAddr(CurPtr, Alignment) is wasteful: a freshly-bumped pointer is usually aligned enough already. #205240 rounds each size up to MinAlign (default 8), so the fast path realigns only for over-aligned requests. I've learned the trick from Bump Allocation: Up or Down?:
+
+1
+2
+3
+4
+5
+6
+7
+
+	
+// Optimized to a constant
+SizeToAllocate = alignToPowerOf2(SizeToAllocate, MinAlign);
+
+uintptr_t AlignedPtr = uintptr_t(CurPtr);
+// For the common `alignof(T) <= 8` case the branch drops out entirely.
+if (Alignment.value() > MinAlign)
+  AlignedPtr = alignAddr(CurPtr, Alignment);
+
+I made a mistake in the first attempt: nullptr plus a non-zero offset triggered a UBSan diagnostic. Fixed by keeping the math in the uintptr_t domain.
+
+SpecificBumpPtrAllocator<T> is the typed variant: it owns its objects and runs ~T() on each in DestroyAll, which walks the slabs at a fixed sizeof(T) stride.
+
+T may be incomplete where the allocator is declared — e.g. a class member SpecificBumpPtrAllocator<MCSectionELF> sitting next to only a forward declaration of MCSectionELF. alignof(T) would force T complete there; a literal does not.
+
+1
+2
+3
+4
+5
+6
+7
+8
+
+	
+using BumpPtrAllocatorTy =
+    BumpPtrAllocatorImpl<MallocAllocator, 4096, 4096, 128, /*MinAlign=*/1>;
+
+T *Allocate(size_t num = 1) {
+  if constexpr (alignof(T) <= alignof(std::max_align_t))
+    return static_cast<T *>(Allocator.Allocate(num * sizeof(T), Align()));
+  return Allocator.Allocate<T>(num);
+}
+
+Slabs are max_align_t-aligned, and this allocator only ever hands out num * sizeof(T) bytes — a multiple of alignof(T) — so the bump pointer is already alignof(T)-aligned; requesting Align() (i.e. 1) lets the fast path skip the realign branch. The body is only instantiated when Allocate is actually called, by which point T is complete, so the alignof(T) here is fine even though the class declaration tolerated an incomplete T. Over-aligned types (alignof(T) > alignof(std::max_align_t)) take the general path, which realigns.
+
+A sentinel End drops the null check (#205485)
+
+__attribute__((returns_nonnull)) specifies the return value is non-null. In a fresh allocator whose CurPtr and End are both null, Allocate(0) used to return null. In 2022, https://reviews.llvm.org/D125040 added the && CurPtr != nullptr check to the fast path condition, which was not ideal.
+
+I tried
+
+1
+2
+3
+
+	
+// Fast path check. The condition also fails for a fresh allocator (End ==
+// nullptr) to avoid a separate null check.
+if (LLVM_LIKELY(AlignedPtr + SizeToAllocate - 1 < uintptr_t(End))) { ... }
+
+but then adopted aengelke's suggestion. Storing the end as a sentinel one past the real end (EndSentinel = realEnd + 1, and 0 when there is no slab) folds both conditions into one unsigned compare:
+
+1
+
+	
+if (LLVM_LIKELY(AllocEndPtr < EndSentinel)) { ... }
+
+An empty allocator has EndSentinel == 0, so AllocEndPtr < 0 is always false and the null case falls through to the slow path with no separate branch.
+
+Dropping the per-allocation accounting (#205711)
+
+BytesAllocated += Size was a read-modify-write to a member on every allocation, backing a getBytesAllocated() that reported requested bytes — distinct from getTotalMemory()'s slab capacity. It had only stats/diagnostic consumers: lldb's ConstString memory report, a clangd debug log, TableGen's dumpAllocationStats, and one clang regression test. Dropping the member and migrating those consumers (mostly to getTotalMemory()) removes the hot-path store.
+
+A detail: the red zone and ABI. The ASan red-zone size is also a member. Gating it on #if LLVM_ADDRESS_SANITIZER_BUILD to drop it in release builds would be an ABI footgun: that macro is per translation unit, so an ASan-instrumented TU and a non-ASan libLLVM would silently disagree on the struct layout. The member is instead gated on LLVM_ENABLE_ABI_BREAKING_CHECKS, which is fixed per library build and link-time-enforced (via the EnableABIBreakingChecks symbol); the red-zone arithmetic is then gated on both macros.
+
+Combined, the fast path becomes:
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+
+	
+void *Allocate(size_t Size, Align Alignment) {
+  size_t SizeToAllocate = Size;
+#if LLVM_ADDRESS_SANITIZER_BUILD && LLVM_ENABLE_ABI_BREAKING_CHECKS
+  SizeToAllocate += RedZoneSize;
+#endif
+  SizeToAllocate = alignToPowerOf2(SizeToAllocate, MinAlign);
+  uintptr_t AlignedPtr = uintptr_t(CurPtr);
+  if (Alignment.value() > MinAlign)
+    AlignedPtr = alignAddr(CurPtr, Alignment);
+  uintptr_t AllocEndPtr = AlignedPtr + SizeToAllocate;
+  if (LLVM_LIKELY(AllocEndPtr < EndSentinel)) {
+    CurPtr = reinterpret_cast<char *>(AllocEndPtr);
+    ...
+    return reinterpret_cast<char *>(AlignedPtr);
+  }
+  return AllocateSlow(Size, SizeToAllocate, Alignment);
+}
+
+Generated assembly
+
+Allocating a typical arena object — a 24-byte, 8-aligned node via Allocate<T>() — compiles to a six-instruction fast path (clang -O2, release):
+
+1
+2
+3
+4
+5
+6
+
+	
+mov  rax, [rdi]        # CurPtr (also the return value)
+lea  rcx, [rax + 0x18] # new = CurPtr + 24
+cmp  rcx, [rdi + 0x8]  # vs EndSentinel
+jae  .slow
+mov  [rdi], rcx        # CurPtr = new
+ret
+
+That matches the canonical bump fast path. A downward-bumping allocator would not need the rax/rcx distinction — one fewer live value, but the instruction count stays the same. LLVM bumps upward by design: identifyObject, allocation order, and SpecificBumpPtrAllocator::DestroyAll's forward sizeof(T) stride all assume it. The remaining gap is space, not instructions.
+
+Aggregate compile-time impact
+
+These changes shrink Allocate below the inliner's cost threshold, so its callers (e.g. new (Context) T) inline at sites that previously called out of line. Executed instructions fall — but as a redistribution: object files where the chain now inlines grow, while the rest shrink slightly from the dropped store.
+
+The performance win is larger at stage2 (built by stage1 Clang) than at stage1 (built by system GCC).
+
+Reverting all three on top of main isolates their combined effect (compare):
+
+Significant (≥3σ vs. measured noise): 🟢 improvement. Unmarked = within noise.
+
+Configuration	instructions:u	max-rss
+stage1-O3	−0.04%	+0.04%
+stage1-ReleaseThinLTO	−0.04%	−0.01%
+stage1-ReleaseLTO-g	−0.04%	+0.06%
+stage1-O0-g	🟢 −0.09%	+0.25%
+stage1-aarch64-O3	−0.04%	+0.04%
+stage1-aarch64-O0-g	🟢 −0.12%	−0.01%
+stage2-O3	🟢 −0.14%	−0.15%
+stage2-O0-g	🟢 −0.36%	−0.06%
+Takeaways
+A bump allocator's fast path is a few instructions of real work wrapped in a realign and accounting; each can be hoisted out of the common case.
+Encoding "empty" as a 0 sentinel folds a null check into the bound compare.
+The measurable instruction-count win is the inlining a cheaper Allocate unlocks, not the removed micro-op — and it appears as a size redistribution, not a uniform shrink.
+A layout-affecting member may key on LLVM_ENABLE_ABI_BREAKING_CHECKS (link-enforced) but never on the per-TU LLVM_ADDRESS_SANITIZER_BUILD.
+Share
+codegen
+llvm
+performance
+NEWER
+Irreducible loops
+OLDER
+A deep dive into SmallVector::push_back
+POPULAR
+All about thread-loca... (44500)
+.init, .ctors, and .i... (24965)
+All about Global Offs... (18475)
+When can glibc be bui... (18268)
+Stack unwinding (14731)
+All about Procedure L... (14452)
+ELF interposition and... (11974)
+Relative relocations ... (11156)
+All about symbol vers... (10958)
+-fno-semantic-interpo... (10691)
+C++ exception handlin... (10488)
+Weak symbol (9504)
+All about LeakSanitizer (9227)
+Evolution of the ELF ... (9132)
+All about UndefinedBe... (8728)
+LLD and GNU linker in... (8618)
+GNU indirect function (8587)
+ELF hash function may... (8511)
+Linker notes on AArch64 (8314)
+The dark side of RISC... (8103)
+支持Android、iOS 9内置IPSe... (7924)
+Control-flow integrity (7908)
+Relocatable linking (7688)
+2019年总结——工具链的一年 (7335)
+glibc and DT_GNU_HASH (6590)
+Linker garbage collec... (6526)
+Compiling C++ with th... (6520)
+Why isn't ld.lld faster? (6323)
+Explain GNU style lin... (5825)
+ODR violation detection (5824)
+All about sanitizer i... (5819)
+指定dynamic linker以使用高版... (5294)
+Relocation overflow a... (5276)
+Assemblers (5192)
+C++ language server c... (5109)
+Compressed debug sect... (5098)
+gcov与LLVM中的实现 (4987)
+约瑟夫问题的两个O(log n)解法 (4688)
+2022年总结 (4614)
+Integrated assembler ... (4501)
+DEFCON 26 CTF参赛记 (4493)
+-march=, -mcpu=, and ... (4470)
+Skipping boring funct... (4411)
+Copy relocations, can... (4384)
+RISC-V linker relaxat... (4370)
+Symbol processing (4304)
+zstd compressed debug... (4273)
+Precompiled headers (3941)
+Compiler driver and c... (3879)
+C standard library he... (3872)
+Exploring GNU extensi... (3811)
+Build glibc with LLD 13 (3713)
+Android微信数据导出 (3618)
+COMDAT and section group (3534)
+Unwinding through a s... (3500)
+Force-directed算法(1)——... (3480)
+Command line processi... (3432)
+Everything I know abo... (3354)
+All about COMMON symbols (3153)
+Layering check with C... (3134)
+近况 (3020)
+Exploring object file... (2964)
+完美迷宫生成算法 (2912)
+Removing global state... (2902)
+Clang's -O0 output: b... (2833)
+_FORTIFY_SOURCE (2733)
+-fpatchable-function-... (2699)
+2021年总结 (2692)
+《Debug Hacks》和调试技巧 (2472)
+C++ standard library ... (2413)
+Modified condition/de... (2388)
+A compact relocation ... (2298)
+Dependency related li... (2250)
+Segment tree (2216)
+皈依Emacs (2194)
+WeeChat操作各种聊天软件 (2147)
+lld 15 ELF changes (2125)
+DEFCON 24 CTF参赛记 (2106)
+Archives and --start-lib (2083)
+一次服务器BMC固件逆向经历 (2066)
+Distribution of debug... (2059)
+C++ exit-time destruc... (1970)
+DEFCON 25 CTF参赛记 (1943)
+Light ELF: exploring ... (1935)
+SECTIONS and OVERWRIT... (1911)
+Analysis and introspe... (1843)
+Everything I know abo... (1829)
+Metadata sections, CO... (1822)
+我是这样使用微信的——wechatircd... (1807)
+使用Suricata进行IDS/IPS (1797)
+Mapping symbols: reth... (1792)
+2020年总结 (1777)
+Clang -Wunused-comman... (1751)
+Understanding orphan ... (1724)
+2014年总结——竞赛的一年 (1683)
+调试技巧2 (1675)
+从ASC'14到ISC'15——我的超算竞... (1660)
+Competitive programmi... (1634)
+Relocation generation... (1600)
+Toolchain testing (1583)
+Exploring the section... (1557)
+lld 14 ELF changes (1543)
+LeetCode solutions (1531)
+PI_STATIC_AND_HIDDEN/... (1476)
+ccls 0.20181225 release (1459)
+2024年总结 (1424)
+A deep dive into Clan... (1404)
+Nginx根据Accept-Languag... (1375)
+Function multi-versio... (1347)
+模块内函数调用和libc符号重命名 (1345)
+Port LLVM XRay to App... (1325)
+Linker notes on Power... (1313)
+Tinkering with Neovim (1302)
+FreeBSD src browsing ... (1297)
+wechatircd——用IRC客户端控制... (1231)
+Understanding and imp... (1224)
+Understanding alignme... (1150)
+Dominator tree (1147)
+Compiler output files (1142)
+OverTheWire - Natas W... (1109)
+DWARF in reproducible... (1078)
+脱离chroot的枷锁 (1077)
+RedTigers Hackit Warg... (1069)
+建立清华大学Node Packaged M... (1061)
+Linker notes on x86 (1017)
+MMU-less systems and ... (1008)
+Evil--在Emacs中模拟Vim (963)
+Linker compatibility ... (958)
+ccls and LSP Semantic... (922)
+8门编程语言的设计思考 (921)
+lld linked musl on Po... (911)
+AddressSanitizer: glo... (906)
+自动获取SSH密码并登录 (870)
+J语言初探 (851)
+kth element in a suba... (838)
+DEFCON 23 CTF参赛记 (836)
+ELF Hacks (836)
+我的xmonad配置 (812)
+用udev自动挂载usb设备 (796)
+Cyber Grand Challenge... (796)
+无需每日扫码的IRC版微信和QQ：wech... (795)
+终端模拟器下使用双倍宽度多色Emoji字体 (791)
+C minifier with Clang (784)
+LLVM integrated assem... (782)
+lld 16 ELF changes (752)
+DEFCON 21——我的奋斗 (746)
+DEFCON 21 CTF参赛记 (737)
+Simplifying disassemb... (725)
+My involvement with L... (690)
+Toolchain notes on z/... (669)
+江苏信安竞赛初赛工作组记事 (658)
+使用Burkhard-Keller tre... (651)
+偃师——finite automaton生成工具 (642)
+Real World CTF 2018 r... (637)
+D-Link路由器后门注记 (636)
+Python is ugly (628)
+DEFCON 22 CTF参赛记 (617)
+Gmail的OfflineIMAP XOA... (608)
+80分钟8语言 (599)
+gcc中sqrt实现 (598)
+BCTF工作组记事 (591)
+算法、FP、前端、安全、系统管理——201... (590)
+Toolchain notes on MIPS (588)
+LeetCode Best Time to... (579)
+2018-09-09 ccls最近更新 (547)
+异于Make的另一种构建系统 (545)
+telegramircd——用IRC客户端... (540)
+Compressed arbitrary ... (527)
+二叉树遍历算法总结 (514)
+NOIP 2004 数字游戏（虫食算） (502)
+并行N-body模拟 (492)
+基于 mutt+offlineimap+n... (479)
+在Makefile中自动生成依赖 (474)
+Real World CTF 2018 c... (471)
+webqqircd——用IRC客户端控制W... (455)
+ML编译器Caml Featherweig... (453)
+Linker notes on PE/COFF (453)
+clang-format and sing... (449)
+Haskell学习笔记 (434)
+When QOI meets XZ (433)
+$ccls/navigate和index.... (432)
+LLVM integrated assem... (432)
+第二届青少年开发者大会 (425)
+HDU OJ一些题目 (415)
+自然语言处理之词语抽取 (411)
+Buffalo WZR-600DHP Op... (408)
+jq实现原理——字节码 (403)
+2023年总结 (402)
+lld 19 ELF changes (383)
+称球问题扩展——根据当前已知信息选择最优称量方案 (382)
+Reflections on LLVM's... (377)
+Makefile介绍 (375)
+.emacs (369)
+整系数Discrete Fourier t... (369)
+用Makefile搭建博客 (367)
+Extract an archive me... (353)
+用Perl的正则表达式分析csv文件 (340)
+三柱汉诺塔相关扩展问题 (329)
+终端模拟器下宽字符退格 (328)
+lld 20 ELF changes (328)
+ML编译器Caml Featherweig... (327)
+常数空间Invert Binary Tre... (324)
+Ko-Aluru suffix array... (323)
+LeetCode Expression A... (321)
+My involvement with L... (320)
+Natural loops (313)
+用Makefile搭建博客-2 (310)
+SVT13117ECS上Gentoo安装记... (300)
+Keeping pace with LLV... (300)
+PyGTK迷宫生成器mazer (290)
+GTK+ tic-tac-toe（井字棋） (288)
+Trend Micro Codinsani... (288)
+Linker notes on AArch32 (288)
+Raw symbol names in i... (282)
+使用cquery：C++ language... (276)
+BCTF 2015 CamlMaze命题报... (274)
+ISC'14 Student Cluste... (270)
+RuCTFE 2012参赛记 (269)
+Haskell实现的Splay树 (269)
+BCTF 2016 hsab及BetaFo... (261)
+“1001夜”学生节线上解谜活动1001/... (259)
+A compact section hea... (258)
+使用Double-array trie优化... (257)
+RISC-V TLSDESC works! (257)
+LLVM integrated assem... (257)
+GTK+黑白棋reversi (256)
+智能体大赛与平台开发 (255)
+Benchmarking compress... (252)
+TUNA技术沙龙及A Pretty Pri... (250)
+八数码 (248)
+计算所有后缀的排名 (243)
+用Google Analytics API... (241)
+域名迁移至maskray.me (239)
+cquery最近改动与libclang.s... (235)
+用Pike's VM实现的非回溯正则表达式引擎 (226)
+根据计划求解Rush (222)
+GCC 13.3.0 miscompile... (220)
+用DocPad构建静态网站 (213)
+Dancing Links+Algorit... (212)
+用rss2email阅读feeds (210)
+lld 18 ELF changes (206)
+Tiling window manager... (203)
+用Expect连接无线网络 (203)
+USACO JAN10 Gold (201)
+genkernel (197)
+ZJU 1638. Greedy Island (191)
+DSO undef and non-exp... (190)
+cquery USR优化和分层diff (189)
+给xbindkeys添加key seque... (183)
+Ouroborus Program - q... (179)
+String index structur... (178)
+LLVM integrated assem... (170)
+My involvement with L... (169)
+网络学堂feeds2mail (166)
+SECUINSIDE CTF Quals ... (145)
+reviews.llvm.org beca... (140)
+Js_of_ocaml和Emscripten (136)
+ccls: a fork of the C... (129)
+r2con 2017 r2cLEMENCy (119)
+Awesome 3 debian menu (115)
+XV Olimpiada Informat... (111)
+checker (110)
+Migrating comments to... (102)
+lld 17 ELF changes (91)
+Exporting Tweets (68)
+Emacs helm-kythe与Hask... (52)
+ML编译器Caml Featherweig... (19)
+E-mail文化拾趣 (11)
+ML编译器Caml Featherweig... (11)
+ML编译器Caml Featherweig... (10)
+ML编译器Caml Featherweig... (8)
+ML编译器Caml Featherweig... (8)
+TAG CLOUD
+adc ai9 algorithm arm asc assembler automaton awesome bctf binary binutils bmc build system c c++ ccls cgc chroot clang clang-format codegen codinsanity coffee script compiler compression computer security contest csv ctf data structure data-structures debug defcon desktop docker elf emacs email emoji emscripten event expect ext4 fdpic feeds firmware floating point forensics fp freebsd game gcc gdb gentoo git github glibc graph graph drawing gtk hacker culture hackerrank hanoi haskell hpc image inotify ipsec irc isc j javascript josephus problem jq kernel kythe ld leetcode libunwind linker linux lld lldb llvm lsp m68k makefile math maze mirror ml musl mutt n-body neovim network nginx nim nlp node.js noip notmuch npm ocaml offlineimap oi oj openwrt parallel parser generator performance perl powerpc presentation puzzle python qq radare2 regex regular expression release reverse engineering review riscv router rtld ruby ructfe s390x sanitizer scheme search security sframe shell ssh stringology student festival puzzle suffix array suffix automaton summary suricata telegram telegramircd terminal tls travel traversal tree trendmicro udev unicode unix usb vim vpn vte wargame web analytics webqqircd website wechat wechatircd window manager windows x86 xbindkeys xmonad xz yanshi
+BLOGROLL
+BYVoid
+fqj1994
+ppwwyyxx
+© 2026 MaskRay
+Powered by Hexo
+Home Archives Feeds TIL Presentations
+
+IMAGES
+https://maskray.me/icon/github.svg
+https://maskray.me/icon/twitter.svg

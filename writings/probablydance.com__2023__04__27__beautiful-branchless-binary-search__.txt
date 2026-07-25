@@ -1,0 +1,762 @@
+PROBABLY DANCE
+I can program and like games
+Beautiful Branchless Binary Search
+by Malte Skarupke
+
+I read a blog post by Alex Muscar, “Beautiful Binary Search in D“. It describes a binary search called “Shar’s algorithm”. I’d never heard of it and it’s impossible to google, but looking at the algorithm I couldn’t help but think “this is branchless.” And who knew that there could be a branchless binary search? So I did the work to translate it into a algorithm for C++ iterators, no longer requiring one-based indexing or fixed-size arrays.
+
+In GCC it is more than twice as fast as std::lower_bound, which is already a very high quality binary search. The search loop is simple and the generated assembly is beautiful. I’m astonished that this exists and nobody seems to be using it…
+
+Lets start with the code:
+
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+	
+template<typename It, typename T, typename Cmp>
+It branchless_lower_bound(It begin, It end, const T & value, Cmp && compare)
+{
+    size_t length = end - begin;
+    if (length == 0)
+        return end;
+    size_t step = bit_floor(length);
+    if (step != length && compare(begin[step], value))
+    {
+        length -= step + 1;
+        if (length == 0)
+            return end;
+        step = bit_ceil(length);
+        begin = end - step;
+    }
+    for (step /= 2; step != 0; step /= 2)
+    {
+        if (compare(begin[step], value))
+            begin += step;
+    }
+    return begin + compare(*begin, value);
+}
+template<typename It, typename T>
+It branchless_lower_bound(It begin, It end, const T & value)
+{
+    return branchless_lower_bound(begin, end, value, std::less<>{});
+}
+
+I said the search loop is simple, but unfortunately the setup in lines 4 to 15 is not. Lets skip it for now. Most of the work happens in the loop in lines 16 to 20.
+
+BRANCHLESS
+
+The loop may not look branchless because I clearly have a loop conditional and an if-statement in the loop body. Let me defend both of these:
+
+The if-statement will be compiled to a CMOV (conditional move) instruction, meaning there is no branch. At least GCC does this. I could not get Clang to make this one branchless, no matter how clever I tried to be. So I decided to not be clever, since that works for GCC. I wish C++ just allowed me to use CMOV directly…
+The loop condition is a branch, but it only depends on the length of the array. So it can be predicted very well and we don’t have to worry about it. The linked blog post fully unrolls the loop, which makes this branch go away, but in my benchmarks unrolling was actually slower because the function body became too big to be inlined. So I kept it as is.
+ALGORITHM
+
+So now that I’ve explained that the title refers to the fact that one branch is gone and the other is nearly free and could be removed if we wanted to, how does this actually work?
+
+The important variable is the “step” variable, line 7. We’re going to jump in powers of two. If the array is 64 elements long, it will have the values 64, 32, 16, 8, 4, 2, 1. It gets initialized to the nearest smaller power-of-two of the input length. So if the input is 22 elements long, this will be 16. My compiler doesn’t have the new std::bit_floor function, so I wrote my own to round down to the nearest power of two. This should just be replaced with a call to std::bit_floor once C++20 is more widely supported.
+
+We’re always going to do steps that are power-of-two sized, but that’s going to be a problem if the input length is not a power of two. So in lines 8 to 15 we check if the middle is less than the search value. If it is, we’re going to search the last elements. Or to make it concrete: If the input is length 22, and that boolean is false, we’ll search the first 16 elements, from index 0 to 15. If that conditional is true, we’ll search the last 8 elements, from index 14 to 21.
+
+input          0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21
+line 8 compare                                       16
+when false     0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
+when true                                      14 15 16 17 18 19 20 21
+
+Yes, that means that indices 14, 15 and 16 get included in the second half even though we already ruled them out with the comparison in line 8, but that’s the price we pay for having a nice loop. We have to round up to a power of two.
+
+PERFORMANCE
+
+How does it perform? It’s incredibly fast in GCC:
+
+Somewhere around 16k elements in the array, it’s actually 3x as fast as std::lower_bound. Later, cache effects start to dominate so the reduced branch misses matter less.
+
+Those spikes for std::lower_bound are on powers of two, where it is somehow much slower. I looked into it a little bit but can’t come up with an easy explanation. The Clang version has the same spikes even though it compiles to very different assembly.
+
+In fact in Clang branchless_lower_bound is slower than std::lower_bound because I couldn’t get it to actually be branchless:
+
+The funny thing is that Clang compiles std::lower_bound to be branchless. So std::lower_bound is faster in Clang than in GCC, and my branchless_lower_bound is not branchless. Not only did the red line move up, the blue line also moved down.
+
+But that means if we compare the Clang version of std::lower_bound against the GCC version of branchless_lower_bound, we can compare two branchless algorithms. Lets do that:
+
+The branchless version of branchless_lower_bound is faster than the branchless version of std::lower_bound. On the left half of the graph, where the arrays are smaller, it’s 1.5x as fast on average. Why? Mainly because the inner loop is so tight. Here is the assembly for the two:
+
+inner loop of std::lower_bound	inner loop of branchless_lower_bound
+loop: mov %rcx,%rsi	loop: lea (%rdx,%rax,4),%rcx
+mov %rbx,%rdx	cmp (%rcx),%esi
+shr %rdx	cmovg %rcx,%rdx
+mov %rdx,%rdi	shr %rax
+not %rdi	jne loop
+add %rbx,%rdi	
+cmp %eax,(%rcx,%rdx,4)	
+lea 0x4(%rcx,%rdx,4),%rcx	
+cmovge %rsi,%rcx	
+cmovge %rdx,%rdi	
+mov %rdi,%rbx	
+test %rdi,%rdi	
+jg loop	
+
+These are all pretty cheap operations with only a little bit of instruction-level-parallelism, (each loop iteration depends on the previous, so instructions-per-clock are low for both of these) so we can estimate their cost just by counting them. 13 vs 5 is a big decrease. Specifically two differences matter:
+
+branchless_lower_bound only has to keep track of one pointer instead of two pointers
+std::lower_bound has to recompute the size after each iteration. In branchless_lower_bound the size of the next iteration does not depend on the previous iteration
+
+So this is great, except that the comparison function is provided by the user and, if it is much bigger, it can take many more cycles than we do. In that case branchless_lower_bound will be slower than std::lower_bound. Here is binary searching of strings, which gets more expensive once the container gets large:
+
+MORE COMPARISONS
+
+Why is it slower for strings? Because this does more comparisons than std::lower_bound. Splitting into powers of two is actually not ideal. For example if the input is the array [0, 1, 2, 3, 4] and we’re looking for the middle, element 2, this behaves pretty badly:
+
+std::lower_bound	branchless_lower_bound
+compare at index 2, not less	compare at index 4, not less
+compare at index 1, less	compare at index 2, not less
+done, found at index 2	compare at index 1, less
+	compare at index 1, less
+	done, found at index 2
+
+So we’re doing four comparisons here where std::lower_bound only needs two. I picked an example where it’s particularly clumsy, starting far from the middle and comparing the same index twice. It seems like you should be able to clean this up, but when I tried I always ended up making it slower.
+
+But it won’t be too much worse than an ideal binary search. For an array that’s less than  elements big
+– an ideal binary search will use  or fewer comparisons
+– branchless_lower_bound will use  or fewer comparisons.
+
+Overall it’s worth it: We’re doing more iterations, but we’re doing those extra iterations so much more quickly that it comes out significantly faster in the end. You just need to keep in mind that if your comparison function is expensive, std::lower_bound might be a better choice.
+
+TRACKING DOWN THE SOURCE
+
+I said at the beginning that “Shar’s algorithm” is impossible to google. Alex Muscar said he read it in a book written in 1982 by John L Bentley. Luckily that book is available to borrow online from the Internet Archive. Bentley provides the source code and says that it’s got the idea from Knuth’s “Sorting and Searching”. Knuth did not provide source code. He only sketched out the idea in his book, and says that it came from Leonard E Shar in 1971. I don’t know where Shar wrote up the idea. Maybe he just told it to Knuth.
+
+This is the second time that I came across an algorithm in Knuth’s books that is brilliant and should be used more widely but somehow was forgotten. Maybe I should actually read the book… It’s just really hard to see which ideas are good and which ones aren’t. For example immediately after sketching out Shar’s algorithm, Knuth spends far more time going over a binary search based on the Fibonacci sequence. It’s faster if you can’t quickly divide integers by 2, and instead only have addition and subtraction. So it’s probably useless, but who knows? When reading Knuth’s book, you have to assume that most algorithms are useless, and that the good things have been highlighted by someone already. Luckily for people like me, there seem to still be a few hidden gems.
+
+CODE
+
+The code for this is available here. It’s released under the boost license.
+
+Also I’m trying out a donation button. If open source work like this is valuable for you, consider paying for it. The recommended donation is $20 (or your local cost for an item on a restaurant menu) for individuals, or $1000 for organizations. (or your local cost of hiring a contractor for a day) But any amount is appreciated:
+
+Make a one-time donation
+
+Choose an amount
+
+¤5.00
+¤20.00
+¤1,000.00
+
+Or enter a custom amount
+
+¤ 
+
+Thanks! I have no idea how much this is worth to people. Feedback appreciated.
+
+Donate
+Share this:
+ X Facebook
+Loading...
+Related
+
+On Modern Hardware the Min-Max Heap beats a Binary Heap
+August 31, 2020
+In "Programming"
+
+Databases are Fucking Stupid
+June 21, 2014
+In "Programming"
+
+Recommended Link: Inventing on Principle
+February 16, 2015
+In "Links"
+
+PUBLISHED: April 27, 2023
+FILED UNDER: Programming
+TAGS: binary search : branchless : C++
+41 Comments to “Beautiful Branchless Binary Search”
+QuarticCat
+April 27, 2023 at 22:00
+
+To generate branchless code in Clang, one can use __builtin_expect_with_probability or __builtin_unpredictable. They are not guaranteed though.
+
+By the way, there is a bit more discussion on efficient binary search that you might have interest in: https://en.algorithmica.org/hpc/data-structures/binary-search/
+
+REPLY
+Malte Skarupke
+April 28, 2023 at 09:45
+
+Thanks, I had tried __builtin_unpredictable but it didn’t work for me.
+
+That blog post is very interesting. He came up with a very similar loop to Shar’s algorithm by starting from lower_bound and doing some reasonable simplifications. I’ll try to add it to my benchmarks this evening.
+
+REPLY
+Malte Skarupke
+April 28, 2023 at 19:18
+
+And here is a link to godbolt showing that __builtin_unpredictable doesn’t help:
+
+https://godbolt.org/z/zG53jTh65
+
+REPLY
+Malte Skarupke
+May 2, 2023 at 18:14
+
+I ran the benchmarks on the branchless binary search from the algorithmica link:
+
+The graph is slightly more noisy because I didn’t run the benchmark enough times for the averages to smooth out.
+
+It’s definitely fast, slightly faster than the Clang branchless version of std::lower_bound. (not shown here) But it’s slightly slower than branchless_lower_bound. (except on the right side of the graph, where it’s the same speed)
+
+Curiously the prefetching just makes it slower for me. Might be something about my benchmark setup because I’m searching in the same array multiple times…
+
+REPLY
+Arnaud
+April 28, 2023 at 03:00
+
+On microbenchmarks, the “Shar” optimization may have an effect, but I am not sure it would be on production code, where most of the time is likely to be spent putting the data into L1 cache, not searching within the data. This may be one of the reasons why it was not so widely used – because it is not worth it on real work.
+
+REPLY
+Malte Skarupke
+April 28, 2023 at 10:13
+
+I think the right side of my graphs should capture that case, when data isn’t in cache. There is still a meaningful speedup.
+
+I think the most likely explanation is that this one does more comparisons. And if the compiler doesn’t make it branchless, it is slower after all. Plus we only had the one-based-indexing version before and converting it to zero-based indexing was surprisingly tricky. Try it yourself without looking at my code.
+
+This was a couple weeks of work, which most people wouldn’t try for an algorithm that does more comparisons.
+
+REPLY
+Rafael Ávila de Espíndola
+April 28, 2023 at 08:35
+
+A similar trick can be done for the Eytzinger layout: https://espindo.la/posts/array-layouts.html
+
+REPLY
+Malte Skarupke
+April 28, 2023 at 19:14
+
+Thanks. I really like the idea of the Eytzinger layout, but I don’t know if the Eytzinger layout is useful for anything other than fast binary search. A sorted array is useful for other things (like to display things in sorted order), so you might already have sorted data and then you want to use binary search. And if you don’t need it to be sorted, using a good hash table is going to be faster.
+
+So I have never yet come up with a reason to actually use the Eytzinger layout. Am I missing something?
+
+REPLY
+Rafael Ávila de Espíndola
+April 29, 2023 at 00:21
+
+For large arrays it is better as you can prefetch. The paper that got me started on this is https://arxiv.org/abs/1509.05053, but yes, for the array sizes I was interested in binary search was better.
+
+ncmncm
+April 28, 2023 at 11:43
+
+It is usually easier to get clang to produce cmov than gcc.
+
+Try a conditional expression:
+
+   begin += compare(begin[step], value) ?
+         step : 0;
+
+REPLY
+Malte Skarupke
+April 28, 2023 at 18:56
+
+Thanks, but it doesn’t seem to help:
+https://godbolt.org/z/KE634cf7K
+
+REPLY
+b2.temp
+May 1, 2023 at 02:14
+
+I believe cmovxx are by default converted to branches by LLVM, based on the principle that they are said to be slow. In case you would not have tried (you are not very clear on what’s been tried or not), then add the flag combination
+
+-mllvm -x86-cmov-converter=false
+
+to keep them, at least here https://godbolt.org/z/aTExEYcfY, I can see one that appear
+
+Malte Skarupke
+May 2, 2023 at 18:56
+
+Thanks, that worked. With this, Clang also compiles branchless_lower_bound to be faster than std::lower_bound.
+
+I think the argument for not allowing cmov goes something like this:
+1. Well-predicted branches are faster than cmov
+2. Most branches can be well-predicted
+3. Therefore most uses of cmov are actually slower
+
+This is all true, and I’m sure you could construct a benchmark of binary search where a branch is faster than cmov, but some branches are actually just hard to predict.
+
+I wish I could just control this. 99% of the time I wouldn’t use that feature, but occasionally I do want to actually remove a branch.
+
+Nathan Myers
+May 3, 2023 at 12:17
+
+Strange, when I try it in Godbolt in isolation, Clang 16 generates a “cmove” instruction, G++ 13 a “cmovne”. (“-std=c++20 -O2 -mavx2”).
+
+Changing to
+
+begin += -compare(…) & step;
+
+Clang generates the same code, where G++ generates the “and” instruction, which should do OK. Gcc has generated consistently faster production code than Clang’s, whenever I have tried it.
+
+I explore this sort of thing in more detail in http://cantrip.org/sortfast.html . There is also https://www.youtube.com/watch?v=1RIPMQQRBWk&pp=ygUTY3BwY29uIG9wdGltaXphdGlvbg%3D%3D and https://www.youtube.com/watch?v=g-WPhYREFjk&pp=ygUTY3BwY29uIG9wdGltaXphdGlvbg%3D%3D
+
+In your Godbolt code, g++ 16 generates a “cmovg” either way, and I have found no way short of the “-x86-cmov-converter=false” trick to dissuade it, despite that CPUs are enormously better than before at avoiding cmov performance hits.
+
+Christopher Chang
+April 28, 2023 at 11:43
+
+See https://en.algorithmica.org/hpc/cpu-cache/associativity/ re: the poor power-of-two-array-size performance.
+
+REPLY
+Malte Skarupke
+April 28, 2023 at 18:58
+
+Thanks, that’s a fascinating link. But wouldn’t that suggest that branchless_binary_search should be slower than std::lower_bound? Because branchless_binary_search always operates on powers of two, but std::lower_bound will be off-by-one every time that it steps into the right half.
+
+REPLY
+Christopher Chang
+April 30, 2023 at 12:19
+
+Good point, the mental model I built after reading that cache-associativity article still doesn’t seem sufficient to explain your benchmark result. It may be necessary to look at and tweak the exact benchmark code to figure out why std::lower_bound appears to be more rather than less affected, and estimate whether/when it’s worthwhile to explicitly try to avoid multiple-of-4KiB step sizes.
+
+weineng
+May 2, 2023 at 13:58
+
+Off-by-one doesn’t negate cache associativity. Data is loaded in cache line (64B for most architecture). Getting a data that is “one-off” would still be in the same cache line as another data that isn’t one-off.
+
+My guess as to why the “spike” is more prominant on lower_bound:
+– First, we see the “spike” when containers are of power of twos, which usually imply that the bottleneck is memory-bounded.
+– For std::lower_bound, we could either go “left” or “right”. It’s very hard for the branch predictor to properly determine which way to go, so it cannot effective prefetch the next data.
+– For your implementation of branchless_lower_bound, you access data in “halves”, so it is easier to predict and thus, prefetch data, hence the spike (memory-bound) isn’t too high.
+
+But again, I’m just guessing.
+
+Owns 9 Fedoras
+April 28, 2023 at 18:11
+
+Didn’t find the reference in “Writing Efficient Programs”, Bentley’s 1982 book. He does refer to Knuth but I don’t see any algorithm but what you call “standard”. (https://archive.org/details/writingefficient00bent)
+
+REPLY
+Malte Skarupke
+April 28, 2023 at 19:02
+
+The algorithm is on page 128:
+https://archive.org/details/writingefficient00bent/page/128/mode/2up?view=theater
+
+This exactly matches the code in the blog post that I link to at the top.
+
+He says that it came from Knuth on the previous page. To find it in Knuth’s book look in the index for “Shar”.
+
+REPLY
+Owns 9 Fedoras
+April 28, 2023 at 19:11
+
+OK sorry I’m dumb. I looked at that page and thought oh, unrolled loop big deal, not seeing the binary constants. Your version rolled the loop up again  and generalized it to tables of size other than 1000.
+
+Julius Park
+April 30, 2023 at 03:41
+
+I really enjoyed this article. So much so that I decided to implement the same algorithm in my favorite language (Python). It beats the best pure-Python bisect_left implementation I could find, and also beats the standard library bisect_left implementation (albeit implemented using C-extensions this time, but the same idea). https://github.com/juliusgeo/branchless_bisect
+
+REPLY
+Ian Kelk
+April 30, 2023 at 12:19
+
+I’m giving this a try but I’m a bit confused for 2 reasons 
+
+1) You made your own std::bit_floor function since std::bit_floor is only in C++20, but you use std::countl_zero which is a C++20 function.
+2) Isn’t gcc a C compiler? g++ is the equivalent GNU c++ compiler.
+
+I changed the code as you suggested to use std::bit_floor since I had to compile with C++20 anyhow for the std::countl_zero calls. Any insight you could shed would be helpful! I’m compiling this on an M1 Mac running Ventura since that might explain the difference. Thanks!
+
+REPLY
+Malte Skarupke
+April 30, 2023 at 14:10
+
+Yes, both bit_floor and countl_zero are C++20. But I think supporting countl_zero is easier because it just wraps an intrinsic. Maybe that’s why one was supported and not the other. I’m sure if I upgrade compilers, both would work.
+
+Yes, on the command line I call g++. Maybe I’m wrong on this, but I’ve often heard the C++ compiler also called GCC. So when comparing clang and gcc, I’ve never heard anyone say “clang and g++” instead.
+
+REPLY
+j2kun
+April 30, 2023 at 14:03
+
+Great article! From one blogger who uses math notation to another: if you want wordpress to render LaTeX better, and avoid the weird default latex fences, try installing the Simple MathJaX plugin https://wordpress.org/plugins/simple-mathjax/
+
+REPLY
+Simon
+May 2, 2023 at 06:03
+
+Check out this implementation which is about 10% faster than the one in this article 
+https://gitflic.ru/project/erthink/bsearch-try
+
+REPLY
+Malte Skarupke
+May 4, 2023 at 22:22
+
+Thanks, I really like this one. I compared it and it does come out faster in my benchmarks as well, particularly when the array is large:
+
+For me the mini0 is actually fastest for small arrays, which is mostly where I’d use it. mini2 is fastest in large arrays. I only plotted those two because others weren’t performing that well.
+
+The function is nice and tight. It’s a good compromise to round the size up and divide in half. That makes it only depend on itself, and it allows calculating the size one iteration ahead of time. Just neat.
+
+I’m tempted to give it an interface that matches std::lower_bound.
+
+REPLY
+Joonatan Saarhelo
+June 2, 2025 at 17:15
+
+It seems to me that the number of comparisons can be slightly improved.
+
+When the length is odd, the middle element cleanly divides the array into two length / 2 (rounded down) pieces. However, when it is even, the latter half is shorter.
+
+The next length is computed as (length + 1) / 2 – stepped. This works correctly in the even case but in the odd when no step was taken the new length is off by one. A better formula is (length – stepped) / 2.
+
+I’d assume that formula produces just as good assembly, so it should result in a slight performance increase overall.
+
+Aliaksei Sanko
+May 2, 2023 at 06:47
+
+Great stuff!
+My two cents:
+https://github.com/aliakseis/lower_bound_ex
+
+REPLY
+Glen Low
+May 2, 2023 at 09:38
+
+Shar’s algorithm a.k.a. Knuth’s Algorithm U has a cleaner C/C++ implementation in https://arxiv.org/pdf/1509.05053.pdf section 3.1.3. In particular, compiling Listing 2 in clang for macOS M1 does yield inner-loop branch free code.
+
+(You might want to change the conditional assign to an if, clang should still be smart enough to substitute a condition move opcode. Also if you keep a const pointer and just update an index, you may get a smidgen better perf as well.)
+
+REPLY
+Malte Skarupke
+May 2, 2023 at 18:28
+
+That looks closer to the branchless binary search from the algorithmica article that the first comment posted about. It’s a very similar loop, except that it updates three variables (size, step and index) instead of two variables for Shar’s algorithm. (step and index)
+
+I just added a response to the first comment where I benchmark this. It comes out very fast, but slightly slower than Shar’s algorithm.
+
+For using an index instead of modifying the “begin” variable: I had tried that and it just came out slower. I think the problem is that we’re not ever reading from the current index, but always from index + step. So instead of
+compare(begin[step], value)
+we have to write
+compare(begin[index + step], value)
+Meaning we have to always add three things instead of two.
+
+REPLY
+Leonid
+May 3, 2023 at 01:55
+
+Assuming you are talking about my https://gitflic.ru/project/erthink/bsearch-try
+So you were missing some things.
+
+Shar’s algorithm has fewer operations inside the loop, but on most microarchitectures, some operations inside loop of my implementation can (and will) be performed in parallel.
+On average Shar’s algorithm requires one more iteration of the cycle, since it starts not from the middle, but at a power of 2.
+Shar’s algorithm has slightly more overhead, since requires preparatory actions, including two conditional branches one of which is poorly predicted.
+
+All of this allows my implementation to work a little faster, which is confirmed by benchmarks. For instance on i7-1280P with gcc 12.2:
+
+Function
+Time
+Diff
+Ratio
+
+ly_bl_mini2
+0.135552
+-77.21%
+4.39
+
+ly_bl_mini3
+0.138640
+-76.69%
+4.29
+
+ly_bl_mini1
+0.140435
+-76.39%
+4.23
+
+ly_bl_mini0
+0.141575
+-76.19%
+4.20
+
+lb_PVKaPM
+0.153114
+-74.25%
+3.88
+
+Malte Skarupke
+0.168208
+-71.72%
+3.54
+
+std::lower_bound
+0.594709
++0.00%
+1.00
+
+REPLY
+Malte Skarupke
+May 3, 2023 at 22:19
+
+No I was talking about this one:
+https://en.algorithmica.org/hpc/data-structures/binary-search/
+
+I hadn’t looked at your code yet due to lack of time. (that’s why the comment that linked to it above doesn’t have a reply yet)
+
+Thanks for doing the comparison, this looks very impressive. I’m very interested how it works and I’ll try to check it out soon. I have been looking for a way to take advantage of instruction-level-parallelism in a binary searches.
+
+Malte Skarupke
+May 4, 2023 at 22:24
+
+I checked the code out now and responded to the comment above. I can reproduce that it’s faster. This one is really neat. I’m having a hard time thinking of ways to further improve it. (for Shar’s algorithm it was easy to spot that it would behave badly for certain sizes, there’s nothing like that for this one)
+
+mhdm
+June 29, 2023 at 08:45
+
+Great article! Your post drew me into thinking about further ways to optimize the binary search, especially because you noted your version “does more comparisons than std::lower_bound”. How could that be avoided? What would an optimal (comparison-wise) branchless search look like? Well, after some work I came up with an even faster binary search variant: https://mhdm.dev/posts/sb_lower_bound/
+
+REPLY
+bulat ziganshin
+July 2, 2023 at 13:04
+
+How to make it faster: https://www.reddit.com/r/cpp/comments/14okto7/comment/jqf40tp/
+
+REPLY
+josh
+July 27, 2024 at 01:44
+
+Super interesting article. We make heavy use of lookup tables in our project, mostly below 100 elements, and a naive binary search implementation is the same speed as just searching the list.
+
+You can go one step further and actually get the compiler to unroll the loop if you are using fixed sized arrays. You must specify a fixed loop with the below size:
+
+static constexpr size_t steps = std::bit_width( N ) – 1;
+
+This results in one extra comparison sometimes being done on non perfect powers of 2, but compared to the log(N) comparisons/branches it’s worth it for the unrolled loop.
+
+This beats out both naive binary search and linear search by about 4+ times speed (at low N). At higher N the ratio of the binary searches remain the same and as expected the linear search gets left in the dust.
+
+REPLY
+Jim Balter
+December 10, 2024 at 23:07
+
+Loop unrolling can work on small tables but loses out when they get larger.
+
+REPLY
+Jim Balter
+December 10, 2024 at 21:31
+
+Shar lives in Menlo Park so you could ask him about it.
+
+REPLY
+Jim Balter
+December 10, 2024 at 23:04
+
+P.S. By “it” I just mean the history … whether he ever published it or just told Knuth about it, or maybe it was on a mailing list, etc.
+
+REPLY
+1yk0s
+April 11, 2025 at 01:48
+
+I’m having difficulties to compile the following code into anything other than a cmove:
+
+“`
+int cmove(int a, int b, bool c)
+{
+if (c) return a;
+return b;
+}
+“`
+
+REPLY
+Leave a comment
+
+This site uses Akismet to reduce spam. Learn how your comment data is processed.
+
+« Previous Post
+Next Post »
+Search for:
+ 
+RECENT POSTS
+Book Review: Babel by R.F. Kuang
+Apple is Holding my Pictures Hostage Until I Accept Their New Terms of Service
+President Graph – FRED Data Broken Down by Party and President
+I’m Getting a Whiff of Iain Banks’ Culture
+Word Map – A Game About Hill Climbing and Stepping Stones
+ARCHIVES
+May 2026
+April 2026
+March 2026
+February 2026
+January 2026
+November 2025
+September 2025
+August 2025
+June 2025
+May 2025
+February 2025
+October 2024
+April 2024
+October 2023
+September 2023
+April 2023
+December 2022
+September 2022
+June 2022
+February 2022
+January 2022
+October 2021
+July 2021
+April 2021
+January 2021
+November 2020
+October 2020
+August 2020
+July 2020
+June 2020
+May 2020
+April 2020
+March 2020
+January 2020
+December 2019
+September 2019
+August 2019
+June 2019
+April 2019
+March 2019
+June 2018
+May 2018
+April 2018
+January 2018
+December 2017
+November 2017
+October 2017
+September 2017
+August 2017
+February 2017
+January 2017
+December 2016
+November 2016
+June 2016
+April 2016
+March 2016
+February 2016
+December 2015
+September 2015
+July 2015
+June 2015
+May 2015
+February 2015
+January 2015
+December 2014
+November 2014
+October 2014
+September 2014
+August 2014
+June 2014
+May 2014
+April 2014
+March 2014
+February 2014
+January 2014
+October 2013
+September 2013
+August 2013
+May 2013
+February 2013
+January 2013
+December 2012
+November 2012
+October 2012
+August 2012
+July 2012
+April 2012
+March 2012
+February 2012
+January 2012
+October 2011
+September 2011
+August 2011
+July 2011
+June 2011
+May 2011
+CATEGORIES
+Apartment
+Children
+Games
+Links
+Math
+Politics and Economics
+Programming
+Uncategorized
+META
+Create account
+Log in
+Entries feed
+Comments feed
+WordPress.com
+ 
+
+Blog at WordPress.com.
+
+Comment
+ 
+Reblog
+ 
+Subscribe
+
+IMAGES
+https://probablydance.com/wp-content/uploads/2023/04/gcc.png?w=650
+https://probablydance.com/wp-content/uploads/2023/04/clang-1.png?w=650
+https://probablydance.com/wp-content/uploads/2023/04/branchless.png?w=650
+https://probablydance.com/wp-content/uploads/2023/04/strings.png?w=650
+https://s0.wp.com/latex.php?latex=2%5En&bg=fff&fg=444444&s=0&c=20201002
+https://s0.wp.com/latex.php?latex=n&bg=fff&fg=444444&s=0&c=20201002
+https://s0.wp.com/latex.php?latex=%28n%2B1%29&bg=fff&fg=444444&s=0&c=20201002
+https://2.gravatar.com/avatar/e62fdafe4d879af03ee141c6357e136f889ff04f88dfc7e082caff45b433ab7c?s=48&d=identicon&r=G
+https://2.gravatar.com/avatar/ee7110bc70d8ac628b157c947ab9ff65ba60c57c5b771c71bc85f5589803bd28?s=48&d=identicon&r=G
+https://probablydance.files.wordpress.com/2023/05/algorithmica.png?w=650
+https://1.gravatar.com/avatar/d418d440bd731b04af682ad961b11d4b3982c4ee6d411dca7a7e7362acb999a4?s=48&d=identicon&r=G
+https://2.gravatar.com/avatar/b6548ca80fbf386096510f1425ffcc17d310e8342f98099f21fa4bef2bc2148a?s=48&d=identicon&r=G
+https://2.gravatar.com/avatar/80cb49b7c6bdd7289de0bd8a30530928b16cecdd1d3ba20c1b76617c260eb975?s=48&d=identicon&r=G
+https://2.gravatar.com/avatar/b59439241bfafc2e0df39df3fe8c933566ea39bddd8e5c5eabbc575b796a63cb?s=48&d=identicon&r=G
+https://0.gravatar.com/avatar/ff1faf40bdeecb4a96065f0e500f8d1fe462aab3891775efbe99eee73a1c9d67?s=48&d=identicon&r=G
+https://1.gravatar.com/avatar/7b17179338dc92397a79aa46c1f0ff4f3976b20f59e03b38fc4a1e516fd56deb?s=48&d=identicon&r=G
+https://2.gravatar.com/avatar/bcffe8bedc7bb2a09a6fda58ab89ad20b176aedcfbc9668d85b82b0ebe2f24bf?s=48&d=identicon&r=G
+https://s0.wp.com/wp-content/mu-plugins/wpcom-smileys/twemoji/2/svg/1f609.svg
+https://0.gravatar.com/avatar/9ad6dde9ac66672a330526b007cf19e60f81c5a4db938fcdd0889dac8bd98d24?s=48&d=identicon&r=G
+https://graph.facebook.com/v6.0/511167190/picture?type=large
+https://s0.wp.com/wp-content/mu-plugins/wpcom-smileys/twemoji/2/svg/1f642.svg
+https://0.gravatar.com/avatar/90bdb8312fac0dbcae213a451081358dc0c442150d4ac6c14f8b82449aba7cfb?s=48&d=identicon&r=G
+https://1.gravatar.com/avatar/a0b42f080d51f7c9d227a1bcbab7b98feb2873e68058f4f4920d65a88a0f3096?s=48&d=identicon&r=G
+https://probablydance.files.wordpress.com/2023/05/erthink.png?w=650
+https://2.gravatar.com/avatar/8adf5b8e9745ea37376d4ffce78fca4ed40b7c93b2f2674b7d81a2c319e7f587?s=48&d=identicon&r=G
+https://graph.facebook.com/v6.0/9420496711323618/picture?type=large
+https://0.gravatar.com/avatar/90d9d3ed72ef7846266c1a865758cb760c005424ef4e500791f9f0e598aad907?s=48&d=identicon&r=G
+https://0.gravatar.com/avatar/6dd5f133e9bbfb15aa405aea836f59186b68a22a209c7b33b0b3d005925d7671?s=48&d=identicon&r=G
+https://0.gravatar.com/avatar/086017485b08c82c0d50eaa53c6e1d2eee1190363b982b3d7dbf20aaec4807b8?s=48&d=identicon&r=G
+https://2.gravatar.com/avatar/b9d4b010fadd272520cde5c745cf7df8c45a2744c8fcd1f8ab7cf62f0dc5bff0?s=48&d=identicon&r=G
+https://0.gravatar.com/avatar/041222e53025c572e4b60a7ec425ee11d91e532951c285e95fc7e4603e019619?s=48&d=identicon&r=G
+https://0.gravatar.com/avatar/0552b2cea585359c82c229df489e3e2c33bc21b0b36d9780ad8d368779729f6d?s=48&d=identicon&r=G
+https://2.gravatar.com/avatar/8ac9dc426fac8668626b3ffb2398b0a8d6a93f326e073ea225d6047aa720caa0?s=48&d=identicon&r=G
+https://s0.wp.com/i/logo/wpcom-gray-white.png?m=1479929237i
+https://pixel.wp.com/g.gif?blog=22872755&v=wpcom&tz=-7&user_id=0&post=11376&subd=probablydance&host=probablydance.com&ref=&rand=0.2410813123770108

@@ -1,0 +1,3 @@
+goto err: Page.goto: Timeout 8000ms exceeded.
+Call log:
+  - navigating to "https://www.phreedom.org/research/tinype/", waiting until "domcontentloaded"

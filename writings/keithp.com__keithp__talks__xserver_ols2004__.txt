@@ -1,0 +1,17 @@
+Getting X Off The Hardware
+Keith Packard
+Cambridge Research Laboratory, HP Labs, HP
+keithp@keithp.com
+Abstract:
+
+The X window system is generally implemented by directly inserting hardware manipulation code into the X server. Mode selection and 2D acceleration code are often executed in user mode and directly communicate with the hardware. The current architecture provides for separate 2D and 3D acceleration code, with the 2D code executed within the X server and the 3D code directly executed by the application, partially in user space and partially in the kernel. Video mode selection remains within the X server, creating an artificial dependency for 3D graphics on the correct operation of the window system. This paper lays out an alternative structure for X within the Linux environment where the responsibility for acceleration lies entirely within the existing 3D user/kernel library, the mode selection is delegated to an external library and the X server becomes a simple application layered on top of both of these. Various technical issues related to this architecture along with a discussion of input device handling will be discussed.
+
+Full text:
+PDF
+PS
+HTML
+
+Presented at the 2004 Ottawa Linux Symposium in July, 2004.
+
+Keith Packard
+Last modified: Thu Jun 10 00:47:15 PDT 2004

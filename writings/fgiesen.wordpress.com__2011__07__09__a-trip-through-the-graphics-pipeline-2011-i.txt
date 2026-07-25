@@ -1,0 +1,304 @@
+Follow:
+RSS
+Twitter
+The ryg blog
+When I grow up I'll be an inventor.
+Home
+About
+Coding
+Compression
+Computer Architecture
+Demoscene
+Graphics Pipeline
+Maths
+Multimedia
+Networking
+Papers
+Stories
+Thoughts
+Uncategorized
+A trip through the Graphics Pipeline 2011: Index
+July 9, 2011
+
+Welcome.
+
+This is the index page for a series of blog posts I’m currently writing about the D3D/OpenGL graphics pipelines as actually implemented by GPUs. A lot of this is well known among graphics programmers, and there’s tons of papers on various bits and pieces of it, but one bit I’ve been annoyed with is that while there’s both broad overviews and very detailed information on individual components, there’s not much in between, and what little there is is mostly out of date.
+
+This series is intended for graphics programmers that know a modern 3D API (at least OpenGL 2.0+ or D3D9+) well and want to know how it all looks under the hood. It’s not a description of the graphics pipeline for novices; if you haven’t used a 3D API, most if not all of this will be completely useless to you. I’m also assuming a working understanding of contemporary hardware design – you should at the very least know what registers, FIFOs, caches and pipelines are, and understand how they work. Finally, you need a working understanding of at least basic parallel programming mechanisms. A GPU is a massively parallel computer, there’s no way around it.
+
+Some readers have commented that this is a really low-level description of the graphics pipeline and GPUs; well, it all depends on where you’re standing. GPU architects would call this a high-level description of a GPU. Not quite as high-level as the multicolored flowcharts you tend to see on hardware review sites whenever a new GPU generation arrives; but, to be honest, that kind of reporting tends to have a very low information density, even when it’s done well. Ultimately, it’s not meant to explain how anything actually works – it’s just technology porn that’s trying to show off shiny new gizmos. Well, I try to be a bit more substantial here, which unfortunately means less colors and less benchmark results, but instead lots and lots of text, a few mono-colored diagrams and even some (shudder) equations. If that’s okay with you, then here’s the index:
+
+Part 1: Introduction; the Software stack.
+Part 2: GPU memory architecture and the Command Processor.
+Part 3: 3D pipeline overview, vertex processing.
+Part 4: Texture samplers.
+Part 5: Primitive Assembly, Clip/Cull, Projection, and Viewport transform.
+Part 6: (Triangle) rasterization and setup.
+Part 7: Z/Stencil processing, 3 different ways.
+Part 8: Pixel processing – “fork phase”.
+Part 9: Pixel processing – “join phase”.
+Part 10: Geometry Shaders.
+Part 11: Stream-Out.
+Part 12: Tessellation.
+Part 13: Compute Shaders.
+
+To the extent possible under law,
+
+Fabian Giesen
+has waived all copyright and related or neighboring rights to
+A trip through the Graphics Pipeline 2011.
+
+Related
+
+A trip through the Graphics Pipeline 2011, part 1
+July 1, 2011
+In "Coding"
+
+A trip through the Graphics Pipeline 2011, part 11
+August 14, 2011
+In "Coding"
+
+A trip through the Graphics Pipeline 2011, part 13
+October 9, 2011
+In "Coding"
+
+From → Coding, Graphics Pipeline
+
+38 Comments
+nordicsavage permalink
+
+Don’t forget a chapter on Multi-sampling and the difference between the various AA techniques out there.. :) Am loving this series though :)
+
+Reply
+fgiesen permalink
+
+Unlikely. I’m sticking with the basic D3D11 pipeline, and even there I’m dropping some subjects. Basic MSAA (2x, 4x, 8x) must be supported by every D3D11 device, all fancier stuff is strictly optional. And there’s even bits in core D3D11 that I’m mostly ignoring – point and line primitives (and their setup+rasterization), the finer points of cube map filtering, the various trilinear filtering “optimizations” that GPUs do (not, ahem, strictly in accordance with the spec…), and so on…
+
+All that’s there, but I have enough material to write another 7 parts already; I do plan to finish this series eventually :)
+
+Reply
+Manu permalink
+
+Good job man!
+Maybe you should write a book or something. Many people will buy it for sure.
+
+Reply
+doctor_shim permalink
+
+that would negatively impact the size of the readership, in addition to reducing exposure!
+
+Reply
+fgiesen permalink
+
+Cleaned up, expanded PDF version is in the works. You’re gonna have to print it yourself though. :)
+
+Brandon Furtwangler permalink
+
+This is a great series of articles. Thanks for making them. Can’t wait for the part(s) on compute shaders.
+
+I’d love to hear how you think the pipeline could/should evolve in the coming years.
+
+Reply
+Francis Boivin permalink
+
+Are you considering talking about constant buffers? They are an important part of d3d10+. At least, they are from an API perspective – do driver actually still care about this optimized representation of shader parameters? I’m not an OpenGL guy so I don’t know if it went with a similar API or if constants still set using glUniform[…]?
+
+Reply
+fgiesen permalink
+
+They’re an important part of the API, but on the GPU side they’re really just chunks of memory that the shader units can access.
+
+Originally, the constants used to be an actual special register file on the chip. D3D10 increased the limits too far for that to be practical: up to 16 constant buffers per stage – 15 API-accessible and one for immediate constants – with up to 4k elements of up to 16 bytes each; so up to 64k per CB and up to 1MB total, *per stage* – and you can have a lot of them active at once (worst case, five of them: VS, HS, DS, GS, PS). So now CBs are just regular buffers in GPU/host memory (like VBs, IBs or Textures) and can be accessed as such. One option is to still have some (smaller) amount of fast memory reserved for constants, and try to pack the CBs that will fit in there. But this generation of GPUs has (this is fairly new!) a regular fast cache between shader units and memory. With a cache, I’d just leave the CBs completely memory-mapped and let the cache deal with it! This can adapt to the dynamic behavior of shaders, rather than having to rely on some heuristic to pick which CBs to pack into fast memory.
+
+Reply
+ikrima permalink
+
+Dude, this is amazing. I took a sabbatical out of gfx/vfx for 4 years and been playing catch up over the last 7 months. Thanks for the awesome in-depth articles for an easy quick dive into how things have changed.
+
+Reply
+sinistraldexter permalink
+
+Reblogged this on sinistraldexter and commented:
+one of the best work w.r.t the graphics pipeline
+
+Reply
+nandu permalink
+
+Hi, intern@ Nvidia. Really helpful to get started.
+
+Reply
+Samuel Egger permalink
+
+An amazing series! Thank you. Although I am quiet curious where one learns all these things?
+
+Reply
+fgiesen permalink
+
+I was working on a GPU at the time I wrote the series.
+
+Reply
+Suso permalink
+
+I do you plan to review the new mesh and amplification shaders?
+
+Reply
+Trackbacks & Pingbacks
+Real-Time Rendering · Seven Things for July 24th, 2011
+Viaje alucinante por un pipeline grafico « martin b.r.
+A trip through the Graphics Pipeline | Light is beautiful
+A Very Good Technical Guide to the 3D Graphics Pipeline
+A trip through the Graphics Pipeline 2011, part 1 « The ryg blog
+A trip through the Graphics Pipeline 2011, part 5 « The ryg blog
+A trip through the Graphics Pipeline 2011, part 4 « The ryg blog
+A trip through the Graphics Pipeline 2011, part 6 « The ryg blog
+A trip through the Graphics Pipeline 2011, part 7 « The ryg blog
+A trip through the Graphics Pipeline 2011, part 8 « The ryg blog
+A trip through the Graphics Pipeline 2011, part 3 « The ryg blog
+A trip through the Graphics Pipeline 2011, part 2 « The ryg blog
+A trip through the Graphics Pipeline 2011, part 9 « The ryg blog
+A trip through the Graphics Pipeline 2011, part 10 « The ryg blog
+A trip through the Graphics Pipeline 2011, part 11 « The ryg blog
+A trip through the Graphics Pipeline 2011, part 13 « The ryg blog
+A trip through the Graphics Pipeline 2011, part 12 « The ryg blog
+Programming | Pearltrees
+Túra a grafikus csővezetékben | cikksorozat | szimpatikus.hu trackback proxy
+Xbox / PC, early-Z and early stencil in XNA « IceFall Games
+Order and types of depth testing « Interplay of Light
+HPG 2013 | dickyjim
+A trip through the Graphics Pipeline | The blog at the bottom of the sea
+What’s the big deal with Apples Metal API? | RenderingPipeline
+Leave a comment
+« A trip through the Graphics Pipeline 2011, part 8
+A trip through the Graphics Pipeline 2011, part 7 »
+Recent Posts
+PivCo-Huffman “merge” operations
+Simple batch decoding of unary codes
+Why does ASTC use ISE when almost nothing else does?
+Content creator
+Oodle 2.9.14 and Intel 13th/14th gen CPUs
+UNORM and SNORM to float, hardware edition
+MRSSE
+Exact UNORM8 to float
+BC7 optimal solid-color blocks
+Why those particular integer multiplies?
+Categories
+Coding
+Compression
+Computer Architecture
+Demoscene
+Graphics Pipeline
+Maths
+Multimedia
+Networking
+Papers
+Stories
+Thoughts
+Uncategorized
+Archives
+June 2026
+May 2026
+July 2025
+May 2025
+December 2024
+November 2024
+October 2024
+August 2024
+October 2023
+July 2023
+May 2023
+March 2023
+November 2022
+October 2022
+September 2022
+April 2022
+October 2021
+August 2021
+July 2021
+July 2019
+April 2019
+February 2019
+December 2018
+September 2018
+March 2018
+February 2018
+January 2018
+December 2017
+November 2017
+September 2017
+August 2017
+April 2017
+October 2016
+August 2016
+April 2016
+March 2016
+February 2016
+January 2016
+December 2015
+October 2015
+September 2015
+July 2015
+May 2015
+February 2015
+December 2014
+October 2014
+August 2014
+July 2014
+June 2014
+May 2014
+March 2014
+February 2014
+December 2013
+November 2013
+October 2013
+September 2013
+August 2013
+July 2013
+June 2013
+May 2013
+March 2013
+February 2013
+January 2013
+August 2012
+July 2012
+June 2012
+April 2012
+March 2012
+February 2012
+November 2011
+October 2011
+September 2011
+August 2011
+July 2011
+May 2011
+February 2011
+January 2011
+December 2010
+November 2010
+October 2010
+September 2010
+August 2010
+March 2010
+December 2009
+October 2009
+
+Blog at WordPress.com.
+
+Comment
+ 
+Subscribe
+
+IMAGES
+https://i0.wp.com/i.creativecommons.org/p/zero/1.0/88x31.png
+https://2.gravatar.com/avatar/e43c44ba322d933eaef784a3492e58db1d2beea8dab43d54f408f668db4d2278?s=40&d=identicon&r=G
+https://0.gravatar.com/avatar/3a11c80a7c89978510bb564da0e45aefef0d1fe0c124552592cd66bd500891ae?s=40&d=identicon&r=G
+https://i0.wp.com/a0.twimg.com/profile_images/1302987706/202913_566644705_6492117_n_normal.jpg?resize=40%2C40&ssl=1
+https://2.gravatar.com/avatar/892bfda495ca7a81daa90a30ce4338eee98bd353f02f999c72ca803cf9235ee4?s=40&d=identicon&r=G
+https://0.gravatar.com/avatar/651d1980ca594c5340b7d4deebe801695978618d0edb70718bdda048715b6ff0?s=40&d=identicon&r=G
+https://i0.wp.com/a2.twimg.com/profile_images/393621625/julien_normal.jpg?resize=40%2C40&ssl=1
+https://0.gravatar.com/avatar/099d93865e46461e3fdeefc50b4b5cf190c41d4036381e8dd69269dcad7d3ac7?s=40&d=identicon&r=G
+https://2.gravatar.com/avatar/2f305b8333537ecd677bb9979df4ef78e8dff6eb400f3ff1675bd9599aa111d9?s=40&d=identicon&r=G
+https://0.gravatar.com/avatar/ffb72284158165b05ceb917ddaf67b7352a69ee6f7d748707389d5e3497ff818?s=40&d=identicon&r=G
+https://2.gravatar.com/avatar/ef91d9e6a5f3f29fca0cc08213a3fc58bb653ad2c2f7bdfeb0f5cbc07e8109d5?s=40&d=identicon&r=G
+https://2.gravatar.com/avatar/e3cfb4e273705dde688542db89fcaf0343cf8310f7b1673ec58d3320e111ce0b?s=40&d=identicon&r=G
+https://s0.wp.com/i/logo/wpcom-gray-white.png?m=1479929237i
+https://pixel.wp.com/g.gif?blog=9777542&v=wpcom&tz=-7&user_id=0&post=345&subd=fgiesen&host=fgiesen.wordpress.com&ref=&rand=0.784841780821909

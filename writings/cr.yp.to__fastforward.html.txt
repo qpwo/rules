@@ -1,0 +1,20 @@
+D. J. Bernstein
+Internet mail
+fastforward
+fastforward is discussed on the qmail mailing list. New versions are announced on the qmailannounce mailing list.
+
+The latest published fastforward package is fastforward-0.51.tar.gz.
+
+What is it?
+fastforward handles qmail forwarding according to a cdb database. It can create forwarding databases from a sendmail-style /etc/aliases or from user-oriented virtual-domain tables.
+
+fastforward supports external mailing lists, stored in a binary format for fast access. It has a tool to convert sendmail-style include files into binary lists.
+
+fastforward is more reliable than sendmail. sendmail can't deal with long aliases, or deeply nested aliases, or deeply nested include files; fastforward has no limits other than memory. sendmail can produce corrupted alias files if the system crashes; fastforward is crashproof.
+
+fastforward's database-building tools are much faster than sendmail's newaliases. Even better, fastforward deliveries don't pause while the database is being rebuilt.
+
+fastforward does not support insecure sendmail-style program deliveries from include files; you can use qmail's secure built-in mechanisms instead. fastforward does support program deliveries from /etc/aliases.
+
+Speed tests
+I put together an /etc/aliases file with 50000 aliases of the form 31415:y@z.d. sendmail's newaliases took 356 seconds of CPU time (spread over more than ten minutes of real time) to create /etc/aliases.db. fastforward's newaliases created /etc/aliases.cdb in under 6 seconds.
