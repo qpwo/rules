@@ -1,4 +1,4 @@
-//bin/sh -c 'o=${0%.c}; [ "$o" -nt "$0" ] || { ${CC:-cc} -O3 -march=native -ffast-math -fopenmp -Wall -Wextra -Werror -o "$o" "$0" -lm || exit; }; exec "$o" "$@"' "$0" "$@"; exit
+//bin/sh -c 'o=${0%.c}; [ "$o" -nt "$0" ] || { if [ "$(uname -s)" = Darwin ]; then p="$(brew --prefix libomp)"; ${CC:-clang} -O3 -march=native -DNDEBUG -Xpreprocessor -fopenmp -I"$p/include" -L"$p/lib" -Wl,-rpath,"$p/lib" "$0" -lomp -o "$o"; else ${CC:-gcc} -O3 -march=native -DNDEBUG -fopenmp "$0" -o "$o" -lm; fi; } || exit; exec "$o" "$@"' "$0" "$@"; exit
 /** lastdb: one-file durable append-only tenant key/value store, no sqlite, no deps. */
 #define _GNU_SOURCE
 #include <errno.h>
@@ -13,10 +13,14 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#ifdef __linux__
 #include <sys/sysinfo.h>
+#endif
 #include <sys/uio.h>
 #include <unistd.h>
+#ifdef __x86_64__
 #include <immintrin.h>
+#endif
 #include <omp.h>
 
 #ifndef O_CLOEXEC
@@ -200,6 +204,7 @@ static int key_eq(uint64_t off, const char *t, uint16_t tl, const char *k, uint1
 
 static void reserve_ram(size_t bytes)
 {
+#ifdef __linux__
     struct sysinfo si;
     if (sysinfo(&si)) {
         die("sysinfo");
@@ -210,6 +215,9 @@ static void reserve_ram(size_t bytes)
     if (freeish < total / 10 + bytes) {
         diex("ram reserve below 10 percent");
     }
+#else
+    (void)bytes;
+#endif
 }
 
 static int worker_threads(void)
@@ -221,89 +229,88 @@ static int worker_threads(void)
 
 static void ht_put(uint64_t hash, uint64_t off)
 {
-    if (ht_len * 2 >= ht_cap) {
+    if (ht_len >= ht_cap) {
         uint64_t ncap = ht_cap ? ht_cap * 2 : 4096;
-        size_t bytes = (ncap + 256) * sizeof(*ht);
+        size_t bytes = ncap * sizeof(*ht);
         reserve_ram(bytes);
+#ifndef MAP_POPULATE
+#define MAP_POPULATE 0
+#endif
         Node *nht = mmap(NULL, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
         if (nht == MAP_FAILED) die("mmap nht");
-        madvise(nht, (ncap + 256) * sizeof(*nht), MADV_HUGEPAGE);
+        madvise(nht, bytes, MADV_HUGEPAGE);
         if (ht) {
-            for (uint64_t i = 0; i < ht_cap + 256; i++) {
-                if (ht[i].off1) {
-                    uint64_t mask = ncap - 1;
-                    uint64_t pos = ht[i].hash & mask;
-                    Node curr = ht[i];
-                    uint64_t d = 0;
-                    while (nht[pos].off1) {
-                        uint64_t existing_d = pos - (nht[pos].hash & mask);
-                        if (existing_d < d) {
-                            Node tmp = nht[pos];
-                            nht[pos] = curr;
-                            curr = tmp;
-                            d = existing_d;
-                        }
-                        pos++;
-                        d++;
-                    }
-                    nht[pos] = curr;
-                }
-            }
-            munmap(ht, (ht_cap + 256) * sizeof(*nht));
+            memcpy(nht, ht, ht_len * sizeof(*ht));
+            munmap(ht, ht_cap * sizeof(*ht));
         }
         ht = nht;
         ht_cap = ncap;
     }
+    ht[ht_len++] = (Node){hash, off + 1};
+}
 
-    uint64_t mask = ht_cap - 1;
-    uint64_t pos = hash & mask;
-    Node curr = {hash, off + 1};
-    uint64_t d = 0;
-    Record *new_r = rec_at(off);
+static int cmp_node(const void *a, const void *b) {
+    const Node *x = a, *y = b;
+    if (x->hash != y->hash) return x->hash < y->hash ? -1 : 1;
+    return x->off1 < y->off1 ? -1 : 1;
+}
 
-    int check_dup = 1;
-    while (ht[pos].off1) {
-        if (d > 250) die("probe too long");
-        uint64_t existing_d = pos - (ht[pos].hash & mask);
-        if (existing_d < d) {
-            check_dup = 0;
-            Node tmp = ht[pos];
-            ht[pos] = curr;
-            curr = tmp;
-            d = existing_d;
-            new_r = rec_at(curr.off1 - 1);
-        }
-        if (check_dup && ht[pos].hash == curr.hash) {
-            Record *old_r = rec_at(ht[pos].off1 - 1);
-            if (old_r->t_len == new_r->t_len && old_r->k_len == new_r->k_len &&
-                !memcmp(rec_t(old_r), rec_t(new_r), old_r->t_len) &&
-                !memcmp(rec_k(old_r), rec_k(new_r), old_r->k_len)) {
-                ht[pos].off1 = curr.off1;
-                return;
+static void deduplicate_ht(void) {
+    if (!ht_len) return;
+    qsort(ht, ht_len, sizeof(*ht), cmp_node);
+    uint64_t out = 0;
+    for (uint64_t i = 0; i < ht_len; ) {
+        uint64_t j = i + 1;
+        while (j < ht_len && ht[j].hash == ht[i].hash) j++;
+        for (uint64_t k = j; k-- > i; ) {
+            Record *rk = rec_at(ht[k].off1 - 1);
+            int dup = 0;
+            for (uint64_t prev = out; prev > 0 && ht[prev-1].hash == ht[i].hash; prev--) {
+                Record *rp = rec_at(ht[prev-1].off1 - 1);
+                if (rk->t_len == rp->t_len && rk->k_len == rp->k_len &&
+                    !memcmp(rec_t(rk), rec_t(rp), rk->t_len) &&
+                    !memcmp(rec_k(rk), rec_k(rp), rk->k_len)) {
+                    dup = 1; break;
+                }
             }
+            if (!dup) ht[out++] = ht[k];
         }
-        pos++;
-        d++;
+        i = j;
     }
-    ht[pos] = curr;
-    ht_len++;
+    ht_len = out;
+}
+
+static uint64_t bit_floor(uint64_t x) {
+    if (x == 0) return 0;
+    return 1ULL << (63 - __builtin_clzll(x));
+}
+
+static uint64_t bit_ceil(uint64_t x) {
+    if (x <= 1) return 1;
+    return 1ULL << (64 - __builtin_clzll(x - 1));
 }
 
 static Node *ht_get(const char *t, uint16_t tl, const char *k, uint16_t kl)
 {
-    if (!ht_cap) return NULL;
+    if (!ht_len) return NULL;
     uint64_t hash = key_hash(t, tl, k, kl);
-    uint64_t mask = ht_cap - 1;
-    uint64_t pos = hash & mask;
-    uint64_t d = 0;
-    while (ht[pos].off1) {
-        uint64_t existing_d = pos - (ht[pos].hash & mask);
-        if (existing_d < d) return NULL;
-        if (ht[pos].hash == hash) {
-            if (key_eq(ht[pos].off1 - 1, t, tl, k, kl)) return &ht[pos];
-        }
-        pos++;
-        d++;
+    uint64_t length = ht_len;
+    Node *begin = ht;
+    uint64_t step = bit_floor(length);
+    if (step != length && begin[step].hash < hash) {
+        length -= step + 1;
+        if (length == 0) return NULL;
+        step = bit_ceil(length);
+        begin = ht + ht_len - step;
+    }
+    for (step /= 2; step != 0; step /= 2) {
+        if (begin[step].hash < hash)
+            begin += step;
+    }
+    begin += (begin[0].hash < hash);
+    while (begin < ht + ht_len && begin->hash == hash) {
+        if (key_eq(begin->off1 - 1, t, tl, k, kl)) return begin;
+        begin++;
     }
     return NULL;
 }
@@ -340,7 +347,9 @@ static void load_db(const char *path)
         die("mmap");
     }
     (void)posix_madvise(map_base, map_size, POSIX_MADV_SEQUENTIAL);
+#ifdef POSIX_MADV_NOREUSE
     (void)posix_madvise(map_base, map_size, POSIX_MADV_NOREUSE);
+#endif
 
     uint64_t off = 0;
     while (off < map_size) {
@@ -352,6 +361,7 @@ static void load_db(const char *path)
         off += r->len;
     }
     valid_size = (size_t)off;
+    deduplicate_ht();
 }
 
 static void lock_ex(int fd)
@@ -785,9 +795,7 @@ static int do_verify(const char *path)
         off += r->len;
     }
 
-    uint64_t iter_cap = ht_cap ? ht_cap + 256 : 0;
-    for (uint64_t i = 0; i < iter_cap; i++) {
-        if (!ht[i].off1) continue;
+    for (uint64_t i = 0; i < ht_len; i++) {
         Record *r = rec_at(ht[i].off1 - 1);
         if (r->op == OP_DEL) {
             continue;
@@ -867,8 +875,7 @@ static int do_search(const char *t, int argc, char **argv)
     if (tl > UINT16_MAX || !ht_cap) return 0;
 
     #pragma omp parallel for schedule(dynamic, 1024) num_threads(worker_threads())
-    for (uint64_t i = 0; i < ht_cap + 256; i++) {
-            if (!ht[i].off1) continue;
+    for (uint64_t i = 0; i < ht_len; i++) {
             Record *r = rec_at(ht[i].off1 - 1);
             if (r->op == OP_DEL || r->t_len != tl) continue;
             if (memcmp(rec_t(r), t, tl) != 0) continue;
@@ -891,7 +898,6 @@ static int do_search(const char *t, int argc, char **argv)
                 }
             }
         }
-    }
     return 0;
 }
 
@@ -907,8 +913,7 @@ static int do_scan(const char *t, const char *prefix)
         return 0;
     }
 
-    for (uint64_t i = 0; i < ht_cap + 256; i++) {
-        if (!ht[i].off1) continue;
+    for (uint64_t i = 0; i < ht_len; i++) {
         Record *r = rec_at(ht[i].off1 - 1);
         if (r->op == OP_DEL || r->t_len != tl) {
             continue;
@@ -1014,6 +1019,7 @@ static int do_compact(const char *path)
 typedef float unaligned_f32 __attribute__((aligned(1)));
 typedef _Float16 unaligned_f16 __attribute__((aligned(1)));
 
+#ifdef __x86_64__
 __attribute__((target("avx512f,avx512vl")))
 static float vec_dot_f32(const void *a, const void *b, size_t bytes) {
     size_t n = bytes / 4;
@@ -1041,6 +1047,7 @@ static float vec_dot_f16(const void *a, const void *b, size_t bytes) {
     }
     return (float)_mm512_reduce_add_ph(s);
 }
+#endif
 
 static float vec_dot_i8(const void *a, const void *b, size_t bytes) {
     int32_t sum = 0;
@@ -1059,10 +1066,15 @@ static int do_closest(const char *path, const char *type, const char *t, const c
     if (r->op == OP_DEL || !r->v_len) return 1;
 
     float (*dot_fn)(const void *, const void *, size_t) = NULL;
+#ifdef __x86_64__
     if (!strcmp(type, "f32") && r->v_len % 4 == 0) dot_fn = vec_dot_f32;
     else if (!strcmp(type, "f16") && r->v_len % 2 == 0) dot_fn = vec_dot_f16;
     else if (!strcmp(type, "i8")) dot_fn = vec_dot_i8;
     else diex("invalid type or length");
+#else
+    if (!strcmp(type, "i8")) dot_fn = vec_dot_i8;
+    else diex("invalid type or length");
+#endif
 
     float best_score = -1e30f;
     const char *best_k = NULL;
@@ -1075,8 +1087,7 @@ static int do_closest(const char *path, const char *type, const char *t, const c
         uint16_t local_k_len = 0;
 
         #pragma omp for schedule(dynamic, 1024)
-        for (uint64_t i = 0; i < ht_cap + 256; i++) {
-            if (!ht[i].off1) continue;
+        for (uint64_t i = 0; i < ht_len; i++) {
             Record *c = rec_at(ht[i].off1 - 1);
             if (c->op == OP_DEL || c->t_len != r->t_len || c->v_len != r->v_len) continue;
             if (ht[i].off1 == n->off1) continue; // skip self
@@ -1187,18 +1198,26 @@ int main(int argc, char **argv)
             if (!stat(db, &st) && st.st_size > (off_t)map_size) {
                 int fd = open(db, O_RDONLY | O_CLOEXEC);
                 if (fd >= 0) {
+#ifdef __linux__
                     void *nm = mremap(map_base, map_size, st.st_size, MREMAP_MAYMOVE);
+#else
+                    munmap(map_base, map_size);
+                    void *nm = mmap(NULL, st.st_size, PROT_READ, MAP_SHARED, fd, 0);
+#endif
                     if (nm != MAP_FAILED) {
                         map_base = nm;
                         map_size = st.st_size;
                         uint64_t off = valid_size;
+                        uint64_t added = 0;
                         while (off < map_size) {
                             if (!rec_valid(off)) break;
                             Record *r = rec_at(off);
                             ht_put(r->key_hash, off);
                             off += r->len;
+                            added = 1;
                         }
                         valid_size = off;
+                        if (added) deduplicate_ht();
                     }
                     close(fd);
                 }
@@ -1213,9 +1232,7 @@ int main(int argc, char **argv)
                 uint64_t c = 0;
                 size_t tl = strlen(args[1]);
                 size_t pl = n == 3 ? strlen(args[2]) : 0;
-                uint64_t iter_cap = ht_cap ? ht_cap + 256 : 0;
-                for (uint64_t i = 0; i < iter_cap; i++) {
-                    if (!ht[i].off1) continue;
+                for (uint64_t i = 0; i < ht_len; i++) {
                     Record *r = rec_at(ht[i].off1 - 1);
                     if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
                     if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
