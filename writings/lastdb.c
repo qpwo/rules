@@ -2574,7 +2574,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 else if (shed) send_response(fd, cipherkey, 3, "shed", 4);
                                 else send_response(fd, cipherkey, 2, err_msg, strlen(err_msg));
                             } else if (op == 17) {
-                                if (!(perms & 6)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
+                                if ((perms & 5) != 5) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
                                 int wrote = 0;
                                 char *ret_k = NULL;
                                 uint16_t ret_kl = 0;
