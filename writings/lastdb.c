@@ -2495,7 +2495,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         }
                                     }
                                 }
-{ double _sn = (double)time(NULL); if (eval_now < 1 || eval_now > _sn) eval_now = _sn; }
+{ double _sn = (double)time(NULL); if (eval_now < 1e9 || eval_now > _sn + 86400) eval_now = _sn; }
 double max_w = threshold > 1.0 ? threshold : 13.0;
 
                                 double count_est = 0; uint64_t raw_count = 0; double sum = 0; double raw_sum = 0; int max_wl = 0; int has_decay = 0;
@@ -2595,7 +2595,7 @@ if (match) {
                                 } else {
                                     char val[128]; int vl_out = 0;
 if (max_wl < 0) max_wl = 0;
-                                if (max_wl > 0 && raw_count > 0 && raw_count < (1ULL << max_wl)) { int cap = 64 - __builtin_clzll(raw_count) - 1; double adj = (double)(1ULL << cap) / (double)(1ULL << max_wl); count_est *= adj; sum *= adj; max_wl = cap; }
+                                if (max_wl > 0 && raw_count > 0 && raw_count < (1ULL << max_wl)) { max_wl = 64 - __builtin_clzll(raw_count) - 1; }
                                 if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu\t%d", count_est, (unsigned long long)raw_count, max_wl);
                                 else vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%llu\t%d", sum, raw_sum, (unsigned long long)raw_count, max_wl);
                                     send_response(fd, cipherkey, 0, val, vl_out);
