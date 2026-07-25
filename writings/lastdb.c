@@ -249,28 +249,49 @@ static int worker_threads(void)
 
 static void deduplicate_ht(void);
 
+static void ht_reserve(uint64_t need)
+{
+    if (need <= ht_cap) {
+        return;
+    }
+
+    uint64_t ncap = ht_cap ? ht_cap : 4096;
+    while (ncap < need) {
+        if (ncap > UINT64_MAX / 2) {
+            diex("ht too large");
+        }
+        ncap *= 2;
+    }
+
+    size_t old_bytes = ht_cap * sizeof(*ht);
+    size_t bytes = ncap * sizeof(*ht);
+    if (bytes / sizeof(*ht) != ncap) {
+        diex("ht too large");
+    }
+
+    reserve_ram(bytes - old_bytes);
+    if (ht) {
+        Node *nht = mremap(ht, old_bytes, bytes, MREMAP_MAYMOVE);
+        if (nht == MAP_FAILED) {
+            die("mremap ht");
+        }
+        ht = nht;
+    } else {
+        ht = mmap(NULL, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (ht == MAP_FAILED) {
+            die("mmap ht");
+        }
+    }
+    madvise(ht, bytes, MADV_HUGEPAGE);
+    ht_cap = ncap;
+}
+
 static void ht_put(uint64_t hash, uint64_t off)
 {
     if (ht_len >= ht_cap && ht_len >= 1048576) {
         deduplicate_ht();
     }
-    if (ht_len >= ht_cap) {
-        uint64_t ncap = ht_cap ? ht_cap * 2 : 4096;
-        size_t old_bytes = ht_cap * sizeof(*ht);
-        size_t bytes = ncap * sizeof(*ht);
-        if (ncap < ht_cap || bytes / sizeof(*ht) != ncap) diex("ht too large");
-        reserve_ram(bytes - old_bytes);
-        if (ht) {
-            Node *nht = mremap(ht, old_bytes, bytes, MREMAP_MAYMOVE);
-            if (nht == MAP_FAILED) die("mremap ht");
-            ht = nht;
-        } else {
-            ht = mmap(NULL, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-            if (ht == MAP_FAILED) die("mmap ht");
-        }
-        madvise(ht, bytes, MADV_HUGEPAGE);
-        ht_cap = ncap;
-    }
+    ht_reserve(ht_len + 1);
     ht[ht_len++] = (Node){hash, off + 1};
 }
 
@@ -303,6 +324,25 @@ static void deduplicate_ht(void) {
         i = j;
     }
     ht_len = out;
+}
+
+static void ht_insert_latest(uint64_t hash, uint64_t off)
+{
+    Record *r = rec_at(off);
+    uint64_t idx = ht_lower_bound(hash);
+    uint64_t end = idx;
+    while (end < ht_len && ht[end].hash == hash) {
+        if (key_eq(ht[end].off1 - 1, rec_t(r), r->t_len, rec_k(r), r->k_len)) {
+            ht[end].off1 = off + 1;
+            return;
+        }
+        end++;
+    }
+
+    ht_reserve(ht_len + 1);
+    memmove(ht + idx + 1, ht + idx, (ht_len - idx) * sizeof(*ht));
+    ht[idx] = (Node){hash, off + 1};
+    ht_len++;
 }
 
 static Node *ht_get(const char *t, uint16_t tl, const char *k, uint16_t kl)
@@ -341,18 +381,23 @@ static void load_db(const char *path)
     (void)posix_madvise(map_base, map_size, POSIX_MADV_SEQUENTIAL);
     (void)posix_madvise(map_base, map_size, POSIX_MADV_NOREUSE);
     uint64_t off = valid_size;
-    int added = 0;
+    uint64_t start_len = ht_len;
+    uint64_t added = 0;
     while (off < map_size) {
         if (!rec_valid(off)) {
             break;
         }
         Record *r = rec_at(off);
-        ht_put(r->key_hash, off);
+        if (start_len && added < 1024) {
+            ht_insert_latest(r->key_hash, off);
+        } else {
+            ht_put(r->key_hash, off);
+        }
         off += r->len;
-        added = 1;
+        added++;
     }
     valid_size = off;
-    if (added) {
+    if (added && (!start_len || added >= 1024)) {
         deduplicate_ht();
     }
 }
