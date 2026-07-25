@@ -1748,7 +1748,7 @@ struct rseq {
 extern __thread struct rseq __rseq_abi __attribute__((weak));
 
 static inline int fast_getcpu(void) {
-    if (&__rseq_abi && __rseq_abi.cpu_id_start < 1000000) return __rseq_abi.cpu_id_start;
+    if (&__rseq_abi && __rseq_abi.cpu_id < 1000000) return __rseq_abi.cpu_id_start;
     return sched_getcpu();
 }
 
@@ -1976,7 +1976,7 @@ typedef struct {
 static CacheLine cpu_chunks[1024];
 
 static inline Chunk *chunk_swap(Chunk *in) {
-    if (&__rseq_abi && __rseq_abi.cpu_id_start < 1000000) {
+    if (&__rseq_abi && __rseq_abi.cpu_id < 1000000) {
         uint64_t cs[4] __attribute__((aligned(32))) = {0};
         int ok = 1;
         Chunk *scratch;
