@@ -178,106 +178,87 @@ static int key_eq(uint64_t off, const char *t, uint16_t tl, const char *k, uint1
 #define MADV_HUGEPAGE 14
 #endif
 
-static void ht_grow(void)
+static int cmp_node(const void *a, const void *b)
 {
-    uint64_t ncap = ht_cap ? ht_cap * 2 : 4096;
-    Node *nht = mmap(NULL, ncap * sizeof(*nht), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
-    if (nht == MAP_FAILED) {
-        die("mmap nht");
-    }
-    madvise(nht, ncap * sizeof(*nht), MADV_HUGEPAGE);
+    const Node *x = a, *y = b;
+    if (x->hash != y->hash) return x->hash < y->hash ? -1 : 1;
+    return x->off1 > y->off1 ? -1 : (x->off1 < y->off1 ? 1 : 0);
+}
 
-    for (uint64_t i = 0; i < ht_cap; i++) {
-        if (!ht[i].off1) {
-            continue;
-        }
+static uint64_t bit_floor(uint64_t x)
+{
+    return x ? 1ULL << (63 - __builtin_clzll(x)) : 0;
+}
 
-        uint64_t j = ht[i].hash & (ncap - 1);
-        uint64_t dist = 0;
-        uint64_t hash = ht[i].hash;
-        uint64_t off1 = ht[i].off1;
-        while (nht[j].off1) {
-            uint64_t existing_dist = (j - nht[j].hash) & (ncap - 1);
-            if (existing_dist < dist) {
-                uint64_t tmp_hash = nht[j].hash;
-                uint64_t tmp_off1 = nht[j].off1;
-                nht[j].hash = hash;
-                nht[j].off1 = off1;
-                hash = tmp_hash;
-                off1 = tmp_off1;
-                dist = existing_dist;
-            }
-            j = (j + 1) & (ncap - 1);
-            dist++;
-        }
-        nht[j].hash = hash;
-        nht[j].off1 = off1;
-    }
-
-    /* To avoid TLB shootdowns and jitter, we deliberately do not munmap the old ht. */
-    ht = nht;
-    ht_cap = ncap;
+static uint64_t bit_ceil(uint64_t x)
+{
+    return x <= 1 ? 1 : 1ULL << (64 - __builtin_clzll(x - 1));
 }
 
 static void ht_put(uint64_t hash, uint64_t off)
 {
-    if (ht_len * 2 >= ht_cap) {
-        ht_grow();
+    if (ht_len >= ht_cap) {
+        uint64_t ncap = ht_cap ? ht_cap * 2 : 4096;
+        Node *nht = mmap(NULL, ncap * sizeof(*nht), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
+        if (nht == MAP_FAILED) die("mmap nht");
+        madvise(nht, ncap * sizeof(*nht), MADV_HUGEPAGE);
+        if (ht) memcpy(nht, ht, ht_len * sizeof(*nht));
+        ht = nht;
+        ht_cap = ncap;
     }
+    ht[ht_len++] = (Node){hash, off + 1};
+}
 
-    Record *r = rec_at(off);
-    uint64_t i = hash & (ht_cap - 1);
-    uint64_t dist = 0;
-    while (ht[i].off1) {
-        if (ht[i].hash == hash && key_eq(ht[i].off1 - 1, rec_t(r), r->t_len, rec_k(r), r->k_len)) {
-            ht[i].off1 = off + 1;
-            return;
+static void build_index(void)
+{
+    if (!ht_len) return;
+    qsort(ht, ht_len, sizeof(Node), cmp_node);
+    uint64_t m = 0;
+    for (uint64_t i = 0; i < ht_len; i++) {
+        int dup = 0;
+        Record *ri = rec_at(ht[i].off1 - 1);
+        for (uint64_t j = m; j > 0 && ht[j-1].hash == ht[i].hash; j--) {
+            Record *rj = rec_at(ht[j-1].off1 - 1);
+            if (ri->t_len == rj->t_len && ri->k_len == rj->k_len &&
+                !memcmp(rec_t(ri), rec_t(rj), ri->t_len) &&
+                !memcmp(rec_k(ri), rec_k(rj), ri->k_len)) {
+                dup = 1;
+                break;
+            }
         }
-        if (((i - ht[i].hash) & (ht_cap - 1)) < dist) {
-            break;
-        }
-        i = (i + 1) & (ht_cap - 1);
-        dist++;
+        if (!dup) ht[m++] = ht[i];
     }
+    ht_len = m;
+}
 
-    while (ht[i].off1) {
-        uint64_t existing_dist = (i - ht[i].hash) & (ht_cap - 1);
-        if (existing_dist < dist) {
-            uint64_t tmp_hash = ht[i].hash;
-            uint64_t tmp_off1 = ht[i].off1;
-            ht[i].hash = hash;
-            ht[i].off1 = off + 1;
-            hash = tmp_hash;
-            off = tmp_off1 - 1;
-            dist = existing_dist;
-        }
-        i = (i + 1) & (ht_cap - 1);
-        dist++;
+static Node *ht_lower_bound(uint64_t hash)
+{
+    uint64_t len = ht_len;
+    if (len == 0) return ht + ht_len;
+    uint64_t step = bit_floor(len);
+    Node *base = ht;
+    if (step != len && base[step].hash < hash) {
+        len -= step + 1;
+        if (len == 0) return ht + ht_len;
+        step = bit_ceil(len);
+        base = ht + ht_len - step;
     }
-
-    ht[i].hash = hash;
-    ht[i].off1 = off + 1;
-    ht_len++;
+    for (step /= 2; step != 0; step /= 2) {
+        if (base[step].hash < hash) {
+            base += step;
+        }
+    }
+    return base + (base->hash < hash);
 }
 
 static Node *ht_get(const char *t, uint16_t tl, const char *k, uint16_t kl)
 {
-    if (!ht_cap) {
-        return NULL;
-    }
-
     uint64_t hash = key_hash(t, tl, k, kl);
-    uint64_t i = hash & (ht_cap - 1);
-    uint64_t dist = 0;
-    while (ht[i].off1) {
-        if (ht[i].hash == hash && key_eq(ht[i].off1 - 1, t, tl, k, kl)) {
-            return ht + i;
+    Node *it = ht_lower_bound(hash);
+    for (; it < ht + ht_len && it->hash == hash; it++) {
+        if (key_eq(it->off1 - 1, t, tl, k, kl)) {
+            return it;
         }
-        if (((i - ht[i].hash) & (ht_cap - 1)) < dist) {
-            break;
-        }
-        i = (i + 1) & (ht_cap - 1);
-        dist++;
     }
     return NULL;
 }
@@ -326,6 +307,7 @@ static void load_db(const char *path)
         off += r->len;
     }
     valid_size = (size_t)off;
+    build_index();
 }
 
 static void lock_ex(int fd)
@@ -684,10 +666,7 @@ static int do_verify(const char *path)
         off += r->len;
     }
 
-    for (uint64_t i = 0; i < ht_cap; i++) {
-        if (!ht[i].off1) {
-            continue;
-        }
+    for (uint64_t i = 0; i < ht_len; i++) {
 
         Record *r = rec_at(ht[i].off1 - 1);
         if (r->op == OP_DEL) {
@@ -761,10 +740,7 @@ static int do_scan(const char *t, const char *prefix)
         return 0;
     }
 
-    for (uint64_t i = 0; i < ht_cap; i++) {
-        if (!ht[i].off1) {
-            continue;
-        }
+    for (uint64_t i = 0; i < ht_len; i++) {
 
         Record *r = rec_at(ht[i].off1 - 1);
         if (r->op == OP_DEL || r->t_len != tl) {
@@ -931,8 +907,8 @@ static int do_closest(const char *path, const char *type, const char *t, const c
         uint16_t local_k_len = 0;
 
         #pragma omp for schedule(static) nowait
-        for (uint64_t i = 0; i < ht_cap; i++) {
-            if (!ht[i].off1 || ht[i].off1 - 1 == (uint64_t)(n->off1 - 1)) continue;
+        for (uint64_t i = 0; i < ht_len; i++) {
+            if (ht[i].off1 - 1 == (uint64_t)(n->off1 - 1)) continue;
             Record *c = rec_at(ht[i].off1 - 1);
             if (c->op == OP_DEL || c->t_len != r->t_len || c->v_len != r->v_len) continue;
             if (memcmp(rec_t(c), t, r->t_len) != 0) continue;
