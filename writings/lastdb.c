@@ -464,13 +464,19 @@ static int append_raw(int fd, const char *t, size_t tl, const char *k, size_t kl
         if (free_bytes < reserve_bytes + r.len) {
             return 0;
         }
-        if (wl > 0 && tl > 0 && t[0] != '0') {
-            int exists = (op == OP_DEL);
-            if (!exists && ht_cap) {
+        if (tl > 0 && t[0] != '0') {
+            int exists = 0;
+            uint8_t old_wl = 0;
+            if (ht_cap) {
                 Node *n = ht_get(t, (uint16_t)tl, k, (uint16_t)kl);
-                if (n && rec_at(n->off1 - 1)->op != OP_DEL) exists = 1;
+                if (n && rec_at(n->off1 - 1)->op != OP_DEL) {
+                    exists = 1;
+                    old_wl = rec_at(n->off1 - 1)->weight_log;
+                }
             }
-            if (!exists) {
+            if (exists) {
+                r.weight_log = old_wl;
+            } else if (wl > 0 && op != OP_DEL) {
                 if (gate > keep) return 0;
                 r.weight_log = wl;
             }
@@ -1641,13 +1647,19 @@ static int batch_put(int fd, char *buf, size_t *used, const char *t, const char 
     if (!*used && !batch_pressure(fd, r.len, &keep, &weight_log)) {
         return 0;
     }
-    if (keep < 1.0 && tl > 0 && t[0] != '0') {
+    if (tl > 0 && t[0] != '0') {
         int exists = 0;
+        uint8_t old_wl = 0;
         if (ht_cap) {
             Node *n = ht_get(t, r.t_len, k, r.k_len);
-            if (n && rec_at(n->off1 - 1)->op != OP_DEL) exists = 1;
+            if (n && rec_at(n->off1 - 1)->op != OP_DEL) {
+                exists = 1;
+                old_wl = rec_at(n->off1 - 1)->weight_log;
+            }
         }
-        if (!exists) {
+        if (exists) {
+            r.weight_log = old_wl;
+        } else if (keep < 1.0) {
             uint64_t gh = key_hash(t, r.t_len, k, r.k_len);
             const char *sep = memchr(k, '/', r.k_len);
             if (sep) gh = key_hash(t, r.t_len, k, sep - k);
@@ -2013,7 +2025,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 while (w < end && num_words < 64) {
                                     char *tab = memchr(w, '\t', end - w);
                                     size_t wl = tab ? tab - w : end - w;
-                                    if (wl > 0) query_bfs[num_words++] = compute_bf(w, wl);
+                                    if (wl > 0 && w[0] != '-') query_bfs[num_words++] = compute_bf(w, wl);
                                     w += wl + 1;
                                 }
                             }
@@ -2057,9 +2069,16 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                             char *tab = memchr(w, '\t', end - w);
                                             size_t wl = tab ? tab - w : end - w;
                                             if (wl > 0) {
-                                                if (word_idx < 64 && (r->bf & query_bfs[word_idx]) != query_bfs[word_idx]) { match = 0; break; }
-                                                if (!memmem_pivot(rec_v(r), r->v_len, w, wl) && !memmem_pivot(rec_k(r), r->k_len, w, wl)) { match = 0; break; }
-                                                word_idx++;
+                                                int exclude = (w[0] == '-');
+                                                const char *term = exclude ? w + 1 : w;
+                                                size_t term_len = exclude ? wl - 1 : wl;
+                                                if (term_len > 0) {
+                                                    int found = 1;
+                                                    if (!exclude && word_idx < 64 && (r->bf & query_bfs[word_idx]) != query_bfs[word_idx]) found = 0;
+                                                    if (found && !memmem_pivot(rec_v(r), r->v_len, term, term_len) && !memmem_pivot(rec_k(r), r->k_len, term, term_len)) found = 0;
+                                                    if (exclude ? found : !found) { match = 0; break; }
+                                                    if (!exclude) word_idx++;
+                                                }
                                             }
                                             w += wl + 1;
                                         }
