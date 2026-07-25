@@ -49,8 +49,8 @@ export async function close(client) {
     await once(client.socket, 'close');
 }
 
-export async function pop(client, color, tenant, prefix = '') {
-    var res = await request(client, 'pop', color, tenant, prefix, '');
+export async function pop(client, color, tenant, prefix = '', new_value = '') {
+    var res = await request(client, 'pop', color, tenant, prefix, new_value);
     var str = res.toString();
     var tab = str.indexOf('\t');
     if (tab < 0) return { key: '', value: str };
@@ -362,8 +362,8 @@ async function cli(client, a) {
         for (var i = 3; i < a.length; i += 2) pairs.push([a[i], a[i+1]]);
         return batch(client, parseI32(a[1]), a[2], pairs);
     }
-    if (a[0] === 'pop' && (a.length === 3 || a.length === 4)) {
-        return pop(client, parseI32(a[1]), a[2], a[3] ?? '');
+    if (a[0] === 'pop' && (a.length >= 3 && a.length <= 5)) {
+        return pop(client, parseI32(a[1]), a[2], a[3] ?? '', a[4] ?? '');
     }
     usage();
 }

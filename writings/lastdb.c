@@ -2198,6 +2198,16 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
     {
         #pragma omp single
         {
+            #pragma omp task
+            {
+                while (1) {
+                    usleep(1000000);
+                    {
+                        SRV_READ_LOCK(db_path);
+                        if (srv_db_fd >= 0) fdatasync(srv_db_fd);
+                    }
+                }
+            }
             while (1) {
                 int fd = accept(srv, NULL, NULL);
                 if (fd >= 0) {
@@ -2438,7 +2448,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     } else {
                                         wrote = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, v, vl, op == 2 ? OP_PUT : OP_DEL);
                                     }
-                                    if (wrote) sync_fd(srv_db_fd);
+                                    if (wrote) (void)0;
                                     load_db(db_path);
                                 }
                                 if (wrote) {
@@ -2612,7 +2622,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     vl_out = snprintf(val, sizeof(val), "%lld", next);
                                     wrote = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, val, vl_out, OP_PUT);
                                     if (wrote) {
-                                        sync_fd(srv_db_fd);
+                                        (void)0;
                                         load_db(db_path);
                                     }
                                 }
@@ -2639,7 +2649,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 { SRV_WRITE_LOCK(db_path);
                                     wrote = append_raw(srv_db_fd, "0:users", 7, user_key, user_key_len, user_val, user_val_len, OP_PUT);
                                     if (wrote) {
-                                        sync_fd(srv_db_fd);
+                                        (void)0;
                                         load_db(db_path);
                                     }
                                 }
@@ -2656,7 +2666,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         vl_out = snprintf(val, sizeof(val), "%lld", cur - 1);
                                         ok = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, val, vl_out, OP_PUT);
                                         if (ok) {
-                                            sync_fd(srv_db_fd);
+                                            (void)0;
                                             load_db(db_path);
                                         } else {
                                             shed = 1;
@@ -2675,7 +2685,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     if (!exists) {
                                         wrote = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, v, vl, OP_PUT);
                                         if (wrote) {
-                                            sync_fd(srv_db_fd);
+                                            (void)0;
                                             load_db(db_path);
                                         }
                                     }
@@ -2700,7 +2710,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     if (match) {
                                         wrote = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, new_val, new_len, OP_PUT);
                                         if (wrote) {
-                                            sync_fd(srv_db_fd);
+                                            (void)0;
                                             load_db(db_path);
                                         }
                                     }
@@ -2756,14 +2766,14 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         else if (__builtin_fabs(next) < 1e-12) {
                                             if (had) {
                                                 ok = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, NULL, 0, OP_DEL);
-                                                if (ok) sync_fd(srv_db_fd);
+                                                if (ok) (void)0;
                                                 else shed = 1;
                                             }
                                             strcpy(val, "0"); vl_out = 1;
                                         } else {
                                             vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%.17g", hl, ts, next);
                                             ok = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, val, vl_out, OP_PUT);
-                                            if (ok) sync_fd(srv_db_fd);
+                                            if (ok) (void)0;
                                             else shed = 1;
                                         }
                                         if (ok) load_db(db_path);
@@ -2810,9 +2820,13 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                                 memcpy(ret_k, rec_k(r), ret_kl);
                                                 ret_k[ret_kl] = '\t';
                                                 memcpy(ret_k + ret_kl + 1, rec_v(r), ret_vl);
-                                                wrote = append_raw(srv_db_fd, full_tenant, ft_len, rec_k(r), r->k_len, NULL, 0, OP_DEL);
+                                                if (vl > 0) {
+                                                    wrote = append_raw(srv_db_fd, full_tenant, ft_len, rec_k(r), r->k_len, v, vl, OP_PUT);
+                                                } else {
+                                                    wrote = append_raw(srv_db_fd, full_tenant, ft_len, rec_k(r), r->k_len, NULL, 0, OP_DEL);
+                                                }
                                                 if (wrote) {
-                                                    sync_fd(srv_db_fd);
+                                                    (void)0;
                                                     load_db(db_path);
                                                 }
                                             } else {
@@ -2898,7 +2912,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                             }
                                             chunk_push(batch_c);
                                         }
-                                        if (wrote && !shed) sync_fd(srv_db_fd);
+                                        if (wrote && !shed) (void)0;
                                         load_db(db_path);
                                     }
                                 }
