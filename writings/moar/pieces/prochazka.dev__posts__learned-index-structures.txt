@@ -1,0 +1,61 @@
+The Case for Learned Index Structures
+
+“Indexes are models” starts a paper called “The Case for Learned Index Structures”1 that brings a fresh new perspective to the decades-old field of database indexing. The premise is straightforward. A B+ tree can be viewed as a model that predicts a position of an item in a sorted array.
+
+This approach presents a shift in the way we think about indexes. This reasoning was not limited to B+ trees only. Bloom filters, testing whether an object exists within a set, and hashing are also considered for this transition to learned structures. These general-purpose data structures can be highly optimized by learning the underlying data distribution.
+
+Idea
+
+An example is given considering an index’s time and space complexity for a concrete data instance. Take a set of fixed-size records storing continuous integers from 1 to 1M in memory. Using a B+ tree would be like shooting sparrows with a cannon (using a sledgehammer to crack a nut) and guarantee only 
+O(log⁡n)
+O(logn) access time. On the other hand, using the key directly to predict the position ensures 
+O(1)
+O(1) access time and 
+O(1)
+O(1) space complexity.
+
+The main idea is realizing that we are essentially approximating the data’s cumulative distribution function (CDF). The CDF (
+F
+F) is a function that maps a value (
+x
+x) to a probability that a random variable 
+X
+X is less than or equal to the value.
+
+F(x)=P(X≤x)
+F(x)=P(X≤x)
+
+We can use the CDF to locate data points. We either know the CDF explicitly or try to approximate it by learning it directly from the data. Obtaining the item’s predicted position in the sorted array is then done by evaluating the CDF at 
+x
+x and multiplying it by the number of items (
+n
+n).
+
+position=F(x)⋅n
+position=F(x)⋅n
+
+The word predicted also leads to the obvious drawback of this approach. The prediction of the item’s position is not precise. For example, when the model predicts that a key is on the index of 42, but the actual position of the item is 40. We must account for this situation when the distribution is not learned perfectly. It is one of the major concept shifts, as the B+ tree can guarantee a 
+O(log⁡n)
+O(logn) access time regardless of the data distribution. However, this price has to be paid by the B+ tree with a balancing overhead incurred during insertions and deletions.
+
+The learning process is responsible for minimizing the prediction error. Therefore, special care in this regard must be taken. A possible approach may be a mechanism that solves this imperfection by introducing minimal and maximal error bounds. The search algorithm then uses these bounds to find the correct position, searching within the bounds for the desired key.
+
+Recursive Model Index
+
+A new index structure is proposed called Recursive Model Index. It is an almost tree-like structure consisting of possibly different machine learning models with an increasing degree of specialization. The almost tree-like structure allows for sharing child nodes, i.e., a node may be accessed from two distinct parents. The traversal in each node is realized by a model, predicting which child node is the most capable of answering a given query.
+
+The deeper levels contain more specialized models trained over a narrower portion of the dataset. As we zoom into a smaller portion of the dataset, the expectation is that the data distribution is simpler, and therefore, we are motivated to use a simpler model. We can speed up the whole process by choosing a model that is fast to train and evaluate, like linear regression. When the data at the deeper levels are tough to learn, the authors propose using a B+ tree as the model in such nodes.
+
+Applications
+
+The core idea is not limited to one-dimensional data. An ideal candidate is a metric space, especially the type where evaluating the distance function would be computationally demanding. Similarly, a typical goal of metric indexing structures is to optimize the number of calculated distances.
+
+A typical index for a metric space consists of internal nodes and leaf nodes. Each internal node contains a pivot, with additional information like its radius. This pair then represents a ball region. The nodes are also extended with pointers to children corresponding to each pivot. Traversing the structure is realized by accessing internal nodes, retrieving its pivots, and calculating distances from a query object to all pivots.
+
+As the index regards objects based on their mutual similarity, the complexity of the distance function is crucial. It can be computationally demanding, e.g., in the case of human motion data, where a dynamic time warping algorithm with 
+O(nm)
+O(nm) time complexity is usually employed.
+
+A learned index can be a good candidate for this task. In the search phase, the index would not compute the distance but instead predicts the object’s position in the lower level. It can considerably improve the search speed, especially compared to a wide metric index with a computationally demanding distance function. However, the training, representing the most computationally expensive operation of the learned index, should also be reflected in the comparison.
+
+But more on this another time.

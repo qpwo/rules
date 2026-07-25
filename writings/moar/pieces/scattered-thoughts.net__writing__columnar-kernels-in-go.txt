@@ -1,0 +1,461 @@
+Over the winter I'm going to be adding a columnar query engine to an existing system written in go. I'm not at all familiar with go, and it's also not ideally suited to this kind of problem, so I started out with a little toy problem that has similar challenges to help puzzle out the best strategy for the kernels.
+
+The toy problem is a simple columnar compression library. (It was intended to be a reimplementation of BtrBlocks but I got so bogged down trying to generate efficient kernels in go that I haven't implemented any of the interesting parts of the paper.) I wrote it first in go using generics, then in zig as a reference, then again in go using text templates to mimic the zig version.
+
+All the code is here.
+
+sum types
+
+The input types look like this in zig:
+
+const Kind = enum {
+    uint8,
+    uint16,
+    uint32,
+    uint64,
+    string,
+};
+
+const Value = union(Kind) {
+    uint8: u8,
+    uint16: u16,
+    uint32: u32,
+    uint64: u64,
+    string: []const u8,
+};
+
+const VectorUncompressed = union(Kind) {
+    uint8: []u8,
+    uint16: []u16,
+    uint32: []u32,
+    uint64: []u64,
+    string: [][]const u8,
+};
+
+The use of [][]const u8 for string vectors is unrealistic - a real implementation would have a single byte buffer and an array of offsets into it. But let's keep things simple for now.
+
+Go doesn't have builtin sum types. The idiomatic approach seems to be to create an interface with a private method. We can't define methods on non-local types so we need to create type wrappers.
+
+type BoxedValueUint8 uint8
+type BoxedValueUint16 uint16
+type BoxedValueUint32 uint32
+type BoxedValueUint64 uint64
+type BoxedValueString string
+
+type BoxedValue interface {
+    is_boxed_value()
+}
+
+func (_ BoxedValueUint8) is_boxed_value()  {}
+func (_ BoxedValueUint16) is_boxed_value() {}
+func (_ BoxedValueUint32) is_boxed_value() {}
+func (_ BoxedValueUint64) is_boxed_value() {}
+func (_ BoxedValueString) is_boxed_value() {}
+
+type VectorUint8 []uint8
+type VectorUint16 []uint16
+type VectorUint32 []uint32
+type VectorUint64 []uint64
+type VectorString []string
+
+type VectorUncompressed interface {
+    is_vector_uncompressed()
+}
+
+func (_ VectorUint8) is_vector_uncompressed()  {}
+func (_ VectorUint16) is_vector_uncompressed() {}
+func (_ VectorUint32) is_vector_uncompressed() {}
+func (_ VectorUint64) is_vector_uncompressed() {}
+func (_ VectorString) is_vector_uncompressed() {}
+
+This seems fine. It's a bit of boilerplate, but it's obvious and easy to skim over.
+
+The more annoying problem is that BoxedValue is an interface, so I believe it requires a heap allocation (barring escape analysis). It is possible to hack around this in some cases (eg zed hides it's values inside fake slices) but the rest of the time this is going to be an annoying limitation.
+
+Go doesn't really have a notion of closed enums either, so the Compression type uses a private struct field to prevent the construction of invalid values.
+
+type Compression = struct {
+    tag compressionTag
+}
+type compressionTag = uint64
+const (
+    Dict compressionTag = iota
+    Size
+    Bias
+)
+
+Geting in and out of a sum type is pretty easy in both zig:
+
+// Getting in.
+Value{.string = "hi"}
+
+// Getting out.
+fn is_even(value: Value) bool {
+    switch (value) {
+        .uint8 => |int| return int % 2 == 0,
+        .uint16 => |int| return int % 2 == 0,
+        .uint32 => |int| return int % 2 == 0,
+        .uint64 => |int| return int % 2 == 0,
+        .string => return false,
+    }
+}
+
+And go:
+
+// Getting in.
+BoxedValue(BoxedValueString("hi"))
+
+// Getting out.
+func isEven(value BoxedValue) bool {
+    switch value := value.(type) {
+    case BoxedValueUint8:
+        return value%2 == 0
+    case BoxedValueUint16:
+        return value%2 == 0
+    case BoxedValueUint32:
+        return value%2 == 0
+    case BoxedValueUint64:
+        return value%2 == 0
+    case BoxedValueString:
+        return false
+    default:
+        panic("Unreachable")
+    }
+}
+
+Since go doesn't understand that the BoxedValue type is closed it always requires a default case. Worse, if we forget a case then go will silently allow the mistake and crash at runtime. Zig will complain at compile-time - this is incredibly useful when adding new cases in a big codebase. Luckily go-sumtype understands the idiom used above and will warn about missing cases.
+
+("But your tests should catch the missing case!". Sure, but how do you know if your tests cover all the cases? Missing code doesn't show up in coverage reports. Much easier to have the compiler tell you all the places you have to add cases, and then add tests until coverage returns to 100%.)
+
+It's kind of annoying that we have to repeat the bodies for each integer case. While the types differ between cases, the code doesn't. Zig has a neat trick for this:
+
+fn is_even(value: Value) bool {
+    switch (value) {
+        inline .uint8, .uint16, .uint32, .uint64 => |int| return int % 2 == 0,
+        .string => return false,
+    }
+}
+
+The inline keyword causes the body to be repeated for each of the listed cases. Each repetition is type-checked separately, so it doesn't matter that the type of int varies between each case. Zig also allows capturing the tag itself as a compile-time constant by writing |int, kind| instead of |int|. And if we want to write the same body in every case we can just write inline else => instead of listing all the tags.
+
+zig kernels
+
+The inline keyword might seem like a little nicety but it's actually one of the core mechanisms for generating kernels (and we'll end up having to emulate something like inline switches in go). In the zig version the outer skeleton of compression looks like this:
+
+fn compressed(allocator: Allocator, vector: VectorUncompressed, compression: Compression) ?VectorCompressed {
+    switch (vector) {
+        inline else => |values, kind| {
+            const Elem = std.meta.fieldInfo(Value, kind).type;
+            switch (compression) {
+                .dict => {...},
+                .size => {...},
+                .bias => {...},
+            }
+        }
+    }
+}
+
+The inline switch is generating a different version of the body for each type of vector we might be compressing.
+
+The const Elem = ... is figuring out what type of value is contained in the values slice. Since kind is a compile-time constant we can use reflection to find the matching payload type in Value. Crucially, this line is evaluated at compile-time so there is no runtime cost when using Elem in the body.
+
+Let's look at the body for .size:
+
+if (kind == .string) return null;
+if (values.len == 0) return null;
+
+const max = std.mem.max(Elem, values);
+inline for (.{ Kind.uint8, Kind.uint16, Kind.uint32 }) |kind_compressed| {
+    const ElemCompressed = std.meta.fieldInfo(Value, kind_compressed).type;
+    if (@typeInfo(ElemCompressed).Int.bits < @typeInfo(Elem).Int.bits) {
+        if (max < std.math.maxInt(ElemCompressed)) {
+            {
+                const values_compressed = allocator.alloc(ElemCompressed, values.len) catch oom();
+                for (values, values_compressed) |value, *value_compressed| {
+                    value_compressed.* = @intCast(value);
+                }
+                return .{ .size = .{
+                    .original_kind = kind,
+                    .values = boxedVector(allocator, kind_compressed, values_compressed),
+                } };
+            }
+        }
+    }
+} else return null;
+
+This is a really simple compression method - given a vector of integers, figure out the smallest integer size that can encode all the same values. So eg VectorUncompressed{.uint64 = .{0,1,2}} would become VectorSize{.original_kind = .uint64, .values = .{.uncompressed = .{.uint8 = .{0,1,2}}}.
+
+There are a couple of places where we decide it's not worth compressing this vector and just return null instead. The first is notable - kind == .string can be evaluated at compile time so for the string case the rest of this body will be dead code and won't end up in the final executable.
+
+The line starting inline for is similar to the inline switch that we've already seen. An inline for loop repeats the body once for each value in the slice (which must be a compile-time constant). We use this to check each of the integer kinds that we might be able to compress to.
+
+if (@typeInfo(... discards branches that are pointless eg trying to 'compress' a uint8 vector into a uint16 vector. Again, this is evaluated at compile time.
+
+Once we've finished all the dispatch logic, the body itself is pretty trivial. Make a new slice, copy the values over, return a vector. In a real implementation we might want to extract each body into a noinline function to avoid pressuring the compiler with massive functions, but for now we'll keep it simple.
+
+This example is pretty trivial, but it covers all the core mechanisms for this kind of code:
+
+Specialization : The kernel is compiled separately for various different types, producing efficient code with no dynamic dispatch or unnecessary indirection.
+Adhoc polymorphism: Kernels sometimes behave differently for different types, but these decisions must be made at compile-time and compiled into the kernel.
+Closed dynamic dispatch: At runtime we use type tags (and other metadata) to choose from a fixed list of precompiled kernels.
+
+In zig we get 1 from monomorphization, 2 from comptime calculations and 3 from inline switch/for. In rust we'd use generics, traits, and macros. In c++ something something templates. What about go?
+
+go kernels with generics
+
+I did a version with generics for the sake of completeness, but they're not usable for a real query engine. Functions are only specialized by gcshape, not by type. This means that builtin operations will be statically dispatched but user-defined interfaces will produce virtual function calls. The performance impact in simple kernels is huge:
+
+// One value type among many.
+type ValueInt int
+
+// Basic interface for value types.
+type Value[Elem any] interface {
+    IsLess(a Elem) bool
+}
+
+// Implementation of Value for ValueInt
+func (a ValueInt) IsLess(b ValueInt) bool {
+    return a < b
+}
+
+// Hard-coded max kernel.
+func VectorMaxHardcoded(elems []ValueInt) ValueInt {
+    var elemMax = elems
+    for _, elem := range elems {
+        if elemMax.IsLess(elem) {
+            elemMax = elem
+        }
+    }
+    return elemMax
+}
+
+// Generic max kernel
+func VectorMaxGeneric[Elem Value[Elem]](elems []Elem) Elem {
+    var elemMax = elems
+    for _, elem := range elems {
+        if elemMax.IsLess(elem) {
+            elemMax = elem
+        }
+    }
+    return elemMax
+}
+
+func DoBenchmark(b *testing.B, f func([]ValueInt) ValueInt) {
+    rand := rand.New(rand.NewSource(42))
+    nums := make([]ValueInt, 1<<16)
+    for i := range nums {
+        nums[i] = ValueInt(rand.Intn(10000))
+    }
+    b.ResetTimer()
+    for i := 0; i < b.N; i++ {
+        _ = f(nums)
+    }
+}
+
+// 30555 ns/op
+func BenchmarkVectorMaxHardcoded(b *testing.B) {
+    DoBenchmark(b, VectorMaxHardcoded)
+}
+
+// 79289 ns/op
+func BenchmarkVectorMaxGeneric(b *testing.B) {
+    DoBenchmark(b, VectorMaxGeneric[ValueInt])
+}
+
+The implementation of generics is also considered to be an internal compiler heuristic which may change in future versions of go, making it risky to rely on it for performance.
+
+So generics are a no-go for the kernels.
+
+go kernels with templates
+
+We can directly mimic the zig version by generating code with text/template.
+
+Switches are easy:
+
+// zig
+switch (vector) {
+    inline else => |values, kind| {
+        ...
+    }
+}
+
+// go + template
+switch vector := vector.(type) {
+    {{range .Kinds}}
+    case Vector{{.Name}}:
+    {
+        ...
+    }
+    {{end}}
+    default:
+    panic("Unreachable")
+}
+
+The template language is pretty aneamic so in places where in zig I would write comptime code, in go templates I either precompute fields in the input data as above, or move data into go constants and hope that the compiler will constant-fold the conditions:
+
+// zig
+switch (vector) {
+    inline else => |values, kind| {
+        const Elem = std.meta.fieldInfo(Value, kind).type;
+        ...
+        inline for (std.meta.tags(kind)) |kind_compressed| {
+            const ElemCompressed = std.meta.fieldInfo(Value, kind_compressed).type;
+            if (@typeInfo(ElemCompressed) == .Int and
+                @typeInfo(ElemCompressed).Int.bits < @typeInfo(Elem).Int.bits) {
+                ...
+            }
+        }
+    }
+}
+
+// go + template
+switch vector := vector.(type) {
+    {{range .Kinds}}
+    case Vector{{.Name}}:
+    {
+        const originalSizeBits uint8 = {{.SizeBits}}
+        ...
+        {{range $data.Kinds}}
+        {
+            {{if .IsInt}}
+            {{if .SizeBits | lt 64}}
+            const compressedSizeBits uint8 = {{.SizeBits}}
+            if compressedSizeBits < originalSizeBits {
+                ...
+            }
+            {{end}}
+            {{end}}
+        }
+        {{end}}
+    }
+    {{end}}
+    default:
+    panic("Unreachable")
+}
+
+The {{if .SizeBits | lt 64}} might seem redundant, but it's needed to avoid the compiler complaining about 1 << {{.SizeBits}} in the body, even though the body is unreachable for uint64. One of the downsides of relying on constant folding.
+
+One problem with the template approach is that the resulting files aren't valid go code, so none of the ide tooling works. I poked around in cockroachdb and found that they also use text/template (eg) but they hide all the template commands in comments so that the file remains valid go. I don't think this approach can work for the switches or constants I use above though.
+
+Another problem is that any compile errors point to the resulting file, not to the template. So when editing this code I have to manually map compile errors to their source locations.
+
+go kernels with ast?
+
+Cockroachdb also uses some ast annotations in addition to templates. Here's an example from one of their tests:
+
+// input
+
+func a(input bool) {
+    b(input)
+}
+
+// execgen:template<t>
+// execgen:instantiate<true>
+// execgen:instantiate<false>
+func b(t bool) int {
+    if t {
+        x = 3
+    } else {
+        x = 4
+    }
+    return x
+}
+
+// output
+
+func a(input bool) {
+    b_runtime_to_template(input)
+}
+
+const _ = "template_b"
+
+func b_runtime_to_template(t bool) int {
+    switch t {
+    case true:
+        return b_true()
+    case false:
+        return b_false()
+    default:
+        panic(fmt.Sprint("unknown value", t))
+    }
+}
+
+func b_true() int {
+    x = 3
+    return x
+}
+
+func b_false() int {
+    x = 4
+    return x
+}
+
+This is almost what we want!
+
+We can imagine an annotation that specializes by type in a similar way:
+
+// input
+
+// vectorgen:specialize vector
+func Compressed(vector VectorUncompressed, compression Compression) VectorCompressed {
+    ...
+}
+
+// output
+
+func Compressed(vector VectorUncompressed, compression Compression) VectorCompressed {
+    switch vector := vector.(type) {
+       case VectorUint8:
+           return compressed_VectorUint8(vector, compression)
+       ...
+    }
+}
+
+func compressed_VectorUint8(vector VectorUint8, compression Compression) VectorCompressed {
+     ...
+}
+
+At first I thought that we might even be able to make the input version type-check so that ide tools work. But there are two common operations in the code so far - extracting a slice from a vector and turning a vector into a slice - that would require something like associated types:
+
+func Decompressed(vector VectorSize) VectorUncompressed {
+    values := make([]???, vector.Count)
+    ...
+}
+
+We could extend the Vector interface to hide the existence of slices, but then the generics slip back in:
+
+type Vector[Elem any] interface {
+    Count() int
+    Get(i int) Elem
+}
+
+type VectorInt []ValueInt
+
+func (vector VectorInt) Count() int {
+    return len(vector)
+}
+
+func (vector VectorInt) Get(i int) ValueInt {
+    return vector[i]
+}
+
+func VectorMaxSliced[Elem constraints.Ordered](vector Vector[Elem]) Elem {
+    var elemMax = vector.Get(0)
+    count := vector.Count()
+    for i := 0; i < count; i++ {
+        elem := vector.Get(i)
+        if elemMax < elem {
+            elemMax = elem
+        }
+    }
+    return elemMax
+}
+
+// 82096 ns/op
+func BenchmarkVectorMaxSliced(b *testing.B) {
+    DoBenchmark(b, func(elems []ValueInt) ValueInt {
+        return VectorMaxSliced[ValueInt](VectorInt(elems))
+    })
+}
+
+So it looks like the templates are the way to go for now, gross as they are.

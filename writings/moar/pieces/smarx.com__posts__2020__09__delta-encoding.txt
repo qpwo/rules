@@ -1,0 +1,162 @@
+As you may recall, my family is fostering two kittens. You would not believe how quickly these kittens grow! Or at least, you wouldn’t if I didn’t have the data to prove it. Since we got the kittens, I’ve measured their weight roughly every 10 minutes.1 That’s over 1,000 data points so far.
+
+Due to COVID-19, the kittens are unable to attend in-person kitten classes, so it’s incumbent upon us to also foster2 their intellectual growth. To that end, I recently gave them a puzzle about compression.
+
+A time-series compression challenge
+
+After breakfast, and when the kittens were done with their first nap, I called them over. “Kittens,” I said, “I have a list of about 1,000 data points for each of you. Each data point consists of an increasing timestamp with minute precision and a weight, in ounces.”
+
+The data looked something like this, with one sheet for each kitten:
+
+...
+2020-08-28 8:39am 12 ounces
+2020-08-28 8:50am 12 ounces
+2020-08-28 9:00am 12 ounces
+...
+2020-08-29 1:38pm 13 ounces
+...
+
+“Today I’d like you each to write down your data points, using as little paper as you can. Tomorrow, I’ll ask you to read out all the data again, and I’ll check it against the original list.”
+
+Kittens are incapable of groaning, and they haven’t quite gotten the hang of eye-rolling yet, so at this point I was oblivious to their attitude about my homework assignments.
+
+One hour (and two naps) later, I checked in on the kittens’ progress. Zack was chewing on his own foot, and Cody was chewing on Zack’s other foot. But who am I to judge their process?
+
+Delta encoding
+
+The next morning, I asked the kittens how it had gone. It can be challenging to read kitten body language, but I would describe their demeanor as “confident”. Both kittens were able to rattle off their 1,000 data points with ease, but of course the real question was whether they had achieved compression!
+
+Zack was up first. I asked him how much paper he had used to write down his data. Zack held up his paw as though to say, “Hold that thought.” He walked over to my laptop and opened a slide deck that he had prepared the night before.
+
+Zack’s slides explained that he had achieved a roughly 3:1 compression ratio by using a clever encoding scheme. For each number, he just wrote down the difference since the previous data point. So this data:
+
+2020-08-28 8:39am 12 ounces
+2020-08-28 8:50am 12 ounces // 11 minutes and 0 ounces later
+2020-08-28 9:00am 12 ounces // 10 minutes and 0 ounces later
+
+became just this, writing the timestamps as minutes since the Unix epoch and separating values with colons and commas:
+
+26643639:12,11:0,10:0
+
+This scheme is called delta encoding or delta compression.
+
+Why does this work so well?
+
+It may surprise you that such a simple scheme was so effective, but the data I had recorded really lends itself to such a technique. Each timestamp is an 8-digit number of minutes, but the amount of time between successive timestamps is almost always3 just one or two digits (around 10 minutes). Similarly, as fast as the kittens grow, their weight in ounces tends not to change at all between successive measurements.
+
+Because the deltas are so small, Zack achieved a high rate of compression without too much difficulty.
+
+Python implementation
+
+Here’s some Python code that simulates what Zack did. Note that I’m using base-10 to write down the numbers because that’s all the kittens understand. In a real application, I’d use a variable-length binary encoding, perhaps something like the varint in protocol buffers.
+
+So negative numbers are stored in about the same amount of space as positive ones, I use a sign indicator (+ or -) for every value. I also omit zeros altogether:
+
+import random
+import time
+
+Fake, but representative, timeseries data.
+l = []
+
+prev = int(time.time()//60) # current time in minutes since Unix epoch
+
+for i in range(1_000):
+    # data point every 10 minutes, give or take a minute
+    t = prev + 9 + random.randrange(2)
+
+    # 4 ounces gained over the time period
+    w = 13 + (i // 250)
+
+    l.append((t, w))
+    prev = t
+
+def delta(l):
+    prev = 0, 0
+    for t, w in l:
+        # Use just the change since the previous number.
+        yield t - prev, w - prev
+        prev = t, w
+
+def undelta(l):
+    prev = 0, 0
+    for t, w in l:
+        real_t, real_w = t + prev, w + prev
+        yield real_t, real_w
+        prev = real_t, real_w
+
+def to_str(l):
+    def s(n):
+        # Skip 0 entirely!
+        if n == 0:
+            return ''
+
+        # Always use a + or - sign. Otherwise negative numbers are
+        # (relatively) too expensive.
+        if n > 0:
+            return f'+{n}'
+        return str(n)
+
+    return ','.join(f'{s(t)}:{s(w)}' for t, w in l)
+
+def measure(l):
+    return len(to_str(l))
+
+print("Time series:   ", measure(l))
+
+d = list(delta(l))
+assert list(undelta(d)) == l
+print("Delta encoding:", measure(d))
+
+Delta of deltas
+
+I said earlier that it can be difficult to interpret a kitten’s body language. But throughout Zack’s presentation, Cody was conveying a clearer and clearer message.
+
+If you’ve watched Final Jeopardy!, you may have seen this. The first contestant reveals the right answer and a wager that catapults him into the lead. Will he win? It all hinges on the other contestant’s answer and wager. But the other contestant has ruined all the suspense. He has a satisfied smugness that lets you know that yes, he also got the answer right, and yes, he wagered enough to finish on top.
+
+Cody had that same satisfied smugness. He had apparently achieved better than Zack’s 3:1 compression ratio, but how?
+
+I asked Cody for his results. He had achieved an almost 5:1 compression ratio! He, too, had a presentation, but it contained just a single slide that said:
+
+What he did, but twice.
+
+Cody and Zack had developed the initial delta encoding together, but afterwards, when Zack was working on his PowerPoint animations, Cody noticed that the encoded data showed a similar pattern. The delta between successive measurements was always 9, 10, or 11 minutes, so the delta between those deltas was always between -2 and +2. He did a second round of delta encoding and another impressive round of compression.
+
+Here’s Python code that implements Cody’s scheme:
+
+print("Time series:   ", measure(l))
+
+d = list(delta(l))
+assert list(undelta(d)) == l
+print("Delta encoding:", measure(d))
+
+dd = list(delta(d))
+assert list(undelta(dd)) == d
+print("Delta of delta:", measure(dd))
+
+Both kittens had done exceptionally well at my puzzle! I rewarded them with a snuggly nap on the couch.
+
+DELTA OF DELTA: GROWNUP CAT VERSION
+
+Cody’s delta of delta scheme is good but suboptimal. Shadow, our oldest cat, points out that it’s better to use regular delta encoding for the first two elements and then switch to delta of delta. To see why, consider the following data: (3000, 3001, 3002, 3003).
+
+Delta encoding gives us (3000, 1, 1, 1), and the naive delta of delta implementation yields the unfortunate (3000, -2999, 0, 0). If we stick with normal delta encoding for the first two elements instead, we get the much improved (3000, 1, 0, 0).
+
+Delta encoding in real life
+
+No one in practice uses an inefficient base-10 ASCII representation for this sort of thing. Delta encoding should be combined with an efficient representation of the resulting data that takes better advantage of the potential space saving. Because of this, real-world compression ratios are usually quite a bit better than what I showed here.
+
+Delta encoding is seen often in the wild. I first learned about it from Lucene, an open source search engine. It writes index files that map tokens to sets of document IDs. If you sort those document IDs first, then the deltas between them tend to be smaller than the IDs themselves. This means delta encoding is effective. When I was working at Dropbox, they switched to delta encoding for their search engine, achieving impressive results.
+
+Delta encoding is used a lot for time-series data, like the data in this blog post. For example, Facebook’s Beringei uses delta of delta encoding just like Cody did.
+
+Further reading
+
+If you want to go a little deeper, Timescale wrote a great blog post called “Time-series Compression Algorithms, Explained”.
+
+You might also be interested in “Gorilla: A Fast, Scalable, In-Memory Time Series Database”, a paper by Facebook engineers about their internal predecessor to Beringei.
+
+Not when I’m sleeping. I’m not obsessed. 
+
+Get it? 
+
+Again, I sometimes sleep.

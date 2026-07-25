@@ -1,0 +1,156 @@
+How a Bitmap Index Works
+
+Bitmap indices are used
+Naive Bitmap Index
+
+To introduce the concept, let’s build a naive uncompressed bitmap index. Let’s say you have a data set and some way of assigning an integer index, or record index from now on, to each record (the simplest example would be the line number in a CSV file), and have chosen some attributes to be indexed. For each distinct value of each indexed attribute of your data, compute the set of indices of records matching the predicate. For each attribute, create a map from the attribute values to the sets of corresponding record indices. The format used for the set doesn’t matter yet, but either an int[] or BitSet would be suitable depending on properties of the data and the predicate (cardinality of the data set, sort order of the data set, cardinality of the records matching the predicate, for instance). Using a BitSet to encode the nth record index as the nth bit of the BitSet can be 32x smaller than an int[] in some cases, and can be much larger when there are many distinct values of an attribute, which results in sparse bitmaps.
+
+The tables below demonstrate the data structure. The first table represents a simple data set. The second and third tables represent bitmap indices on the data set, indexing the Country and Sector attributes.
+
+Record Index	Country	Sector
+0	GB	Financials
+1	DE	Manufacturing
+2	FR	Agriculturals
+3	FR	Financials
+4	GB	Energies
+
+The bitmap index consists of the two tables below:
+
+Country
+Value	Record Indices	Bitmap
+GB	0,4	0b10001
+DE	1	0b10
+FR	2,3	0b1100
+Sector
+Value	Record Indices	Bitmap
+Financials	0,3	0b1001
+Manufacturing	1	0b10
+Agriculturals	2	0b100
+Energies	4	0b10000
+
+It’s worth noting three patterns in the tables above.
+
+The number of bitmaps for an attribute is the attribute’s distinct count.
+There are typically runs of zeroes or ones, and the lengths of these runs depend on the sort order of the record index attribute.
+A bitmap index on the record index attribute itself would be as large as the data itself, and a much less concise representation. Bitmap indices do not compete with B-tree indices for primary key attributes.
+Query Evaluation
+
+This simple scheme effectively materialises the result of predicates on the data and is particularly appealing because these predicates can be composed by performing efficient logical operations on the bitmaps. Query evaluation is most efficient when both the number of bitmaps and size of each bitmap are as small as possible. An efficient query plan will touch as few bitmaps as possible, regardless of bitmap size. Here are some examples of queries and their evaluation plans.
+
+Single Attribute Union
+select *
+from records
+where country = "GB" or country = "FR"
+
+Access the country index, read the bitmaps for values “FR” and “GB”.
+Apply a bitwise logical OR to get a new bitmap.
+Access the data stored by record id with the retrieved indices.
+Multi Attribute Intersection
+select *
+from records
+where country = "GB" and sector = "Energies"
+
+Access the country index, and read the bitmap for value ”GB”.
+Access the sector index, and read the bitmap for value ”Energies”.
+Apply a bitwise logical AND to get a new bitmap.
+Access the data stored by record id with the retrieved indices.
+Single Attribute Except Clause
+select *
+from records
+where country <> "GB"
+
+Access the country index, and read the bitmap for value ”GB”.
+Negate the bitmap.
+Access the data stored by record id with the retrieved indices.
+
+The index lends itself to aggregate queries (and aggregates on predicates)
+
+Count
+select country, count(*)
+from records
+group by country
+
+Iterate over the keys in the country index and count the bits in each bitmap, store the count against the key in a map.
+Count with Filter
+select country, count(*)
+from records
+where sector <> "Financials"
+group by country
+
+Access the sector index and read the bitmap for “Financials”.
+Negate the bitmap, call the negated bitmap without_financials.
+Access the country index.
+Iterate over the keys:
+Intersect each bitmap with without_financials.
+Count the bits in the resultant bitmap, store the count against the key in a map.
+
+The two main factors affecting the performance of query processing are the number of bitmaps that need to be accessed, and the size of each bitmap (which concerns both memory/disk usage and CPU utilisation) - both should be minimised. Choosing the correct encoding for expected queries (one should expect range queries for dates, but equality and set membership queries for enumerations) can reduce the number of bitmap accesses required to evaluate a query; whereas compression can reduce the bitmap sizes.
+
+Encoding
+
+Only predicates for equality are efficient with the scheme so far. Suppose there is a well defined sort order for an attribute a. In order to evaluate
+
+select *
+from records
+where a > x and a < y
+
+every bitmap in the range (x, y) would have to be accessed and united. This could easily become a performance bottleneck. The encoding could be adapted for evaluating range predicates. Instead of setting the nth bit if the nth record has a = y (equality encoding), it could be set if the nth record has a ≤ y (range encoding). In this encoding only one bitmap would need to be accessed to evaluate a predicate like a ≤ y, rather than the|[min(a), y]| bitmaps required using the equality encoding. In order to evaluate a ∈ [x, y], only the bitmaps for x and y are needed. Not much is lost in order to support equality predicates in a range encoding; only the bitmap for the value and its predecessor are required.
+
+Compression
+
+The scheme presented so far works as a toy model but the bitmaps are just too large to be practical. A bitmap index on a single attribute with m distinct values over a data set consisting of n records, using a BitSet would consume mn bits, using an int[] would consume 32mn bits. Therefore, some kind of compression is required to make the approach feasible.
+
+Often in real world data sets, there are attributes with skewed histograms, a phenomenon known as Zipf’s Law. In a typical financial data set exhibiting this property, most trades will be in very few instruments (EURGBP for instance), and there will be very few trades in the rest of the traded instruments. The bitmaps for the values at both the head and tail of these histograms become less random and therefore compressible. At the head, the bits are mostly set; at the tail mostly unset. Compression seeks to exploit this.
+
+One well understood compression strategy is run length encoding. If there are m bits set in a row, followed by n unset bits and again followed by 
+latexp
+latexp
+ bits set, 0b1…10..01..1 of size m + n + p bit could be replaced by m1n0p1 which is typically a lot smaller (though worse if the runs are very short). Since there are only two possible values, only ranges of set bits need to be represented - it is only necessary to store the start index and length of each run, so the bitmap becomes the set of tuples {(0,m), (m+n, p)}. Notably the sort order of the record index with respect to the attribute affects the compression ratio for run length encoding because it can make runs longer or shorter.
+
+Historically, run length encoding on bits has been considered impractical because processors operate on words not bits. Instead of counting runs of bits, several algorithms count runs of bytes (BBC - Byte-aligned Bitmap Compression) or words (WAH - Word Aligned Hybrid, EWAH - Enhanced Word Aligned Hybrid). These algorithms are faster at the expense of reduced compression. In these schemes compression is improved when there are long runs of clean words (where all the bits in the word are the same), and the compression ratio is degraded when there are many dirty words, which cannot be compressed at all. The number of clean words and hence the compression ratio for a bitmap index depends on the order of the record index attribute. However, an optimal sort order with respect to an index on one attribute will generally be sub-optimal for an index on another.
+
+In order to maintain the attractive boolean query processing capabilities, the OR, AND, XOR, NAND, NOR and NOT operations each need to redefined to operate on the compressed form of the bitmap, and in the case of algorithms like EWAH these adapted operations are more efficient, CPU and cache-friendly, than on naive uncompressed bitmaps.
+
+Previously I was ambivalent between the use of BitSet and int[] to encode the sets of record indices (Set was not proposed because of the inherent cost of wrapped integers). This is because neither of these types is really appropriate for the task in all cases. If we use an uncompressed BitSet we end up with high memory usage for a large data set, even if most of the bits are unset, which is often compressible at the word level. With very sparse data, when most of the bits would be zero, it would take less space to store the record indices in an int[] instead. By choosing dynamically whether to use integers, uncompressed bits, or compressed words is actually roughly how the RoaringBitmap library optimises performance. More about that here.
+
+Reducing the Number of Bitmaps
+
+Query evaluation performance degrades with the number of bitmaps that need to be accessed. Choosing the right encoding for query patterns and reducing the size of each bitmap are both key for performance and practicality, but it can help save storage space to have fewer bitmaps per attribute. So far each value has been encoded as a single bitmap, and each bitmap has been associated with only one value. The total number of bitmaps can be reduced by applying a factorisation on values with a bitmap per factor, so each bitmap will be associated with several values and each value will be associated with several bitmaps. To this end, mapping values into integers by some means would allow integer arithmetic to be used for index construction. A simple mechanism to map a set of objects to integers would be a dictionary, a more complicated but better mechanism might be a perfect hash function like CHM (an order preserving transformation!) or BZW (which trades order preservation for better compression).
+
+Bit Slicing
+
+Supposing a mapping between a set of values and the natural numbers has been chosen and implemented, we can define a basis to factorise each value. The number 571, for example, can be written down as either 5*10^2 + 7*10^1 + 1*10^0 in base-10 or 1*8^3 + 0*8^2 + 7*8^1 + 3*8^0 in base-8. Base-10 uses more coefficients, whereas base-8 uses more digits. Bit slice indexing is analogous to arithmetic expansion of integers, mapping coefficients to sets, or slices, of bitmaps; digits to bitmaps.
+
+Mapping a set of objects S into base n, where log_n(|S|) ~ O(m), we can use mn bitmaps to construct the index. The bases do not need to be identical (to work with date buckets we could choose to have four quarters, three months, and 31 days for example) but if they are the bases are said to be uniform. An example of a base 3 uniform index on currencies is below:
+
+Records
+Record Index	Currency
+0	USD
+1	GBP
+2	GBP
+3	EUR
+4	CHF
+Currency Encoding
+Currency	Code	Base 3 Expansion
+USD	0	0*3 + 0
+GBP	1	0*3 + 1
+EUR	2	0*3 + 2
+CHF	3	1*3 + 0
+Single Component Currency Index
+Currency	Bitmap
+USD	0b1
+GBP	0b110
+EUR	0b1000
+CHF	0b10000
+Bit Sliced Currency Index
+Power of 3	Remainder	Bitmap
+1	0	0b1111
+1	1	0b10000
+1	2	0b0
+0	0	0b10001
+0	1	0b110
+0	2	0b1000
+
+Here we have actually used six bitmaps instead of four, but the factorisation comes into its own when more currencies are added. With a 2-component base-3 index, we can use six bitmaps to encode up to nine values.
+
+To evaluate a query, map the value into its integer representation, factorise the number with respect to the bases of the index, and then intersect at most m bitmaps together. This is slower than a single bitmap access, but has some useful properties if data is hierarchically bucketed as well as trading query performance for storage space. To evaluate queries at the top level of bucketing, only one bitmap access is required; at the second level, two bitmap accesses are required and so on. So there is a trade off between degraded performance with granular values with increased performance for roll-ups.
