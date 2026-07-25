@@ -2582,11 +2582,9 @@ if (threshold > 1.0) threshold = 1.0;
                                                 } else if (r->v_len < 192) {
                                                     char buf2[192] = {0};
                                                     memcpy(buf2, rec_v(r), r->v_len);
-                                                    char *p_str = buf2;
-                                                    while (*p_str && *p_str != '-' && *p_str != '.' && (*p_str < '0' || *p_str > '9')) p_str++;
-                                                    double v = strtod(p_str, NULL);
-                                                    sum += v * w_weight;
-                                                    raw_sum += v;
+                                    double v = strtod(buf2, NULL);
+                                    sum += v * w_weight;
+                                    raw_sum += v;
                                                 }
                                             }
                                         }
@@ -3139,16 +3137,7 @@ if (threshold > 1.0) threshold = 1.0;
                 } else if (r->v_len < 192) {
                     char buf[192] = {0};
                     memcpy(buf, rec_v(r), r->v_len);
-                    char *t1 = strchr(buf, '\t');
-                    char *t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
-                    double v = 0;
-                    if (t2) {
-                        v = strtod(t2 + 1, NULL);
-                    } else {
-                        char *p_str = buf;
-                        while (*p_str && *p_str != '-' && *p_str != '.' && (*p_str < '0' || *p_str > '9')) p_str++;
-                        v = strtod(p_str, NULL);
-                    }
+                    double v = strtod(buf, NULL);
                     s += v * w;
                     raw_sum += v;
                 }
