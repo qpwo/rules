@@ -2590,7 +2590,7 @@ double max_w = threshold > 1.0 ? threshold : 13.0;
                                     if (out_c) chunk_push(out_c);
                                 } else {
                                     char val[128]; int vl_out = 0;
-                                    if (raw_count < 30 && count_est < (double)raw_count * 2) { count_est = raw_count; sum = raw_sum; }
+                                    if (raw_count < 100) { count_est = raw_count; sum = raw_sum; }
                                     if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu", count_est, (unsigned long long)raw_count);
                                     else vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%llu", sum, raw_sum, (unsigned long long)raw_count);
                                     send_response(fd, cipherkey, 0, val, vl_out);
@@ -3088,7 +3088,7 @@ if (threshold > 1.0) threshold = 1.0;
             raw_c++;
                 }
                 if (offs) munmap(offs, count * 8);
-                if (raw_c < 30 && count_est < (double)raw_c * 2) count_est = raw_c;
+                if (raw_c < 100) count_est = raw_c;
                 printf("%.4g\t%llu\n", count_est, (unsigned long long)raw_c);
             }
             else if (!strcmp(args[0], "sum") && n >= 2) {
@@ -3135,7 +3135,7 @@ if (threshold > 1.0) threshold = 1.0;
                     }
                 }
                 if (offs) munmap(offs, count * 8);
-                if (raw_s < 30 && s < raw_sum * 2) s = raw_sum;
+                if (raw_s < 100) s = raw_sum;
                 printf("%.17g\t%.17g\t%llu\n", s, raw_sum, (unsigned long long)raw_s);
             }
             else printf("ERR\n");
