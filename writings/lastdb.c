@@ -235,13 +235,12 @@ static uint64_t get_mem_avail(uint64_t *total_out) {
     return (uint64_t)(si.freeram + si.bufferram) * si.mem_unit;
 }
 
-static void reserve_ram(size_t bytes)
+static int reserve_ram(size_t bytes)
 {
     uint64_t total = 0;
     uint64_t freeish = get_mem_avail(&total);
-    if (total && freeish < total / 10 + bytes) {
-        return;
-    }
+    if (total && freeish < total / 10 + bytes) return 0;
+    return 1;
 }
 
 static int worker_threads(void)
@@ -287,7 +286,7 @@ static void ht_reserve(uint64_t need)
     if (bytes / sizeof(*ht) != (ncap + max_probe)) {
         diex("ht too large");
     }
-    reserve_ram(bytes);
+    if (!reserve_ram(bytes)) return;
     Node *nht = mmap(NULL, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (nht == MAP_FAILED) {
         return;
@@ -1503,7 +1502,7 @@ static int do_compact(const char *path)
     }
 
     (void)posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
-    reserve_ram(COMPACT_WRITE_BYTES);
+    if (!reserve_ram(COMPACT_WRITE_BYTES)) { close(lockfd); return 1; }
     char *buf = mmap(NULL, COMPACT_WRITE_BYTES, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (buf == MAP_FAILED) {
         die("mmap compact");
