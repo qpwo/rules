@@ -1405,69 +1405,34 @@ static void send_response(int fd, int32_t cipherkey, int32_t status, const void 
     if (buf != small) free(buf);
 }
 
-#include <linux/rseq.h>
-
-typedef struct Chunk {
-    struct Chunk *next;
-    size_t len;
+typedef struct {
     uint8_t data[64 * 1024 * 1024];
 } Chunk;
 
-static struct {
-    alignas(64) Chunk *freelist;
-} rseq_heaps[1024];
-
-extern __thread volatile struct rseq __rseq_abi __attribute__((tls_model("initial-exec")));
+static __thread Chunk *free_chunk;
 
 static inline void chunk_push(Chunk *chunk) {
-    chunk->len = 0;
-#ifdef __x86_64__
-    asm volatile(".pushsection .rodata.rseq,\"a\",@progbits\n"
-                 "    .balign    32\n"
-                 "300:    .long    0\n    .long    0\n    .quad    301f\n    .quad    302f-301f\n    .quad    303f\n"
-                 "    .popsection\n"
-                 "301:    lea    300b(%%rip),%%rcx\n"
-                 "    mov    %%rcx,8(%1)\n"
-                 "    mov    (%1),%%ecx\n"
-                 "    shl    $6,%%ecx\n"
-                 "    mov    (%2,%%rcx),%%rdx\n"
-                 "    mov    %%rdx,(%0)\n"
-                 "    mov    %0,(%2,%%rcx)\n"
-                 "302:    .pushsection .text.unlikely,\"ax\",@progbits\n"
-                 "    .byte    0x0f,0xb9,0x4d\n    .long    0x53053053\n"
-                 "303:    jmp    301b\n    .popsection"
-                 : : "r"(chunk), "r"(&__rseq_abi), "r"(rseq_heaps) : "rcx", "rdx", "memory");
-#else
-    (void)chunk;
-#endif
+    if (!free_chunk) {
+        free_chunk = chunk;
+        return;
+    }
+    if (munmap(chunk, sizeof(*chunk))) {
+        die("munmap chunk");
+    }
 }
 
 static inline Chunk *chunk_pop(void) {
-    Chunk *chunk = NULL;
-#ifdef __x86_64__
-    asm volatile(".pushsection .rodata.rseq,\"a\",@progbits\n"
-                 "    .balign    32\n"
-                 "300:    .long    0\n    .long    0\n    .quad    301f\n    .quad    302f-301f\n    .quad    303f\n"
-                 "    .popsection\n"
-                 "301:    lea    300b(%%rip),%%rcx\n"
-                 "    mov    %%rcx,8(%1)\n"
-                 "    mov    (%1),%%ecx\n"
-                 "    shl    $6,%%ecx\n"
-                 "    mov    (%2,%%rcx),%0\n"
-                 "    test    %0,%0\n"
-                 "    jz    302f\n"
-                 "    mov    (%0),%%rdx\n"
-                 "    mov    %%rdx,(%2,%%rcx)\n"
-                 "302:    .pushsection .text.unlikely,\"ax\",@progbits\n"
-                 "    .byte    0x0f,0xb9,0x4d\n    .long    0x53053053\n"
-                 "303:    jmp    301b\n    .popsection"
-                 : "=&r"(chunk) : "r"(&__rseq_abi), "r"(rseq_heaps) : "rcx", "rdx", "memory");
-#endif
-    if (!chunk) {
-        chunk = mmap(NULL, sizeof(Chunk), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
-        if (chunk == MAP_FAILED) die("mmap chunk");
+    Chunk *chunk = free_chunk;
+    if (chunk) {
+        free_chunk = NULL;
+        return chunk;
     }
-    chunk->len = 0;
+    reserve_ram(sizeof(*chunk));
+    chunk = mmap(NULL, sizeof(*chunk), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
+    if (chunk == MAP_FAILED) {
+        die("mmap chunk");
+    }
+    madvise(chunk, sizeof(*chunk), MADV_HUGEPAGE);
     return chunk;
 }
 
