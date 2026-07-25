@@ -364,12 +364,17 @@ static void append_fd(int fd, const char *t, const char *k, const char *v, uint8
     r.check = rec_check(&r, t, k, v ? v : "");
 
     struct statvfs st;
-    if (op != OP_DEL && !fstatvfs(fd, &st) && st.f_blocks > 0) {
+    if (op != OP_DEL && !fstatvfs(fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
+        uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
+        uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.1L);
         double avail = (double)st.f_bavail / st.f_blocks;
-        double keep = exp2(100.0 * (avail - 0.1));
+        double keep = exp2(50.0 * (avail - 0.2));
         double gate = (double)(r.check >> 11) * 0x1.0p-53;
-        if (avail < 0.1 && gate > keep) {
+        if (free_bytes < reserve_bytes + r.len) {
             diex("disk reserve below 10 percent");
+        }
+        if (avail < 0.2 && gate > keep) {
+            diex("disk pressure decay rejected write");
         }
     }
 
