@@ -1,0 +1,687 @@
+🌓︎
+Base64 encoding with SIMD instructions
+Author:	Wojciech Muła
+Added on:	2016-01-12
+Last update:	2017-01-25 (spelling)
+Contents
+
+Introduction
+Algorithm outline
+Loading data
+SSE version
+AVX2 version
+SSE assisted load
+AVX2 load
+Splitting bytes
+Naive SIMD algorithm
+Improved SIMD algorithm
+XOP version
+BMI2 version (with SSE code)
+Branchless code for lookup table
+Naive version
+Improved version
+Improved version using logic instructions
+SSE & AVX2 versions
+pshufb-based lookup method
+Single pshufb method
+XOP variant
+Sample code
+Experiments
+Core i5 results (Westmere)
+Core i7 results (Haswell)
+Core i7 results (Skylake)
+AMD Bulldozer
+See also
+Changelog
+Introduction
+I had supposed that SIMD-ization of a base64 encoder is not worth to bother with, and I was wrong. When compared to scalar code, an SSE code is 2 times faster on Core i5 (Westmere), and around 2.5 times faster on Core i7 (Haswell & Skylake). An AVX2 code is 3.5 times faster on Core i7 (Skylake).
+
+2016-12-18 note: in the initial version of this text I wrongly assumed order of input words, Alfred Klomp noted that the standard imposes a specific order. Today's change fixes this error.
+
+Algorithm outline
+In each step 12 (24 for AVX2) bytes are loaded.
+These bytes are transformed into 16 (32 for AVX2) 6-bit indices, each saved on a separate byte.
+Then these bytes are translated in parallel to proper ASCII codes, according to the base64 lookup table.
+So, the first problem is loading data. The next problem is splitting input bytes into these 6-bit indices. This can be done quite fast using a naive approach. But also it's a place for the new Bit Manipulation Instruction pdep instruction.
+
+The major problem with base64 encoding is the translation of 6-bit indices into ASCII characters. Normally it's done with a lookup table. In SIMD approach the lookup table have to be expressed as a program.
+
+Loading data
+The input 12 bytes have to be split into three-byte groups located into individual 32-bit words. These 4-byte words are processed in later steps.
+
+input  = [????|WWWZ|ZZYY|YXXX]
+output = [0WWW|0ZZZ|0YYY|0XXX]
+The Base64 standard sets order of bytes in group and also order of 6-bit words within a group to the big-endian order. Words are stored starting from the least significant a, b, c and d.
+
+[aaaa_aabb|bbbb_cccc|ccdd_dddd]
+  byte 0     byte 1    byte 2
+On a little-endian CPU we got following layout:
+
+[ccdd_dddd|bbbb_cccc|aaaa_aabb]
+  byte 2     byte 1    byte 0
+SSE version
+Load 12-bytes, containing four 3-byte groups (X, Y, Z, W) — a simple load:
+// packed_byte([xxxx|WWWZ|ZZYY|YXXX])
+input = load(ptr)
+Move 3-byte groups into separate 32-bit lanes. This is done with one pshufb:
+// packed_byte([WWWW|ZZZZ|YYYY|XXXX])
+input = pshufb(input, magic_constant)
+Each 32-bit lane contains four 6-bit indices: aaaaaa, BBbbbb, ccccCC and ddddd. The order of bytes is 1, 0, 2, 1, to make unpacking easier:
+
+[bbbbcccc|CCdddddd|aaaaaaBB|bbbbcccc]
+AVX2 version
+Unfortunately, a direct translation of the SSE version is not possible. The reason is that the AVX2 version of pshufb works on 128-bit lanes rather the whole register. Also it is not possible to perform byte-wide shifts of AVX2 registers in order to move bytes across lanes.
+
+Two solutions are possible to overcome that limitations. Although performance tests on Core i7 (Skylake) didn't show any significant differences, I think both solutions are worth to describe.
+
+SSE assisted load
+1a. Perform two loads into XMM registers:
+
+// lo = [xxxx|DDDC|CCBB|BAAA]
+// hi = [xxxx|HHHG|GGFF|FEEE]
+const __m128i lo = _mm_loadu_si128(reinterpret_cast<const __m128i*>(input + i));
+const __m128i hi = _mm_loadu_si128(reinterpret_cast<const __m128i*>(input + i + 4*3));
+1b. Create an YMM vector from vectors lo and hi. (intrinsic _mm256_set_m128i is translated into single instruction vinsertf128):
+
+// joined = [xxxx|HHHG|GGFF|FEEE|xxxx|DDDC|CCBB|BAAA]
+const __m256i joined = _mm256_set_m128i(hi, lo);
+1c. Shuffle lower and higher lanes:
+
+// in = [HHHH|GGGG|FFFF|EEEE[DDDD|CCCC|BBBB|AAAA]
+const __m256i in = _mm256_shuffle_epi8(joined, shuf);
+AVX2 load
+1a. Perform single load into a YMM register. Obvious drawback of this approach is reading 4 bytes off the input buffer:
+
+// data = [????|HHHG|GGFF|FEEE|DDDC|CCBB|BAAA|????]
+//            128-bit lane    |   128-bit lane
+const __m256i data = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(input + i - 4));
+1b. Shuffle data in 128-bit lanes:
+
+// in = [HHHH|GGGG|FFFF|EEEE|DDDD|CCCC|BBBB|AAAA]
+const __m256i in = _mm256_shuffle_epi8(data, shuf);
+Splitting bytes
+Note: as SIMD algorithms presented below use simple bit-level instructions, they can be expressed using both SSE and AVX2 instructions. Examples use SSE instructions.
+
+Input to this step are 32-bit words, each having following layout:
+
+[bbbbcccc|CCdddddd|aaaaaaBB|bbbbcccc]
+where bits aaaaaa, BBbbbb, ccccCC and dddddd are 6-bit indices. The output of this step has to be:
+
+[00dddddd|00ccccCC|00BBbbbb|00aaaaaa]
+Naive SIMD algorithm
+Following naive algorithm could be used.
+
+Move each index into a separate byte:
+// index_a = packed_dword([00000000|00000000|00000000|00aaaaaa] x 4)
+const __m128i index_a = _mm_and_si128(_mm_srli_epi32(in, 10), packed_dword(0x0000003f));
+
+// index_a = packed_dword([00000000|00000000|00BBbbbb|00000000] x 4)
+const __m128i index_b = _mm_and_si128(_mm_slli_epi32(in, 4),  packed_dword(0x00003f00));
+
+// index_a = packed_dword([00000000|00ccccCC|00000000|00000000] x 4)
+const __m128i index_c = _mm_and_si128(_mm_srli_epi32(in, 6),  packed_dword(0x003f0000));
+
+// index_a = packed_dword([00dddddd|00000000|00000000|00000000] x 4)
+const __m128i index_d = _mm_and_si128(_mm_slli_epi32(in, 8),  packed_dword(0x3f000000));
+Merge indices:
+// indices = index_a | index_b | index_c | index_d
+// indices = packed_byte([00dddddd|00ccccCC|00BBbbbb|00aaaaaa] x 4);
+const __m128i indices = _mm_or_si128(_mm_or_si128(_mm_or_si128(index_a, index_b), index_c), index_d);
+Number of operations:
+
+bit-shift: 4,
+bit-and: 4,
+bit-or: 3.
+This code could be also easily parallelized at instruction level by a CPU. The only serious dependency is caused by pshufb, because its result is used in the next steps.
+
+Improved SIMD algorithm
+The improved algorithm expresses shifts using multiplication instructions.
+
+Left indices a and c
+// t0 = [0000cccc|CC000000|aaaaaa00|00000000]
+const __m128i t0 = _mm_and_si128(in, _mm_set1_epi32(0x0fc0fc00));
+Shift right the field c by 6, and the field a by 10. This is done by instruction PMULUH which multiplies unsigned 16-bit words and store the higher 16-bit of the result. When we multiply a value by a power of two, this is equivalent to shifting the value left. In this case the instruction is used to evaluate expression (x << amount) >> 16. When amount > 16 this is the same as x >> (16 - amount).
+// t1    = [00000000|00cccccc|00000000|00aaaaaa]
+const __m128i t1 = _mm_mulhi_epu16(t0, _mm_set1_epi32(0x04000040));
+Left indices d and b.
+// t2    = [00000000|00dddddd|000000bb|bbbb0000]
+const __m128i t2 = _mm_and_si128(in, _mm_set1_epi32(0x003f03f0));
+Shift left the field d by 8, and the field b by 4. Again a multiplication instruction is used.
+// t3    = [00dddddd|00000000|00bbbbbb|00000000](
+const __m128i t3 = _mm_mullo_epi16(t2, _mm_set1_epi32(0x01000010));
+Merge results of the previous steps:
+// res   = [00dddddd|00cccccc|00bbbbbb|00aaaaaa] = t1 | t3
+const __m128i indices = _mm_or_si128(t1, t3);
+Number of operations:
+
+multiplication: 2,
+bit-and: 2,
+bit-or: 1.
+XOP version
+AMD XOP extension provides variable shift instructions, where shift amounts are given per item. Moreover, it provides a condition move instruction, which makes merging bit-fields easy. Thanks to that we can simplify the previous procedure: multiplications are replaced by shifts and a single conditional move replace one bitwise or and bitwise and.
+
+// lane = [bbbb_cccc|ccdd_dddd|aaaa_aabb|bbbb_cccc]
+
+// t0   = [0000_00bb|bbcc_cccc|cccc_bbbb|bbaa_aaaa] -- (c >> 6, a >> 10)
+//                     ^^^^^^^             ^^^^^^^
+//                a and c are on the correct positions
+const __m128i t0 = _mm_shl_epi16(in, packed_dword(0xfffafff6));
+
+// t1   = [0000_0000|00cc_cccc|0000_0000|00aa_aaaa] -- left a and c fields
+const __m128i t1 = _mm_and_si128(t0, packed_word(0x003f));
+
+// t2   = [ccdd_dddd|0000_0000|ccbb_bbbb|aaaa_aa00] -- (d << 8, b << 4)
+//           ^^^^^^^             ^^^^^^^
+const __m128i t2 = _mm_shl_epi16(in, packed_dword(0x00080004));
+
+// t3   = [00dd_dddd|00cc_cccc|00bb_bbbb|00aa_aaaa]
+const __m128i indices = _mm_cmov_si128(t2, t1, packed_word(0x3f00));
+BMI2 version (with SSE code)
+BMI2 has introduced instruction pdep (parallel deposit), which performs in one step the points 3 and 4 of the above algorithm.
+
+The instruction pdep operates on 64-bit words, thus two invocation of the instruction are needed in order to fill an XMM register. However, the order of fields and bytes require some byte-swaps.
+
+Load 2 x 6 bytes.
+// input = [????????|????????|ccdddddd|bbbbcccc|aaaaaabb|gghhhhhh|ffffgggg|eeeeeeff]
+const uint64_t lo = *reinterpret_cast<const uint64_t*>(input);
+const uint64_t hi = *reinterpret_cast<const uint64_t*>(input + 6);
+Swap order of bytes to join bit-fields.
+// t     = [00000000|00000000|eeeeeeff|ffffgggg|gghhhhhh|aaaaaabb|bbbbcccc|ccdddddd]
+uint64_t t0 = __builtin_bswap64(lo) >> 16;
+uint64_t t1 = __builtin_bswap64(hi) >> 16;
+Expand fields using pdep.
+// exp   = [00eeeeee|00ffffff|00gggggg|00hhhhhh|00aaaaaa|00bbbbbb|00cccccc|00dddddd]
+const uint64_t expanded_lo = pdep(lo, 0x3f3f3f3f3f3f3f3flu);
+const uint64_t expanded_hi = pdep(hi, 0x3f3f3f3f3f3f3f3flu);
+
+const __m128i indices = build_vector(expanded_hi, expanded_lo);
+Build a SSE vector:
+// indices = [m n o p|i j k l|e f g h|a b c d]
+__m128i indices;
+
+indices = _mm_insert_epi64(indices, expanded_lo, 0);
+indices = _mm_insert_epi64(indices, expanded_hi, 1);
+Swap order of words withing expanded words, and then swap 32-bit words. This is done with single pshufb instruction.
+// indices = [l k j i|p o n m|d c b a|h g f e]
+indices = _mm_shuffle_epi8(indices, magic_constant);
+There are:
+
+2 loads,
+2 bswap,
+2 shifts
+2 pdep.
+1 pshufb,
+one build_vector operation.
+The last operation is not a single CPU instruction. When an intrinsic _mm_set_epi64x is used, then GCC 4.9.2 translates it into two instructions movq and movhlps (or pinsrq, depending on architecture flags). To make the things worse, these instructions read data from a temporary memory. Disaster.
+
+So in the practice I've decided to insert two pinsrq instructions. This made the code about 15% faster (on Core i7).
+
+Branchless code for lookup table
+The standard base64 lookup table is a sequence of:
+
+capital letters A-Z,
+small letters a-z,
+digits 0-9,
+character plus (+),
+character slash (/).
+Let i is a 6-bit index, then the lookup's output value could be described with following expressions. (Note: ord returns an ASCII code of a character, in C/C++ it's not needed.)
+
+i	range	expression
+0 .. 25	A-Z	i + ord('A')
+26 .. 51	a-z	i + ord('a') - 26
+52 .. 61	0-9	i + ord('0') - 52
+62	plus	i + ord('+') - 62
+63	slash	i + ord('/') - 63
+Basically the expression scheme is: i plus a constant value (which I called "shift".) Branched code implementing the table:
+
+char lookup(uint8_t i) {
+
+    assert(i < 64);
+
+    uint8_t shift;
+
+    if (i < 26) {
+        // ranage A-Z
+        shift = 'A';
+    } else if (i >= 26 && i < 52) {
+        // range a-z
+        shift = 'a' - 26;
+    } else if (i >= 52 && i < 62) {
+        // range 0-9
+        shift = '0' - 52;
+    } else if (i == 62)
+        // character plus
+        shift = '+' - 62;
+    } else if (i == 63)
+        // character slash
+        shift = '/' - 63;
+    }
+
+    return i + shift;
+}
+Naive version
+In a branchless version instead of if-statements masks are needed. Please note that building masks for ranges a-z and 0-9 requires two comparisons. However, in both exists a condition (respectively i >= 26 and i >= 52) which is simply a negation of already calculated mask.
+
+SSE provides an instruction pandn(a, b) which calculates bit-wise and with a negated argument a, thus no explicit negation is required.
+
+Armed with above observations, a following branchless code is possible.
+
+// functions cmp & andnot work on masks.
+char lookup_naive(uint8_t i) {
+
+    const uint8_t less_26 = cmp(i < 26);
+    const uint8_t less_52 = cmp(i < 52);
+    const uint8_t less_62 = cmp(i < 62);
+    const uint8_t equal_62 = cmp(i == 62);
+    const uint8_t equal_63 = cmp(i == 63);
+
+    const uint8_t range_AZ = 'A' & less_26;
+    const uint8_t range_az = ('a' - 26) & andnot(less_26, less_52);
+    const uint8_t range_09 = ('0' - 52) & andnot(less_52, less_62);
+    const uint8_t char_plus  = ('+' - 62) & equal_62;
+    const uint8_t char_slash = ('/' - 63) & equal_63;
+
+    const uint8_t shift = range_AZ | range_az | range_09 | char_plus | char_slash;
+
+    return shift + i;
+}
+Number of instructions:
+
+comparison: 5,
+bit-and: 5,
+bit-andnot: 2,
+bit-or: 4,
+add: 1.
+In total 17 simple instruction. Thus for 16-element SSE vector we have exactly 1.0625 instructions per item.
+
+Many instructions in the function are independent (for example these calculating mask, calculating individual shifts), thanks to that a super-scalar CPU will have an opportunity to parallelize the code.
+
+Improved version
+An improved calculation method gradually adjusts the shift value as it check how large the index value is. Initially the algorithm assumes that the index is in range 0..25 (A-Z), thus shift is ord('A'). Then it checks if index is larger than 25, and assumes that the is 26..51 (a-z). Then shift is adjusted by value ord('a') - ord('A') = 6. And this continue for the rest index's ranges.
+
+Sometimes an adjustment value is less than zero, but it's not a problem because the modulo arithmetic is used.
+
+Following code implements the idea:
+
+char lookup_version2(uint8_t i) {
+
+    uint8_t shift = 'A';
+
+    shift += cmp(i >= 26) & 6;
+    shift -= cmp(i >= 52) & 75;
+    shift += cmp(i == 62) & 241;
+    shift -= cmp(i == 63) & 12;
+
+    return shift + i;
+}
+Slightly different approach is SWAR friendly, as all constants are less than 128:
+
+char lookup_version2_swar(uint8_t i) {
+
+    uint8_t shift = 'A';
+
+    shift += cmp(i >= 26) & 6;
+    shift -= cmp(i >= 52) & 75;
+    shift -= cmp(i >= 62) & 15;
+    shift += cmp(i >= 63) & 3;
+
+    return shift + i;
+}
+Number of instructions in the both variants:
+
+comparison: 4,
+bit-and: 4,
+bit-andnot: 0,
+bit-or: 0,
+add/sub: 5.
+In total 13 simple instruction. Thus for 16-element SSE vector it is exactly 0.8125 instructions per item — less than one instruction.
+
+Like the naive version, this one has a nice instruction-level parallelism property.
+
+Improved version using logic instructions
+This method uses the same pattern as the previous one, with one exception: binary xor is used to update the shift value. Of course the constants are different:
+
+uint8_t lookup_version3(uint8_t i):
+
+    uint8_t shift = ord('A');
+
+    shift ^= cmp(i >= 26) & 6;
+    shift ^= cmp(i >= 52) & 187;
+    shift ^= cmp(i >= 62) & 17;
+    shift ^= cmp(i >= 63) & 29;
+
+    return shift + i;
+The small drawback of the method is using a 8-bit constant, thus a SWAR algorithm can't be easily used.
+
+Properties of the method are not different from properties of the previous method. However, thanks to using binary operations this method is suitable for the AVX512 ternary logic instruction.
+
+SSE & AVX2 versions
+All branchless algorithms can be easily translated one-to-one into SSE or AVX2 code, as they use only basic bit and arithmetic instructions.
+
+pshufb-based lookup method
+This method is completely different from the methods described above, the algorithm relies on pshufb instruction. Basically it is a two-level lookup translating 6-bit values into shifts used to calculate the final ASCII codes.
+
+A 6-bit input value is split into two parts. A 4-bit subword is used as an index to the first pshufb, which produces a 2-bit value. This 2-bit value is combined with remaining 2 bits of the input value, forming the new 4-bit index. And this new index is issued to pshufb giving a shift value. And finally sum of the shift and the input value gives ASCII code.
+
+A scalar procedure:
+
+uint8_t lookup(const uint8_t input) {
+
+    const uint8_t index1       = get_first_index(input);
+
+    const uint8_t row_number   = lookup1[index1];               // 2 higher bits
+    const uint8_t index2       = get_second_index(input);       // 2 lower bits
+
+    const uint8_t shift_index  = (row_number << 2) | index2;
+    const uint8_t shift        = lookup2[shift_index];
+
+    return input + shift;
+}
+The crucial element of the algorithm is choice which bits of input form index1 and index2. I used brute-force to find the answer, a Python script which does the job is available in a repository, see Sample code. The first index are bits 1..4, and bits 0 and 5 form the second index.
+
+uint8_t get_first_index(const uint8_t input) {
+
+    return (input & 0x1e) >> 1;
+}
+
+uint8_t get_second_index_part(const uint8_t input) {
+
+    return ((input & 0x20) >> 3) | (input & 0x1);
+}
+Lookup table:
+
+index1	index2
+0	1	2	3
+0	65	65	71	71
+1	65	65	71	71
+2	65	65	71	71
+3	65	65	71	71
+4	65	65	71	71
+5	65	65	71	71
+6	65	65	71	71
+7	65	65	71	71
+8	65	65	71	71
+9	65	65	71	71
+10	65	65	-4	-4
+11	65	65	-4	-4
+12	65	65	-4	-4
+13	71	71	-4	-4
+14	71	71	-4	-4
+15	71	71	-19	-16
+There are four different rows in the table:
+
+index1 range	index2	row number
+0	1	2	3
+0 .. 9	65	65	71	71	0
+10 .. 12	65	65	-4	-4	1
+13 .. 14	71	71	-4	-4	2
+15	71	71	-19	-16	3
+So, the first lookup translates from index1 to a row number (0..3), and then index2 selects item in the row.
+
+SSE procedure:
+
+__m128i lookup_pshufb(const __m128i input) {
+
+    const __m128i row_LUT = _mm_setr_epi8(
+        /*  0 ..  9 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        /* 10 .. 12 */ 4*1, 4*1, 4*1,
+        /* 13 .. 14 */ 4*2, 4*2,
+        /*       15 */ 4*3
+    );
+
+    // input (byte): [00abcdef]
+    //     bits_1_4: [000bcde0]
+    //   bit_0_and5: [00a0000f]
+    const __m128i bits_1_4    = input & packed_byte(0x1e);
+    const __m128i bit_0_and_5 = input ^ bits_1_4;
+
+    //       index1: [0000bcde]
+    const __m128i index1 = _mm_srli_epi16(bits_1_4, 1);
+
+    // note: row_number is already shifted left
+    const __m128i row_number = _mm_shuffle_epi8(row_LUT, index1);
+
+    //       index2: [000000af]
+    const __m128i index2 = bit_0_and_5 | (_mm_srli_epi16(bit_0_and_5, 4));
+
+    //       index2: [0000XYaf] -- bits X, Y come from row_LUT
+    const __m128i shift_index = row_number | index2;
+
+    const __m128i shift_LUT = _mm_setr_epi8(
+        /* 0 */ 65, 65,  71,  71,
+        /* 1 */ 65, 65,  -4,  -4,
+        /* 2 */ 71, 71,  -4,  -4,
+        /* 3 */ 71, 71, -19, -16
+    );
+
+    const __m128i shift = _mm_shuffle_epi8(shift_LUT, shift_index);
+
+    return _mm_add_epi8(input, shift);
+}
+Number of instructions:
+
+comparison: 0,
+bit-and: 1,
+bit-andnot: 0,
+bit-or: 2,
+bit-xor: 1,
+shift: 2,
+add/sub: 1,
+pshufb: 2.
+In total 11 instructions, it's 0.6875 instruction per item.
+
+Unfortunately, building both index1 and index2 require some effort, which slows down the procedure. In result speed up is minimal.
+
+Single pshufb method
+The method uses only one pshufb instruction. The main idea is to reduce input's range, and then use pshufb to select a proper shift.
+
+The first step of reduction is done with saturated subtract, which compresses values 0..52 (mapped to letters A-Z and a-z) into single value 0. Then one comparison is used to distinguish between input 0..25 (A-Z) and 26..51 (a-z).
+
+i	reduced	shift
+0 .. 25	0	ord('A')
+52 .. 61	1 .. 10	i + ord('0') - 52
+62	11	i + ord('+') - 62
+63	12	i + ord('/') - 63
+26 .. 51	13	ord('a') - 26
+The last step is single invocation of pshufb, which translates from reduced value into shift.
+
+SSE procedure:
+
+__m128i lookup_pshufb_improved(const __m128i input) {
+
+    // reduce  0..51 -> 0
+    //        52..61 -> 1 .. 10
+    //            62 -> 11
+    //            63 -> 12
+    __m128i result = _mm_subs_epu8(input, packed_byte(51));
+
+    // distinguish between ranges 0..25 and 26..51:
+    //         0 .. 25 -> remains 0
+    //        26 .. 51 -> becomes 13
+    const __m128i less = _mm_cmpgt_epi8(packed_byte(26), input);
+    result = _mm_or_si128(result, _mm_and_si128(less, packed_byte(13)));
+
+    const __m128i shift_LUT = _mm_setr_epi8(
+        'a' - 26, '0' - 52, '0' - 52, '0' - 52, '0' - 52, '0' - 52,
+        '0' - 52, '0' - 52, '0' - 52, '0' - 52, '0' - 52, '+' - 62,
+        '/' - 63, 'A', 0, 0
+    );
+
+    // read shift
+    result = _mm_shuffle_epi8(shift_LUT, result);
+
+    return _mm_add_epi8(result, input);
+}
+Number of instructions:
+
+comparison: 1,
+bit-and: 1,
+bit-andnot: 0,
+bit-or: 1,
+add/sub: 2,
+pshufb: 1.
+In total 6 instructions, it's 0.375 instruction per item.
+
+XOP variant
+AMD XOP has got an extended pshufb, the instruction vpermb which accepts 5-bit indices. Aside of doing regular lookup it can perform seven different operations selected by three highest bits of the index (encoding doesn't need any of them.)
+
+We use the fact that the differences between adjacent ASCII codes used by base64 are 1; except difference between code of chars '+' and '/' which is 4. We get five higher bits of an 6-bit value and use it to translate directly into ASCII. A lookup table contains a half of letters from base64 lookup, picked from even indices: "ACEGIKMOQSUWYacegikmoqsuwy02468+".
+
+After translation, the least significant bit of input is added to the code, yielding correct code for "odd" items. The special care is needed for input values equal to 63, as the fix-up value is 4.
+
+__m128i lookup(const __m128i input) {
+
+    const __m128i base64_lo = _mm_setr_epi8(
+        'A', 'C', 'E', 'G', 'I', 'K', 'M', 'O',
+        'Q', 'S', 'U', 'W', 'Y', 'a', 'c', 'e'
+    );
+
+    const __m128i base64_hi = _mm_setr_epi8(
+        'g', 'i', 'k', 'm', 'o', 'q', 's', 'u',
+        'w', 'y', '0', '2', '4', '6', '8', '+'
+    );
+
+    // input   = packed_byte(00ab_cdef)
+    // bits15  = packed_byte(000a_bcde) -- five highest bits
+    const __m128i bits15 = _mm_shl_epi8(input, packed_byte(-1));
+
+    // bit0    = packed_byte(0000_000f) -- the LSB
+    const __m128i bit0   = _mm_and_si128(input, packed_byte(0x01));
+
+    // t0      = bits 5:1 translated into ASCII codes
+    const __m128i t0     = _mm_perm_epi8(base64_lo, base64_hi, bits15);
+
+    // t1      = the codes adjusted by 0th bit
+    const __m128i t1     = _mm_add_epi8(t0, bit0);
+
+    // t3      = special fix-up for input == 63
+    const __m128i t3     = _mm_and_si128(_mm_cmpeq_epi8(input, packed_byte(63)), packed_byte(3));
+
+    return _mm_add_epi8(t1, t3);
+}
+Sample code
+The sample code is available at github, there are three programs:
+
+verify — verifies branchless procedures calculating the lookup table, both scalar and SIMD versions;
+check — checks if base64 encoders using different lookup procedures and splitting bytes methods work correctly;
+speed — allows to measure speed of all or selected base64 encoder; it encodes 192 MiB of artificial data 10 times, and then print the smallest measurement.
+Important note: programs use three variants of SIMD-ized lookups:
+
+naive — naive version from this text;
+improved — improved version from this text;
+pshufb — pshufb-based from this text;
+pshufb improved — pshufb improved from this text;
+other improved — branchless method not described here; it is slower than version the improved version on Core i5. This method is not included in the experiments' results.
+Experiments
+The program speed was compiled with GCC and was run 5 times. The minimum times were noted.
+
+Core i5 results (Westmere)
+The CPU architecture: Westmere i5 M540 @ 2.53GHz
+
+GCC: 6.2.0 (Debian)
+
+procedure	time [s]	speedup	 
+scalar (64 bit)	0.19397	1.00	██████████
+SWAR (64 bit)	0.32158	0.60	██████
+SSE (lookup: naive)	0.09459	2.05	████████████████████▌
+SSE (lookup: other improved)	0.09102	2.13	█████████████████████▎
+SSE (lookup: improved)	0.08718	2.22	██████████████████████▏
+SSE (lookup: pshufb-based)	0.08756	2.22	██████████████████████▏
+SSE (lookup: pshufb improved)	0.08383	2.31	███████████████████████▏
+SSE (lookup: other improved, unrolled)	0.08532	2.27	██████████████████████▋
+SSE (lookup: improved, unrolled)	0.08469	2.29	██████████████████████▉
+SSE (lookup: pshufb-based, unrolled)	0.08329	2.33	███████████████████████▎
+SSE (lookup: pshufb improved unrolled)	0.08276	2.34	███████████████████████▍
+SSE (fully unrolled improved lookup)	0.08416	2.30	███████████████████████
+Core i7 results (Haswell)
+The CPU architecture: Haswell i7-4770 CPU @ 3.40GHz.
+
+GCC: 5.3.0 (Ubuntu)
+
+procedure	time [s]	speedup	 
+scalar (64 bit)	0.12198	1.00	██████████
+SWAR (64 bit)	0.16465	0.74	███████▍
+SSE (lookup: naive)	0.05572	2.19	█████████████████████▉
+SSE (lookup: other improved)	0.04953	2.46	████████████████████████▋
+SSE (lookup: improved)	0.04658	2.62	██████████████████████████▏
+SSE (lookup: pshufb-based)	0.03786	3.22	████████████████████████████████▏
+SSE (lookup: pshufb improved)	0.03534	3.45	██████████████████████████████████▌
+SSE (lookup: other improved, unrolled)	0.04428	2.75	███████████████████████████▌
+SSE (lookup: improved, unrolled)	0.04471	2.73	███████████████████████████▎
+SSE (lookup: pshufb-based, unrolled)	0.03869	3.15	███████████████████████████████▌
+SSE (lookup: pshufb improved unrolled)	0.03492	3.49	██████████████████████████████████▉
+SSE (fully unrolled improved lookup)	0.04503	2.71	███████████████████████████
+SSE & BMI2 (lookup: naive)	0.05265	2.32	███████████████████████▏
+SSE & BMI2 (lookup: improved)	0.04924	2.48	████████████████████████▊
+SSE & BMI2 (lookup: pshufb improved)	0.03831	3.18	███████████████████████████████▊
+AVX2 (lookup: improved)	0.03499	3.49	██████████████████████████████████▊
+AVX2 (lookup: improved, unrolled)	0.03488	3.50	██████████████████████████████████▉
+AVX2 (lookup: pshufb-based)	0.03465	3.52	███████████████████████████████████▏
+AVX2 (lookup: pshufb-based, unrolled)	0.03474	3.51	███████████████████████████████████
+AVX2 (lookup: pshufb improved)	0.03469	3.52	███████████████████████████████████▏
+AVX2 (lookup: pshufb unrolled improved)	0.03481	3.50	███████████████████████████████████
+AVX2 & BMI (lookup: pshufb improved)	0.04811	2.54	█████████████████████████▎
+Core i7 results (Skylake)
+The CPU architecture: Skylake i7-6700 CPU @ 3.40GHz
+
+GCC: 5.3.0 (Ubuntu)
+
+procedure	time [s]	speedup	 
+scalar (64 bit)	0.12016	1.00	██████████
+SWAR (64 bit)	0.15264	0.79	███████▊
+SSE (lookup: naive)	0.05067	2.37	███████████████████████▋
+SSE (lookup: other improved)	0.04458	2.70	██████████████████████████▉
+SSE (lookup: improved)	0.04214	2.85	████████████████████████████▌
+SSE (lookup: pshufb-based)	0.03481	3.45	██████████████████████████████████▌
+SSE (lookup: pshufb improved)	0.03043	3.95	███████████████████████████████████████▍
+SSE (lookup: other improved, unrolled)	0.04717	2.55	█████████████████████████▍
+SSE (lookup: improved, unrolled)	0.04502	2.67	██████████████████████████▋
+SSE (lookup: pshufb-based, unrolled)	0.03360	3.58	███████████████████████████████████▊
+SSE (lookup: pshufb improved unrolled)	0.02947	4.08	████████████████████████████████████████▊
+SSE (fully unrolled improved lookup)	0.04621	2.60	██████████████████████████
+SSE & BMI2 (lookup: naive)	0.05092	2.36	███████████████████████▌
+SSE & BMI2 (lookup: improved)	0.04854	2.48	████████████████████████▊
+SSE & BMI2 (lookup: pshufb improved)	0.03665	3.28	████████████████████████████████▊
+AVX2 (lookup: improved)	0.02913	4.12	█████████████████████████████████████████▏
+AVX2 (lookup: improved, unrolled)	0.02870	4.19	█████████████████████████████████████████▊
+AVX2 (lookup: pshufb-based)	0.02790	4.31	███████████████████████████████████████████
+AVX2 (lookup: pshufb-based, unrolled)	0.02772	4.33	███████████████████████████████████████████▎
+AVX2 (lookup: pshufb improved)	0.02744	4.38	███████████████████████████████████████████▊
+AVX2 (lookup: pshufb unrolled improved)	0.02733	4.40	███████████████████████████████████████████▉
+AVX2 & BMI (lookup: pshufb improved)	0.04339	2.77	███████████████████████████▋
+AMD Bulldozer
+The CPU architecture: Bulldozer FX-8150 CPU
+
+GCC: 4.8.4 (Ubuntu)
+
+procedure	time [s]	speedup	 
+scalar (64 bit)	0.21362	1.00	██████████
+SWAR (64 bit)	0.37459	0.57	█████▋
+SSE (lookup: naive)	0.07649	2.79	███████████████████████████▉
+SSE (lookup: other improved)	0.06856	3.12	███████████████████████████████▏
+SSE (lookup: improved)	0.06641	3.22	████████████████████████████████▏
+SSE (lookup: pshufb-based)	0.06082	3.51	███████████████████████████████████
+SSE (lookup: pshufb improved)	0.05934	3.60	███████████████████████████████████▉
+SSE (lookup: other improved, unrolled)	0.06314	3.38	█████████████████████████████████▊
+SSE (lookup: improved, unrolled)	0.06381	3.35	█████████████████████████████████▍
+SSE (lookup: pshufb-based, unrolled)	0.06607	3.23	████████████████████████████████▎
+SSE (lookup: pshufb improved unrolled)	0.06371	3.35	█████████████████████████████████▌
+SSE (fully unrolled improved lookup)	0.06410	3.33	█████████████████████████████████▎
+XOP (vpermb)	0.06014	3.55	███████████████████████████████████▌
+XOP (pshufb improved)	0.05929	3.60	████████████████████████████████████
+See also
+Base64 decoding with SIMD instructions — decoding could also be boosted
+Base64 encoding — implementation study — different scalar method to split 3-byte groups to four 6-bit indices.
+Fast Base64 encoding/decoding with SSE vectorization by Alfred Klomp
+Discussion on Hackers News
+C library base64 by Alfred Klomp — multiplatform, small and well tested lib; Alfred has employed techniques described here.
+Changelog
+2016-12-31 — add description of XOP pack and lookup procedures
+2016-12-18 — align order of input words with the base64 spec
+2016-12-14 — added results from AMD Bulldozer
+2016-10-30 — syntax highlighting, wording
+2016-09-02 — new pshufb-based lookup, other approaches of the improved lookup, updated results
+2016-04-01 — new vector lookup method, updated results
+2016-03-17 — improved splitting bytes in SIMD, text reorganization, update experiment results including unrolled procedures
+2016-03-11 — AVX2 implementation, results from Core i7 (Skylake)
+2016-01-25 — minor fixes

@@ -1,0 +1,71 @@
+
+	
+An implementation of Conway's Game of Life
+This page is about Tony Finch's implementation of Conway's Game of Life. If you're looking for background information or interesting patterns then see elsewhere. The description below includes a number of links into a cvsweb view of the code's history.
+
+List Life
+I spent a fair amount of time when at school playing with various implementations of Life, all of them based around a 2D array of cell states. None of them were very fast - I didn't even use clever techniques like the parallel bitwise adder that I'll explain below.
+
+Some time during my Gap Year in 1994 I came across a new approach to implementing life that surprised me by its swiftness. The universe is represented as an array of the co-ordinates of the live cells in scan-line order. This is scanned by three pointers, for the current row and the rows above and below. The neighbourhood of the current cell is determined by examining the co-ordinates at and before and after each pointer, and if appropriate the co-ordinates of a live cell are written to the destination array. This algorithm makes it easy to skip past empty space, which is what makes it fast.
+
+When I implemented this algorithm in June 1994, I added a couple of optimisations:
+
+One co-ordinate per cell. Instead of storing the Y co-ordinate for every cell in a row, store it once at the start of the row and only store the X co-ordinate of each cell in the row. In order to distinguish between X and Y co-ordinates, give them opposite signs, e.g. all X co-ordinates are positive and all Y co-ordinates are negative. By careful choice of the order of cells within a row, the Y co-ordinate at the start of the next row can act as a sentinel to simplify checking for the end of the row.
+Represent the neighbourhood as a bitmap. A 3x3 bitmap easily fits into a register, and can act as an index into a 512 byte lookup table for quickly working out if the cell is live or dead in the next generation. A bit is set in the bitmap when the co-ordinate at a pointer is one ahead of the current co-ordinate; the pointer can then be stepped because that co-ordinate doesn't need to be examined again. If the bitmap is arranged with the forward cells in bits 6-8, the middle cells in bits 3-5, and the rear cells in bits 0-2, then when you step on to the next cell you just shift the bitmap down three bits. This removes the cells you are no longer interested in and makes space for the bits you are about to set, without requiring a mask. When the bitmap is empty it is time to skip over empty space.
+A more recent (and cleaner) implementation of this algorithm can be found here: life.c 1.8.
+One of the interesting parts of the algorithm is working out at the start of each row which of this row and the rows above and below contain live cells, and are therefore present in the array and should be scanned. Empty rows cause the pointers to catch up with each other since there are no co-ordinates in the array to keep them apart. The old implementation made the decision by keeping track of the current Y co-ordinate. It turns out that this isn't necessary - the current Y co-ordinate can be worked out from the relative positions of the three scanning pointers. You can see this in life.c 1.4.
+
+Parallel lookup tables
+The algorithm in the previous section is serial - it handles one cell at a time. In order to make it faster it needs some parallelism. I provided for this by augmenting the data structure so that each X co-ordinate is folloed by a linear bitmap of the cells at that position.
+
+Keeping the single shift register containing the neighbourhood bitmap means a 32 bit machine only has space for 4 cells at each position. The neighbouhood bitmap needs 3x4 bits for the forward cells, 3x4 bits for the middle cells, and 3 bits for the rear cells. (The other 3x3 bits of the rear bitmaps aren't needed after we have moved on.) This is 27 bits, 18 of which form an index into a 256K lookup table containing the 4 bit state in the next generation. As the neighbourhood bitmap gets bigger the lookup table becomes awkwardly large.
+
+Instead, I split the neighbourhood bitmap into three shift registers, for the current row and the rows above and below. The next generation's bitmap is then computed in two stages: calculate in the neighbourhood counts for the cells by adding together the result of three table lookups (one for each row); then do a table lookup to turn the neighbourhood counts into the result bitmap (actually more than one lookup to control the table size). On a 32 bit machine this allows 8 way parallelism, because the neighbourhood counts require 4 bits each. The first stage uses two 4K lookup tables, one for the current row and one for the rows above and below, each containing 1024 entries of 32 bits. These tables are similar to the ones used by XLife, apart from a trick: we add 7 to represent a live current cell instead of 9, in order to fit the count into 4 bits. This works because a live cell with 0 or 1 neigbours is dead in the next generation, as is a dead cell with 7 or 8 neighbours. (XLife doesn't add anything for a live current cell.) You can see an implementation of this scheme in life.c 1.13.
+
+Parallel bit-plane addition
+Eight-way parallelism is a bit stingy. The three shift registers actually have space for 15 cell bitmaps (forward bitmap plus middle bitmap plus one bit from the rear bitmap). However lookup tables become impractical. An alternative way of counting the neighbours of many cells in parallel is required.
+
+This is based on using bitwise boolean operators to implement a parallel adder, so that one register is used to hold bit 0 of 32 neighbour counts and another contains bit 1 of 32 counts, and another contains bit 2. The program can apply the boolean formula for a full adder to three bitmaps to get two words containing bit 0 and bit 1 of the neighbourhood count. More full and half adders combine to produce the final sum, as can be seen in life.c 1.15. The final part of the computation uses a couple of tricks. It doesn't bother computing bit 3 of the neighbour sum (which is only set when there are eight neighbours); instead it ends up with two different bit 2 registers. If either of them is set the neighbour count is too large and the cell is dead in the next generation. The other trick is to OR state of the cells under consideration into the neighbourhood count to simplify the rules. Cells only exist in the next generation if the count is three, because 0 OR 3 == 3 and 1 OR 3 == 3 and 1 OR 2 == 3. This technique was described in an article by Mark Niemiec in the January 1979 issue of BYTE magazine.
+
+One problem with this version is that 15 cell bitmaps are an inconvenient size, e.g. if you want to stuff them into image data for display purposes. It's also not using all the available parallelism and wasting memory. These problems can be fixed by replacing the three shift registers with nine registers, three for the forward, middle, and rear bitmaps in each of the three rows under consideration. Stepping along then becomes moving bitmaps from one trio of variables to another instead of shifting, and a bit more work is required to obtain the forward and rear bitmaps. This code is in life.c 1.23. I also started moving things out into a header file: life.h.
+
+Nine registers for bitmaps is quite a lot, however it can be reduced to six registers if the two bit sum for the rear bits is computed before the forward bitmaps are loaded - once the rear sum has been calculated the rear bitmaps are no longer needed. This leads to an optimised re-arrangement of the inner loop, as can be seen in the latest life.c. This version of the code also includes a hook for updating a display of the pattern as cells change (which should be inlined for speed).
+
+Life in Action
+When line puffers were discovered, Bill Gosper enthused:
+
+This line puffer is a fantastic, endless mural. When the technology is cheap enough, it would make a great museum hallway, (wall or floor), a few hundred cells high and a few thousand long, drifting back at about walking speed.
+This inspired me to write a program to display a line puffer in this manner, powered by my life algorithm. The line puffer remains static at the bottom of the screen, giving off a plume of smoke that rises up at c/2. You could use a data projector to get a Gosperian mural.
+The initialization and display code can be found in lifesmoke.c, various utility functions in lifeutil.c, and a few pattern definitions in lifeforms.c.
+
+Comparison with XLife
+XLife is based on a cellbox structure which contains an 8x8 bitmap of cell states, an 8x8 x 4 bit array of neighbour counts, X and Y co-ordinates, link pointers for the list of all cells and for a hash chain used to locate cellboxes by co-ordinate, and pointers to the four orthogonally adjacent cellboxes. All in all this is 12 bits per cell on a 32 bit machine, and 24 bits per cell on a 64 bit machine (although that could be reduced to 16 bits per cell if the types were fixed).
+
+My Life is based on cell groups comprising a co-ordinate and a bitmap of cells, which is two bits per cell independent of the word size of the machine. When the double buffering is taken into account the actual memory requirement is four bits per cell. However a load of unused memory must be kept in reserve to allow for the fact that the pattern may grow by up to three times in size in one generation.
+
+Aside: A pure parallel bitwise adder implementation (such as I alluded to in the first paragraph) using a double-buffered bitmap requires two bits per cell. This can be reduced to one bit per cell by using a circular buffer that the Life grid shifts through at one scan line per generation. However this algorithm requires that the computer examines lots of empty space.
+XLife's parallelism is at most 8-way.
+
+My Life's parallelism is 32-way on 32 bit machines and it scales up with the machine's word size.
+
+XLife's memory access pattern is fairly random, because it scans the universe by following the linked list and adjacency pointers, and it uses some large lookup tables. It requires two scans over the universe to compute a new generation.
+
+My Life does one linear scan of the universe when computing a new generation, so its locality is very good.
+
+XLife has a GUI.
+
+My Life does not (yet!), though it appears to be about three times faster.
+
+Perfromance numbers: My life program does about 90 million cells per second on my 500MHz Pentium III (excluding the code to get the display onto the screen). That's 5.5 clock cycles per cell, or 175 per group of 32 cells.
+
+Other Life
+Chapters 17 and 18 of Michael Abrash's Graphics Programming Black Book contains some discussion of optimising Life, though it's a bit noddy from the life perspective. Some of the ideas are inetesting, though.
+
+You can implement Life on your graphics card using the accelerated rendering hardware. Simon Green's OpenGL Life does 16 million cell updates per second on an NVidia GeForce2 Ultra. NVidia's Game of Life uses the pixel shading hardware to reduce the number of passes that are required, to acheive 72 million cells per second.
+
+Alan Hensel's Life Applet uses a similar strategy to XLife, though it has cleverer lookup tables and avoids recomputing still life.
+
+If you want a really efficient implementation of life that avoids recomputation to the maximum extent possible, you want Bill Gosper's brilliant Hash Life. See Tomas Rokicki's hlife for a readable implementation of this algorithm, or David Bell's page for a purer implementation of the idea.
+
+Tony Finch is <dot@dotat.at>
+$dotat: life/life.html,v 1.20 2003/12/17 21:19:25 fanf2 Exp $

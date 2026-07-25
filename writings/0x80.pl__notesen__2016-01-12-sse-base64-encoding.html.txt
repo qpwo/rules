@@ -1,3 +1,0 @@
-goto err: Page.goto: SSL_ERROR_BAD_CERT_DOMAIN
-Call log:
-  - navigating to "https://0x80.pl/notesen/2016-01-12-sse-base64-encoding.html", waiting until "domcontentloaded"

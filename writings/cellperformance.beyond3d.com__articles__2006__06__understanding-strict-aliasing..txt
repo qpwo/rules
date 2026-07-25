@@ -1,3 +1,0 @@
-goto err: Page.goto: SEC_ERROR_UNKNOWN_ISSUER
-Call log:
-  - navigating to "https://cellperformance.beyond3d.com/articles/2006/06/understanding-strict-aliasing.html", waiting until "domcontentloaded"

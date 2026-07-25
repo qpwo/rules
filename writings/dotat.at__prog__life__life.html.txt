@@ -1,3 +1,0 @@
-goto err: Page.goto: Timeout 8000ms exceeded.
-Call log:
-  - navigating to "https://dotat.at/prog/life/life.html", waiting until "domcontentloaded"

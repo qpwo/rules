@@ -1,0 +1,233 @@
+#!/usr/bin/env python3
+"""cdpturn - CDP browser turn helper. Logs fulltext, inputs, links, network req+res, screenshots, gemma descriptions.
+Usage: ./cdpturn [URL] [ACTIONS_JSON_FILE]
+Actions JSON: [{"action":"fill","selector":"#email","value":"x@y.com"},{"action":"click","selector":"#btn"},{"action":"check","selector":"#tos"},{"action":"wait","ms":5000},{"action":"eval","code":"..."}]
+"""
+import sys, os, json, uuid, datetime, random, subprocess, time, base64, requests
+from playwright.sync_api import sync_playwright
+
+CHROME = '/Users/ubuntu/Library/Caches/ms-playwright/chromium-1223/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'
+STATE_FILE = '.cdpturn_state'
+REQRES_FILE = 'reqres.jsonl'
+GEMMA_API = 'https://llms.intrinsicapi.com/v1/chat/completions'
+GEMMA_KEY = 'o30ya7yeDe_p'
+GEMMA_MODEL = 'google/gemma-4-31B-it'
+GEMMA_PROMPT = 'describe in enough detail to reproduce'
+SCREENSHOT_DIR = 'screenshots'
+
+def get_cdp_url():
+    for port in [59120]:
+        try:
+            import urllib.request
+            urllib.request.urlopen(f'http://localhost:{port}/json/version', timeout=2)
+            return f'http://localhost:{port}'
+        except:
+            pass
+    port = random.randint(10000, 60000)
+    subprocess.Popen([CHROME, f'--remote-debugging-port={port}', '--user-data-dir=/tmp/proxprox-chrome-profile2', '--no-first-run', '--no-default-browser-check'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    time.sleep(5)
+    return f'http://localhost:{port}'
+
+def fmt100(s):
+    s = str(s or '')
+    parts = ['F:' + s[:100]]
+    if len(s) > 200:
+        mid = len(s) // 2
+        parts.append('M:' + s[mid-50:mid+50])
+    if len(s) > 100:
+        parts.append('L:' + s[-100:])
+    return ' '.join(parts)
+
+def gemma_describe(screenshot_path):
+    try:
+        with open(screenshot_path, 'rb') as f:
+            b64 = base64.b64encode(f.read()).decode()
+        payload = {
+            'model': GEMMA_MODEL,
+            'messages': [{
+                'role': 'user',
+                'content': [
+                    {'type': 'text', 'text': GEMMA_PROMPT},
+                    {'type': 'image_url', 'image_url': {'url': f'data:image/jpeg;base64,{b64}'}}
+                ]
+            }],
+            'max_tokens': 4096,
+        }
+        headers = {'Authorization': f'Bearer {GEMMA_KEY}', 'Content-Type': 'application/json'}
+        r = requests.post(GEMMA_API, json=payload, headers=headers, timeout=60)
+        if r.status_code == 200:
+            text = r.json()['choices'][0]['message']['content']
+            print('=== GEMMA DESCRIPTION ===')
+            print(text)
+            print('=== END GEMMA ===')
+        else:
+            print(f'=== GEMMA ERROR: {r.status_code} {r.text[:200]} ===')
+    except Exception as e:
+        print(f'=== GEMMA EXCEPTION: {e} ===')
+
+def take_screenshot(pg, name):
+    os.makedirs(SCREENSHOT_DIR, exist_ok=True)
+    path = f'{SCREENSHOT_DIR}/{name}.jpg'
+    pg.screenshot(path=path, full_page=True, type='jpeg', quality=85)
+    print(f'=== SCREENSHOT: {path} ===')
+    try:
+        gemma_describe(path)
+    except Exception as e:
+        print(f'=== GEMMA ERROR: {e} ===')
+
+def print_since_last():
+    last = 0
+    if os.path.exists(STATE_FILE):
+        try: last = int(open(STATE_FILE).read().strip())
+        except: pass
+    if not os.path.exists(REQRES_FILE): return
+    with open(REQRES_FILE) as f:
+        lines = f.readlines()
+    new_lines = lines[last:]
+    if new_lines:
+        print(f'=== NETWORK SINCE LAST ({len(new_lines)} entries) ===')
+        for line in new_lines:
+            try:
+                e = json.loads(line)
+                rid = e.get('id', '????')
+                if e['type'] == 'request':
+                    print(f'  RQ {rid} {e.get("method","")} {e.get("url","")[:100]}')
+                    pd = e.get('post_data', '')
+                    if pd: print(f'       {fmt100(pd)}')
+                else:
+                    print(f'  RS {rid} {e.get("status","")} {e.get("url","")[:100]}')
+                    body = e.get('body', '')
+                    if body: print(f'       {fmt100(body)}')
+            except: pass
+
+def save_state():
+    if os.path.exists(REQRES_FILE):
+        with open(STATE_FILE, 'w') as f:
+            f.write(str(sum(1 for _ in open(REQRES_FILE))))
+
+def main():
+    url = sys.argv[1] if len(sys.argv) > 1 else None
+    actions = []
+    if len(sys.argv) > 2:
+        with open(sys.argv[2]) as f:
+            actions = json.load(f)
+
+    cdp_url = get_cdp_url()
+    print_since_last()
+
+    with sync_playwright() as p:
+        b = p.chromium.connect_over_cdp(cdp_url)
+        ctx = b.contexts[0]
+        pg = ctx.pages[0] if ctx.pages else ctx.new_page()
+
+        console_msgs = []
+        def on_console(msg):
+            console_msgs.append(f'  CONSOLE {msg.type}: {msg.text[:500]}')
+        pg.on('console', on_console)
+        def on_dialog(dialog):
+            print(f'=== JS ALERT: {dialog.message} ===')
+            dialog.accept()
+        pg.on('dialog', on_dialog)
+
+        def on_request(req):
+            rid = uuid.uuid4().hex[:8]
+            ts = datetime.datetime.now().isoformat()
+            try:
+                pd = req.post_data
+                if pd and len(pd) > 10000: pd = pd[:10000]
+            except: pd = None
+            entry = {'id': rid, 'ts': ts, 'type': 'request', 'method': req.method, 'url': req.url, 'headers': dict(req.headers), 'post_data': pd}
+            with open(REQRES_FILE, 'a') as f:
+                f.write(json.dumps(entry, default=str) + '\n')
+            print(f'  RQ {rid} {req.method} {req.url[:100]}')
+            if pd: print(f'       {fmt100(pd)}')
+
+        def on_response(res):
+            rid = uuid.uuid4().hex[:8]
+            ts = datetime.datetime.now().isoformat()
+            try:
+                body = res.text()
+                if len(body) > 10000: body = body[:10000]
+            except: body = '<unreadable>'
+            entry = {'id': rid, 'ts': ts, 'type': 'response', 'url': res.url, 'status': res.status, 'headers': dict(res.headers), 'body': body}
+            with open(REQRES_FILE, 'a') as f:
+                f.write(json.dumps(entry, default=str) + '\n')
+            print(f'  RS {rid} {res.status} {res.url[:100]}')
+            if body and body != '<unreadable>': print(f'       {fmt100(body)}')
+
+        pg.on('request', on_request)
+        pg.on('response', on_response)
+
+        if url and url != '--current':
+            pg.goto(url, timeout=20000)
+            pg.wait_for_timeout(3000)
+            take_screenshot(pg, f'page_{int(time.time())}')
+        elif url == '--current':
+            print('=== SKIPPING NAVIGATION, USING CURRENT PAGE ===')
+
+        for act in actions:
+            a = act['action']
+            if a == 'fill':
+                pg.fill(act['selector'], act['value'])
+            elif a == 'click':
+                pg.click(act['selector'])
+            elif a == 'check':
+                pg.check(act['selector'])
+            elif a == 'wait':
+                pg.wait_for_timeout(act.get('ms', 3000))
+            elif a == 'eval':
+                result = pg.evaluate(act['code'])
+                if result is not None:
+                    print(f'=== EVAL RESULT: {str(result)} ===')
+            elif a == 'goto':
+                pg.goto(act['url'], timeout=20000)
+                pg.wait_for_timeout(3000)
+            elif a == 'click_frame':
+                frame_url = act.get('frame_url', '')
+                selector = act.get('selector', '')
+                for frame in pg.frames:
+                    if frame_url in frame.url:
+                        frame.click(selector, timeout=5000)
+                        break
+            elif a == 'wait_frame':
+                frame_url = act.get('frame_url', '')
+                selector = act.get('selector', '')
+                for frame in pg.frames:
+                    if frame_url in frame.url:
+                        frame.wait_for_selector(selector, timeout=10000)
+                        break
+            elif a == 'element_screenshot':
+                el = pg.query_selector(act['selector'])
+                if el:
+                    os.makedirs(SCREENSHOT_DIR, exist_ok=True)
+                    epath = f'{SCREENSHOT_DIR}/element_{int(time.time())}.png'
+                    el.screenshot(path=epath)
+                    print(f'=== ELEMENT SCREENSHOT: {epath} ===')
+                else:
+                    print(f'=== ELEMENT NOT FOUND: {act["selector"]} ===')
+            print(f'=== ACTION: {a} {act.get("selector","")} ===')
+
+        if actions:
+            take_screenshot(pg, f'after_{int(time.time())}')
+
+        print('=== FULL TEXT ===')
+        try: print(pg.inner_text('body'))
+        except: print('<unable to get body text>')
+
+        print('=== INPUTS ===')
+        inputs = pg.eval_on_selector_all('input,textarea,select', 'els => els.map(e => ({tag: e.tagName, type: e.type, name: e.name, id: e.id, placeholder: e.placeholder, value: e.value.slice(0,200)}))')
+        for inp in inputs: print(f'  {json.dumps(inp)}')
+
+        print('=== LINKS ===')
+        links = pg.eval_on_selector_all('a', 'els => els.map(e => ({href: e.href, text: e.innerText.trim()}))')
+        for link in links: print(f'  {json.dumps(link)}')
+
+        if console_msgs:
+            print('=== CONSOLE LOGS ===')
+            for msg in console_msgs:
+                print(msg)
+
+        save_state()
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,620 @@
+CellPerformance
+Sharing tips and experience with the cell processor, performance, data design and game programming.
+Understanding Strict Aliasing
+By Mike Acton on June 1, 2006 11:53 PM
+UPDATED! (08 Aug 06) More Clarifications! Special thanks to Nicolas Riesch, André de Leiradella and pinskia for their comments and suggestions.
+UPDATED! (28 Dec 06) Minor fixes. Special thanks to Kobi Cohen-Arazi and Chris Pickett.
+Aliasing
+One pointer is said to alias another pointer when both refer to the same location or object. In this example,
+  0uint32_t 
+  1swap_words( uint32_t arg )
+  2{
+  3  uint16_t* const sp = (uint16_t*)&arg;
+  4  uint16_t        hi = sp[0];
+  5  uint16_t        lo = sp[1];
+  6  
+  7  sp[1] = hi;
+  8  sp[0] = lo;
+  9
+ 10  return (arg);
+ 11} 
+Using GCC 3.4.1 and above, the above code will generate warning: dereferencing type-punned pointer will break strict-aliasing rules on line 3.
+The memory referred to by sp is an alias of arg because they refer to the same address in memory. In C99, it is illegal to create an alias of a different type than the original. This is often refered to as the strict aliasing rule. The rule is enabled by default in GCC at optimization levels at or above O2. Although the above example would compile, the results are undefined. More than likely, arg would be returned unchanged because a pointer to uint16_t cannot be an alias to a pointer to uint32_t when applying the strict aliasing rule.
+
+Dereferencing a cast of a variable from one type of pointer to a different type is usually in violation of the strict aliasing rule.
+However, having multiple representations of the same location in memory is often beneficial. Properly balancing the compiler's memory optimizations and the programmer's optimizations based on real-world context and data is a bit of a black art. It requires an understanding of the tradeoffs among what's permitted by the standard, what's the reality of compilers and the value of a particular transformation based on the architecture and the data. It's worth it in the end though when the results speak for themselves.
+All of the examples in this article have been tested with various versions of GCC. Although you can expect most of the examples to generate similar results across the major compilers, programmers' expectations should always be validated for the compilers and compiler revisions required.
+
+Read on for details on the strict aliasing rule and some common pitfalls.
+
+What is strict aliasing?
+Strict aliasing is an assumption, made by the C (or C++) compiler, that dereferencing pointers to objects of different types will never refer to the same memory location (i.e. alias eachother.)
+
+Here are some basic examples of assumptions that may be made by the compiler when strict aliasing is enabled:
+
+Pointers to different built in types do not alias:
+  0int16_t* foo;
+  1int32_t* bar;
+The compiler will assume that *foo and *bar never refer to the same location.
+
+Pointers to aggregate or union types with differing tags do not alias:
+  0typedef struct
+  1{
+  2  uint16_t a;
+  3  uint16_t b;
+  4  uint16_t c;
+  5} Foo;
+  6
+  7typedef struct
+  8{
+  9  uint16_t a;
+ 10  uint16_t b;
+ 11  uint16_t c;
+ 12} Bar;
+ 13
+ 14Foo* foo;
+ 15Bar* bar;
+The compiler will assume that *foo and *bar never refer to the same location, even though the contents of the structures are the same.
+
+Pointers to aggregate or union types which differ only by name may alias:
+  0typedef struct
+  1{
+  2  uint16_t a;
+  3  uint16_t b;
+  4  uint16_t c;
+  5} Foo;
+  6
+  7typedef Foo Bar;
+  8
+  9Foo* foo;
+ 10Bar* bar;
+The compiler will assume that *foo and *bar may refer to the same location, and will not perform the optimizations decribed below.
+
+Benefits to The Strict Aliasing Rule
+When the compiler cannot assume that two object are not aliased, it must act very conservatively when accessing memory. For example:
+  0typedef struct
+  1{
+  2  uint16_t a;
+  3  uint16_t b;
+  4  uint16_t c;
+  5} Sample;
+  6
+  7void
+  8test( uint32_t* values,
+  9      Sample*   uniform,
+ 10      uint64_t  count )
+ 11{
+ 12  uint64_t i;
+ 13
+ 14  for (i=0;i<count;i++)
+ 15  {
+ 16    values[i] += (uint32_t)uniform->b;
+ 17  }
+ 18}
+Compiled with -fno-strict-aliasing -O3 -std=c99 on the 64 bit build of GNU C version 3.4.1 (CELL 2.3, Jul 21 2005) (powerpc64-linux) for the Cell PPU.
+  0test:
+  1  li     10, 0      # i      = 0
+  2  cmpld  7,  10, 5  # done   = (i==count)
+  3  bgelr- 7          # if (done) return
+  4  mtctr  5          # ctr    = count
+  5.L8:
+  6  sldi   11, 10, 2  # offset = i * 4
+  7  lwz    9,  4(4)   # b      = *(uniform+4)
+  8  addi   10, 10, 1  # i++
+  9  lwzx   5,  11, 3  # value  = *(values+offset)
+ 10  add    0,  5,  9  # value  = value + b
+ 11  stwx   0,  11, 3  # *(values+offset) = value
+ 12  bdnz  .L8         # if (ctr--) goto .L8
+ 13  blr               # return
+In this case uniform->b must be loaded during each iteration of the loop. This is because the compiler cannot be certain that values does not overlap b in memory. If, in fact, they do overlap, the programmer would expect that uniform->b would be properly updated and the values stored into the values array adjusted accordingly. The only method for the compiler to guarantee these results is reloading uniform->b at every iteration.
+
+It was noted that this case is extremely uncommon in most code and the decision was made to presume objects of different types are not aliased and to be more aggresive with optimizations. It is certain the fact this presumption would break some existing code was discussed in detail. It must have been decided that those most likely to use memory aliasing techniques for optimization are are few and those that do use it are the most willing and capable of making the necessary changes.
+
+The result, even for this small case, can make a significant performance impact. Compiled with -fstrict-aliasing -Wstrict-aliasing=2 -O3 -std=c99 on the 64 bit build of GNU C version 3.4.1 (CELL 2.3, Jul 21 2005) (powerpc64-linux) for the Cell PPU.
+  0test:
+  1  li     11,0     # i      = 0
+  2  cmpld  7,11,5   # done   = (i == count)
+  3  bgelr- 7        # if (done) return
+  4  lhz    4,2(4)   # b      = uniform.b
+  5  mtctr  5        # ctr    = count
+  6.L8:
+  7  sldi   9,11,2   # offset = i * 4
+  8  addi   11,11,1  # i++
+  9  lwzx   5,9,3    # value  = *(values+offset)
+ 10  add    0,5,4    # value  = value + b
+ 11  stwx   0,9,3    # *(values+offset) = value
+ 12  bdnz   .L8      # if (ctr--) goto .L8
+ 13  blr             # return
+The load of b is now only done once, outside the loop. For more examples of optimizations for non-aliasing memory see: Demystifying The Restrict Keyword
+Casting Compatible Types
+Aliases are permitted for types that only differ by qualifier or sign.
+  0uint32_t
+  1test( uint32_t a )
+  2{
+  3  uint32_t* const       a0 = &a;
+  4  uint32_t* volatile    a1 = &a;
+  5  int32_t*              a2 = (int32_t*)&a;
+  6  int32_t* const        a3 = (int32_t*)&a;
+  7  int32_t* volatile     a4 = (int32_t*)&a;
+  8  const int32_t* const  a5 = (int32_t*)&a;
+  9
+ 10  (*a0)++;
+ 11  (*a1)++;
+ 12  (*a2)++;
+ 13  (*a3)++;
+ 14  (*a4)++;
+ 15
+ 16  return (*a5);
+ 17}
+In this case a0-a5 are all valid aliases of a and this function will return (a + 5).
+GCC has two flags to enable warnings related to strict aliasing. -Wstrict-aliasing enables warnings for most common errors related to type-punning. -Wstrict-aliasing=2 attempts to warn about a larger class of cases, however false positives may be returned.
+Casting through a union (1)
+The most commonly accepted method of converting one type of object to another is by using a union type as in this example:
+  0typedef union
+  1{
+  2  uint32_t u32;
+  3  uint16_t u16[2];
+  4}
+  5U32;
+  6
+  7uint32_t
+  8swap_words( uint32_t arg )
+  9{
+ 10  U32      in;
+ 11  uint16_t lo;
+ 12  uint16_t hi;
+ 13
+ 14  in.u32    = arg;
+ 15  hi        = in.u16[0];
+ 16  lo        = in.u16[1];
+ 17  in.u16[0] = lo;
+ 18  in.u16[1] = hi;
+ 19
+ 20  return (in.u32);
+ 21}
+This method is not properly called casting at all (although it may be called type-punning) as the value is simplied copied into a union which permits aliasing among its members. From a performance point of view, this method relies on the ability of the optimizer to remove the redundant stores and loads. When using recent versions of GCC, if the transformation is reasonably simple, it is very likely that the compiler will be able to remove the redundancies and produce an optimal code sequence.
+Strictly speaking, reading a member of a union different from the one written to is undefined in ANSI/ISO C99 except in the special case of type-punning to a char*, similar to the example below: Casting to char*. However, it is an extremely common idiom and is well-supported by all major compilers. As a practical matter, reading and writing to any member of a union, in any order, is acceptable practice.
+For example, when compiled with GNU C version 4.0.0 (Apple Computer, Inc. build 5026) (powerpc-apple-darwin8), the argument is simply rotated 16 bits.
+  0swap_words:
+  1  rlwinm r3,r3,16,0xffffffff
+  2  blr
+When compiled with -fstrict-aliasing -O3 -Wstrict-aliasing -std=c99 on GNU C version 3.4.1 (CELL 2.3, Jul 21 2005) (powerpc64-linux) for the Cell PPU, the loads and stores are removed but the instruction sequence is less than optimal.
+  0swap_words:
+  1  slwi    4,3,16     ; hi    = arg << 16
+  2  rldicl  3,3,48,48  ; lo    = arg >> 16
+  3  or      0,4,3      ; out   = hi | lo;
+  4  rldicl  3,0,0,32   ; final = out & 0xffffffff
+  5  blr
+
+In order to generate reasonably good code across both the GCC3 and GCC4 families, use C99 style intializers:
+  0uint32_t
+  1swap_words( uint32_t arg )
+  2{
+  3  U32    in  = { .u32=arg };
+  4  U32    out = { .u16[0]=in.u16[1], 
+  5                 .u16[1]=in.u16[0] };
+  6
+  7  return (out.u32);
+  8}
+Compiled with -fstrict-aliasing -O3 -Wstrict-aliasing -std=c99 on the 32 bit build of GNU C version 3.4.1 (CELL 2.3, Jul 21 2005) (powerpc64-linux) for the Cell PPU.
+  0swap_words:
+  1  stwu 1,-16(1)              ; Push stack
+  2  rlwinm 3,3,16,0xffffffff   ; Rotate 16 bits
+  3  addi 1,1,16                ; Pop stack
+  4  blr
+It is a parculiarity of the 32 bit build of GCC 3.4.1 for the Cell PPU that the stack is always pushed and popped regardless of whether or not it is used.
+This method is most valuable for use with primitive types which can be returned by value. This is because it relies on doing a complete copy of the object (by value) and removing the redundancies. With more complex aggregate or union types copying may be done on the stack or through the memcpy function and redundancies are harder to eliminate.
+Casting through a union (2)
+Casting proper may be done between a pointer to a type and a pointer to an aggregate or union type which contains a member of a compatible type, as in the following example:
+  0uint32_t
+  1swap_words( uint32_t arg )
+  2{
+  3  U32*     in = (U32*)&arg;
+  4  uint16_t lo = in->u16[0];
+  5  uint16_t hi = in->u16[1];
+  6
+  7  in->u16[0] = hi;
+  8  in->u16[1] = lo;
+  9
+ 10  return (in->u32);
+ 11}
+in is a pointer to a U32 type, which contains the member u32 which is of type uint32_t which is compatible with arg, which is also of type uint32_t.
+The above source when compiled with GCC 4.0 with the -Wstrict-aliasing=2 flag enabled will generate a warning. This warning is an example of a false positive. This type of cast is allowed and will generate the appropriate code (see below). It is documented clearly that -Wstrict-aliasing=2 may return false positives.
+Compiled with -fstrict-aliasing -O3 -Wstrict-aliasing -std=c99 on GNU C version 4.0.0 (Apple Computer, Inc. build 5026) (powerpc-apple-darwin8),
+  0swap_words:
+  1  stw r3,24(r1)  ; Store arg
+  2  lhz r0,24(r1)  ; Load hi
+  3  lhz r2,26(r1)  ; Load lo
+  4  sth r0,26(r1)  ; Store result[1] = hi
+  5  sth r2,24(r1)  ; Store result[0] = lo
+  6  lwz r3,24(r1)  ; Load result
+  7  blr            ; Return
+GCC is extremely poor at combining loads and stores done through a pointer to a union type as can be seen from the generated code above. The output is a very naive interpretation of the source and would perform badly compared to the previous examples on most architectures.
+
+However, once this fact is accounted for, this method can be very useful. Rather than copying the argument by value, which is problematic on large or complex structures, a pointer can be passed in and the value modified directly. If the loads and stores can be combined in the source the results will usually be excellent.
+"But when the address of a variable is taken, doesn't the compiler force it to be stored in memory rather than in a register?"
+
+Yes, both a store and a load may then generated as part of the trace. However, when alias analysis is done it can be determined that the object cannot be changed another mechanism so the load and store may be marked as redundant and removed.
+Do not rely on the compiler to combine loads and stores. The programmer is always better equipted to make those decisions based on alignment concerns and complex instruction penalty rules.
+  0uint16_t*
+  1swap_words( uint16_t* arg )
+  2{
+  3  U32*     combined = (U32*)arg;
+  4  uint32_t start    = combined->u32;
+  5  uint32_t lo       = start >> 16;
+  6  uint32_t hi       = start << 16;
+  7  uint32_t final    = lo | hi;
+  8
+  9  combined->u32 = final;
+ 10}
+Compiled with -fstrict-aliasing -O3 -Wstrict-aliasing -std=c99 on GNU C version 4.0.0 (Apple Computer, Inc. build 5026) (powerpc-apple-darwin8),
+  0swap_words:
+  1  lwz r0,0(r3)                ; Load arg
+  2  rlwinm r0,r0,16,0xffffffff  ; Rotate 16 bits
+  3  stw r0,0(r3)                ; Store arg
+  4  blr                         ; Return
+If the above source is called as a non-inline function, there will be a signficant penalty on most architectures waiting for the load before the rotate and the store on return.
+If the above source is called as a inline function, it can be safely assumed the load and store will be removed by the compiler as redundant.
+In C99, a static inline function, which may be included in a header file, differs from automatic inlining in that the function may be defined multiple times (e.g. included by multiple source files). Each definition of a static inline function must be identical.
+  0static inline void
+  1swap_words( uint16_t* arg )
+  2{
+  3  U32*     combined = (U32*)arg;
+  4  uint32_t start    = combined->u32;
+  5  uint32_t lo       = start >> 16;
+  6  uint32_t hi       = start << 16;
+  7  uint32_t final    = lo | hi;
+  8
+  9  combined->u32 = final;
+ 10}
+With some care, this method is the most appropriate for modifying large or complex structures by multiple types.
+Casting through a union (3)
+Occasionally a programmer may encounter the following INVALID method for creating an alias with a pointer of a different type:
+  0typedef union 
+  1{
+  2  uint16_t* sp; 
+  3  uint32_t* wp;
+  4} U32P;
+  5
+  6uint32_t 
+  7swap_words( uint32_t arg )
+  8{
+  9  U32P             in = { .wp = &arg };
+ 10  const uint16_t   hi = in.sp[0];
+ 11  const uint16_t   lo = in.sp[1];
+ 12  
+ 13  in.sp[0] = lo;
+ 14  in.sp[1] = hi;
+ 15
+ 16  return ( arg ); <-- RESULT IS UNDEFINED
+ 17} 
+The problem with this method is although U32P does in fact say that sp is an alias for wp, it does not say anything about the relationship between the values pointed to by sp and wp. This differs in a critical way from "Casting Through a Union (1)" and "Casting Through a Union (2)" which both define aliases for the values being pointed to, not the pointers themselves.
+
+The presumption of strict aliasing remains true: Two pointers of different types are assumed, except in a few very limited conditions specified in the C99 standard, not to alias. This is not one of those exceptions.
+The above source when compiled with GCC 3.4.1 or GCC 4.0 with the -Wstrict-aliasing=2 flag enabled will NOT generate a warning. This should serve as an example to always check the generated code. Warnings are often helpful hints, but they are by no means exaustive and do not always detect when a programmer makes an error. Like any peice of software, a compiler has limits. Knowing them can only be helpful.
+For example, when compiled with -fstrict-aliasing -O3 -Wstrict-aliasing -std=c99 on GNU C version 4.0.0 (Apple Computer, Inc. build 5026) (powerpc-apple-darwin8),
+  0swap_words:      ; RETURNS ARG UNCHANGED
+  1  lhz r0,24(r1)  ; Load lo from stack (What value?!)
+  2  lhz r2,26(r1)  ; Load hi from stack (What value?!)
+  3  stw r3,24(r1)  ; Store arg to stack
+  4  sth r0,26(r1)  ; Store hi to stack
+  5  sth r2,24(r1)  ; Store lo to stack
+  6  blr            ; Return
+In this case notice that because hi, lo and arg are assumed not to alias, the resulting order of instruction has no value:
+[Line 1]: lo is loaded from the stack before anything is stored to the stack
+[Line 2]: hi is loaded from the stack before anything is stored to the stack
+[Line 3]: arg is stored to the stack, but this value will not be read.
+[Line 4]: hi is stored to the stack, but this value will not be read.
+[Line 5]: lo is stored to the stack, but this value will not be read.
+Or when compiled with -fstrict-aliasing -O3 -Wstrict-aliasing -std=c99 on the 64 bit build of GNU C version 3.4.1 (CELL 2.3, Jul 21 2005) (powerpc64-linux) for the Cell PPU.
+  0swap_words:     # RETURNS ARG UNCHANGED
+  1  stw 3,48(1)   # Store arg to stack
+  2  lhz 9,48(1)   # Load hi
+  3  lhz 0,50(1)   # Load lo
+  4  lwz 3,48(1)   # Load arg
+  5  sth 0,48(1)   # Store hi to stack
+  6  sth 9,50(1)   # Store lo to stack
+  7  blr           # Return
+Or when compiled with -fstrict-aliasing -O3 -Wstrict-aliasing -std=c99 on the 32 bit build of GNU C version 3.4.1 (CELL 2.3, Jul 21 2005) (powerpc64-linux) for the Cell PPU.
+  0swap_words:     # RETURNS ARG UNCHANGED
+  1  stwu 1,-16(1) # Push stack
+  2  addi 1,1,16   # Pop stack
+  3  blr           # Return 
+Casting to char*
+It is always presumed that a char* may refer to an alias of any object. It is therefore quite safe, if perhaps a bit unoptimal (for architecture with wide loads and stores) to cast any pointer of any type to a char* type.
+  0uint32_t 
+  1swap_words( uint32_t arg )
+  2{
+  3  char* const cp = (char*)&arg;
+  4  const char  c0 = cp[0];
+  5  const char  c1 = cp[1];
+  6  const char  c2 = cp[2];
+  7  const char  c3 = cp[3];
+  8
+  9  cp[0] = c2;
+ 10  cp[1] = c3;
+ 11  cp[2] = c0;
+ 12  cp[3] = c1;
+ 13
+ 14  return (arg);
+ 15} 
+The converse is not true. Casting a char* to a pointer of any type other than a char* and dereferencing it is usually in volation of the strict aliasing rule.
+In other words, casting from a pointer of one type to pointer of an unrelated type through a char* is undefined.
+  0uint32_t
+  1test( uint32_t arg )
+  2{
+  3  char*     const cp = (char*)&arg;
+  4  uint16_t* const sp = (uint16_t*)cp;
+  5
+  6  sp[0] = 0x0001;
+  7  sp[1] = 0x0002;
+  8
+  9  return (arg);
+ 10}
+When compiled with -fstrict-aliasing -O3 -Wstrict-aliasing -std=c99 on the 64 bit build of GNU C version 3.4.1 (CELL 2.3, Jul 21 2005) (powerpc64-linux) for the Cell PPU.
+  0test:
+  1  stw 3, 48(1)   # arg stored to stack
+  2  li  0, 1       # hi = 0x0001
+  3  li  9, 2       # lo = 0x0002
+  4  lwz 3, 48(1)   # result = loaded from stack
+  5  sth 0, 48(1)   # store hi to stack
+  6  sth 9, 50(1)   # store lo to stack
+  7  blr            # return (result) <-- RETURNS ARG UNCHANGED
+As noted by Pinskla it is not deferencing a char* per se that is specifically recognized as a potential alias of any object, but any address referring to a char object. This includes an array of char objects, as in the following example which will also break the strict aliasing assumption.
+  0  char      const cp[4] = { arg0, arg1, arg2, arg3 };
+  1  uint16_t* const sp    = (uint16_t*)cp;
+  2
+  3  sp[0] = 0x0001;
+  4  sp[1] = 0x0002;
+GCC RULE BREAKING
+GCC allows type-punned values to be deferenced at independent locations in memory (i.e. different objects) when the source of the lvalue is not directly known.
+  0void
+  1set_value( uint64_t* c, 
+  2           uint32_t  a_val, 
+  3           uint16_t  b_val ) 
+  4{
+  5  uint32_t* a = (uint32_t*)c;
+  6  uint16_t* b = (uint16_t*)c;
+  7  
+  8  a[0] = a_val; // <--- Address of c + 0
+  9  b[2] = b_val; // <--- Address of c + 4
+ 10  b[3] = b_val; // <--- Address of c + 6
+ 11}
+When compiled with -fstrict-aliasing -O3 -Wstrict-aliasing -std=c99 on the 64 bit build of GNU C version 3.4.1 (CELL 2.3, Jul 21 2005) (powerpc64-linux) for the Cell PPU.
+  0set_value:
+  1  stw 4,0(3)   # (c+0) = a_val
+  2  sth 5,6(3)   # (c+6) = b_val
+  3  sth 5,4(3)   # (c+4) = b_val
+  4  blr          # return (c)
+Note any use of c[0] here would be (more?) undefined because it would alias the uses of a and b.
+  0void
+  1set_value( uint64_t* c, 
+  2           uint32_t  a_val, 
+  3           uint16_t  b_val ) 
+  4{
+  5  uint32_t* a = (uint32_t*)c;
+  6  uint16_t* b = (uint16_t*)c;
+  7  
+  8  a[0] = a_val; // < Address of c + 0
+  9  b[2] = b_val; // < Address of c + 4
+ 10  b[3] = b_val; // < Address of c + 6
+ 11  
+ 12  // WHAT VALUE THIS WOULD PRINT IS UNDEFINED
+ 13  printf("c = 0x%08x\n", c[0] ); 
+ 14}
+However, when set_value is compiled inline (perhaps automatically), the source of c may be known and GCC will assume the values do not alias and may reduce the expression differently and generate completely different code.
+  0static inline void
+  1set_value( uint64_t* c, 
+  2           uint32_t  a_val, 
+  3           uint16_t  b_val ) 
+  4{
+  5  uint32_t* a = (uint32_t*)c;
+  6  uint16_t* b = (uint16_t*)c;
+  7  
+  8  a[0] = a_val; // <--- Address of c + 0
+  9  b[2] = b_val; // <--- Address of c + 4
+ 10  b[3] = b_val; // <--- Address of c + 6
+ 11}
+  0int64_t
+  1test( int64_t  a
+  2     ,int64_t  b
+  3     ,uint32_t hi32
+  4     ,uint16_t lo16 )
+  5{
+  6  int64_t c = a + b;
+  7
+  8  set_value( &c, hi32, lo16 );
+  9
+ 10  return (c);
+ 11}
+When compiled with -fstrict-aliasing -O3 -Wstrict-aliasing -std=c99 on the 64 bit build of GNU C version 3.4.1 (CELL 2.3, Jul 21 2005) (powerpc64-linux) for the Cell PPU.
+  0test:
+  1  add 3,3,4    # c = (a+b)
+  2  blr          # return (c)
+In this case because the object c is never accessed through any valid aliases in set_value, the expression is reduced out.
+The above example will NOT currently generate any warnings with -Wstrict-aliasing=2 and will simply generate different results depending on whether or not the expression is inlined. This is another good reason to always double check the generated code. Also, when writing unit tests, it is a good idea to test a function both as an inline function and an extern function.
+With GCC, strict aliasing warnings are more likely to be generated at the point where an address is taken (e.g. uint16_t* a = (uint16_t*)&b;) than with pre-existing pointers (e.g. uint16_t* a = (uint16_t*)b_ptr;). Take special care when type-punning pre-existing pointers.
+Perhaps surprisingly, illegal aliasing within a loop generates completely different results. It is probably not completely accidental though, as most of the historical arguments against strict aliasing have revolved around optimized versions of functions like memset and memcpy which would cast the data to the widest available register size to minimize the trips to and from memory.
+  0void
+  1set_value( uint64_t* c,
+  2           uint32_t  a_val,
+  3           uint16_t  b_val,
+  4           uint32_t  count )
+  5{
+  6  uint32_t* a  = (uint32_t*)c;
+  7  uint16_t* b  = (uint16_t*)c;
+  8  uint32_t  i  = 0;
+  9
+ 10  for (i=0;i<count;i++,a++,b+=2)
+ 11  {
+ 12    a[0]  = a_val;
+ 13    b[2]  = b_val;
+ 14    b[3]  = b_val;
+ 15  }
+ 16}
+As expected from the previous example above, this should still generate the "expected" result:
+
+When compiled with -fstrict-aliasing -O3 -Wstrict-aliasing -std=c99 on the 32 bit build of GNU C version 3.4.1 (CELL 2.3, Jul 21 2005) (powerpc64-linux) for the Cell PPU.
+  0set_value:
+  1  cmpwi 0, 6, 0   # done = (count == 0)
+  2  stwu  1, -16(1) # Push stack
+  3  mr    9, 3      # Copy c
+  4  beq-  0, .L7    # if (done) goto .L7
+  5  mtctr 6         # i = count
+  6.L8:
+  7  stw   4, 0(9)   # a[0] = a_val
+  8  addi  9, 9, 4   # a++
+  9  sth   5, 4(3)   # b[2] = b_val
+ 10  sth   5, 6(3)   # b[3] = b_val
+ 11  addi  3, 3, 4   # b+=2
+ 12  bdnz  .L8       # if (i) goto .L8
+ 13.L7:
+ 14  addi  1, 1, 16  # Pop stack
+ 15  blr             # return
+When called inline, the previous example would suggest that the compiler, assuming c is not aliased would also return (a + b):
+
+  0int64_t
+  1test_loop( int64_t  a,
+  2           int64_t  b,
+  3           uint32_t hi32,
+  4           uint16_t lo16,
+  5           uint32_t count )
+  6{
+  7  static int64_t c[ C_COUNT ];
+  8
+  9  c[0] = a + b;
+ 10
+ 11  set_value( c, hi32, lo16, count );
+ 12
+ 13  return (c[0]);
+ 14}
+When compiled with -fstrict-aliasing -O3 -Wstrict-aliasing -std=c99 on the 32 bit build of GNU C version 3.4.1 (CELL 2.3, Jul 21 2005) (powerpc64-linux) for the Cell PPU.
+  0test_loop:
+  1  lis   12, c.0@ha      # cloc     = location of c
+  2  mr.   0,  9           # i        = count
+  3  la    11, c.0@l(12)   # c        = *cloc
+  4  addc  10, 4, 6        # c1       = addlo (a,b)
+  5  adde  9,  3, 5        # c2       = addhi (a,b)
+  6  stwu  1, -16(1)       # Push stack
+  7  stw   9,  0(11)       # c[0].hi  = c2
+  8  mr    6,  11          # a        = c
+  9  stw   10, 4(11)       # c[0].lo  = c1
+ 10  mr    9,  11          # b        = c
+ 11  beq-  0,  .L19        # if (i==0) goto .L19
+ 12  mtctr 0               # i        = count
+ 13.L20:
+ 14  stw   7,  0(9)        # a[0]     = hi32
+ 15  addi  9,  9, 4        # a++
+ 16  sth   8,  4(6)        # b[2]     = lo16
+ 17  sth   8,  6(6)        # b[3]     = lo16
+ 18  addi  6,  6, 4        # b+=2
+ 19  bdnz  .L20            # if (i) goto .L20
+ 20.L19:
+ 21  la    9,  c.0@l(12)   # c        = *cloc
+ 22  addi  1,  1, 16       # Pop stack
+ 23  lwz   3,  0(9)        # result.hi = c[0].hi
+ 24  lwz   4,  4(9)        # result.lo = c[0].lo
+ 25  blr                   # return (result)
+The result is clearly different from the original version without the loop.
+
+It is not the existance of the loop in the source that changes the transformation, but rather the existance of a loop after the initial optimization passes. For example, GCC is fairly good at optimizing (unrolling) loops with a fixed iteration count. Examine the following example:
+  0int64_t
+  1test_noloop( int64_t  a,
+  2             int64_t  b,
+  3             uint32_t hi32,
+  4             uint16_t lo16 )
+  5{
+  6  int64_t c = a + b;
+  7
+  8  set_value( &c, hi32, lo16, 1 );
+  9
+ 10  return (c);
+ 11}
+It wouldn't be completely outrageous to expect the above example to generate similar, albeit unrolled, code. That is unless you know to expect simple loop transformations to be done fairly early in the compilation process and alias analysis to be done later. When compiled with -fstrict-aliasing -O3 -Wstrict-aliasing -std=c99 on the 32 bit build of GNU C version 3.4.1 (CELL 2.3, Jul 21 2005) (powerpc64-linux) for the Cell PPU.
+  0test_noloop:      # <--- RETURNS (A+B)
+  1  stwu 1,-16(1)   # Push stack
+  2  addc 4,4,6      # c.lo = addlo(a,b)
+  3  adde 3,3,5      # c.hi = addhi(a,b)
+  4  addi 1,1,16     # Pop stack
+  5  blr             # return (c)
+The existance of a loop around accessed aliases and whether or not the iteration count is known at compile time may impact the generated code. Tests should include both constant and extern'd iteration counts.
+What is surprising is that the 64 bit build of the same version of the same compiler generates different results. When compiled with -fstrict-aliasing -O3 -Wstrict-aliasing -std=c99 on the 64 bit build of GNU C version 3.4.1 (CELL 2.3, Jul 21 2005) (powerpc64-linux) for the Cell PPU.
+  0test_loop:
+  1  li     10, 0           # i = 0
+  2  cmplw  7,  10, 7       # done = (i==count)
+  3  add    4,  3, 4        # sum  = a + b
+  4  ld     3,  .LC0@toc(2) # cloc = location of c
+  5  std    4,  0(3)        # c[0] = sum
+  6  mr     9,  3           # a    = c
+  7  mr     11, 3           # b    = c
+  8  bge-   7,  .L18        # if (done) goto .L18
+  9.L22:
+ 10  addi   0,  10, 1       # i++
+ 11  stw    5,  0(11)       # a[0] = hi32
+ 12  rldicl 10, 0, 0, 32    # i    = i & 0xffffffff
+ 13  sth    6,  4(9)        # b[2] = lo16
+ 14  sth    6,  6(9)        # b[3] = lo16
+ 15  cmplw  7,  10, 7       # done = (i==count)
+ 16  addi   11, 11, 4       # a++
+ 17  addi   9,  9, 4        # b+= 2
+ 18  blt+   7,  .L22        # if (!done) goto .L22
+ 19.L18:
+ 20  ld     3,0(3)          # result = c[0]
+ 21  blr                    # return (result)
+This indicates that there are significant non-obvious side-effects to building GCC as 32 bits versus 64 bits that someone might want to look into.
+The platform, version number and build data (i.e. the output of gcc --version) is not sufficient information for compatibility testing. To be thorough, units tests should be run across all versions of the same compiler, if more than one is known to exist.
+C99 Standard
+This article has been pretty relaxed with the use of terminology and there is always room for some interpretation when reading a standard. There are many additional cases not covered above and compiler specific issues to consider. But for those interested in up-to-date definitive information on the C standard refer to ISO/IEC 9899:TC2 [open-std.org]. Here is the most relevant text from section "6.5 Expressions":
+
+
+An object shall have its stored value accessed only by an lvalue expression that has one of the following types:
+a type compatible with the effective type of the object,
+a qualified version of a type compatible with the effective type of the object,
+a type that is the signed or unsigned type corresponding to the effective type of the object,
+a type that is the signed or unsigned type corresponding to a qualified version of the effective type of the object,
+an aggregate or union type that includes one of the aforementioned types among its members (including, recursively, a member of a subaggregate or contained union), or
+a character type.
+Note the use of types like uint64_t and uint32_t in the above examples. For decades programmers have been creating their own integer types and reworking their header files for each platform simply to get consistant integer sizes across multiple architectures. This is because the standard does not guarantee types like int or short to be of any particular width, it only guarantees their sizes relative to eachother. But finally, with C99, the debate is over. Standard width integers are now defined in stdint.h. Always use this header, and if your implementation does not have it (e.g. Microsoft), there are portable public domain versions available (e.g. This stdint.h can be used for Win32).
+Summary
+Strict aliasing means that two objects of different types cannot refer to the same location in memory. Enable this option in GCC with the -fstrict-aliasing flag. Be sure that all code can safely run with this rule enabled. Enable strict aliasing related warnings with -Wstrict-aliasing, but do not expect to be warned in all cases.
+In order to discover aliasing problems as quickly as possible, -fstrict-aliasing should always be included in the compilation flags for GCC. Otherwise problems may only be visible at the highest optimization levels where it is the most difficult to debug.
+Be wary of code that requires the use of -fno-strict-aliasing (turns off strict aliasing at any level) in order to work. This is a very good indication that the code relies on aliased memory access and is likely to be dominated by poor memory access patterns. At the very least only the minimum amount of files should have it disabled, and only because time has not permitted their repair yet. Although it may seem complex to properly alias memory, the tests where it is really necessary for performance are actually quite few and should already be tested rigorously. It is unlikely that code that does not enable strict aliasing would be able to take advantage of the restrict keyword. Using the restrict keyword allows a significant class of memory access optimizations critical to high performance code. For more information on the restrict keyword see: Demystifying The Restrict Keyword
+About CellPerformance
+Hosting for CellPerformance graciously provided by... Beyond3D
+
+Also check out the forums...
+CellPerformance@B3D
+
+Get this widget!
+Something Funny
+About Mike Acton
+ Linkedin Mike Acton
+Twitter @mike_acton
+ Facebook Mike Acton
+ Mike Acton's shared items in Google Reader
+Mike Acton's Resume
+Articles
+Roundup: Recent sketches on concurrency, data design and performance.
+Three Big Lies
+Utility: match
+Handy PS3 Linux Framebuffer Utilities
+HowTo: Huge TLB pages on PS3 Linux
+Cross-compiling for PS3 Linux
+atan2 on SPU
+Open Source and Console Games
+Branch-free implementation of half-precision (16 bit) floating point
+Increment And Decrement Wrapping Values
+Box Overlap
+A 4x4 Matrix Inverse
+Understanding Strict Aliasing
+Demystifying The Restrict Keyword
+Avoiding Microcoded Instructions On The PPU
+Choosing to Avoid Branches: A Small Altivec Example
+Reducing The Costs Of Comparisons and Branches
+Using masks to accelerate integer code
+A Practical GCC Trick To Use During Optimization
+More Techniques for Eliminating Branches
+Branch Patterns, Using GCC
+Benefits to Branch Elimination
+Background on Branching
+Performance and Good Data Design

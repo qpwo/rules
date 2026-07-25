@@ -9,3 +9,37 @@ halp -y -gl
 cat ~/tmp/chatgpt-export/renamed/2026-07-22_linux_rseq_explodes_performance_multicore_cpus_43x_ditching_locks_atomics_avoid_dinosaur_6a60f0df.txt
 headtail -n100 *
 halp -y -h make sure its all good and no junk keepgoing and make sure we didnt drop any goods idfk
+headtail -n50 *.txt
+halp -56s -xh what db would these guys make if they had 20 minutes to replace clickhouse... write ch.c
+pbpaste > 0x80.pl/notesen/2016-01-12-sse-base64-encoding.html.txt
+pbpaste > 0x80-pl-notesen-2016-01-12-sse-base64-encoding.html.txt
+pbpaste > 0x80.pl/notesen/2016-01-12-sse-base64-encoding.html.txt
+pbpaste > 0x80-pl-notesen-2016-01-12-sse-base64-encoding.html.txt
+cat 0x80-pl-notesen-2016-01-12-sse-base64-encoding.html.txt
+pbpaste > beyond3d-com-articles-2006-06-understanding-strict-aliasing.html
+pbpaste > beyond3d-com-articles-2006-06-understanding-strict-aliasing.html
+pbpaste > phreedom-org-research-tinype.txt
+mv -vn beyond3d-com-articles-2006-06-understanding-strict-aliasing.html beyond3d-com-articles-2006-06-understanding-strict-aliasing.txt
+cat beyond3d-com-articles-2006-06-understanding-strict-aliasing.txt
+cat 0x80-pl-notesen-2016-01-12-sse-base64-encoding.html.txt
+pbpaste > phreedom-org-research-tinype.txt
+pbpaste > dotat-at-prog-life-life.txt
+pbpaste > dotat-at-prog-life-life.txt
+pbpaste > phreedom-org-research-tinype.txt
+cat dotat-at-prog-life-life.txt
+cat phreedom-org-research-tinype.txt
+halp -y -h are we done... if not then finish up... make sure theres no posers in here like paul graham or joel on software ... idfk
+cat ch.c
+echo learn more from the greats...
+headtail -n100 * --shuffle
+hag png
+clear
+/opt/homebrew/bin/ag png | head
+/opt/homebrew/bin/ag jpg | head
+cat ~/bin/describeimages
+ls
+echo replace all tiny images with nothings
+echo replace all nontrivial images with descriptions
+halp -y -h
+echo '!*.txt' > .gitignore
+git add .
