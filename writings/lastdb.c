@@ -716,24 +716,6 @@ static int do_tail(const char *path, const char *start)
     return 0;
 }
 
-typedef struct {
-    uint64_t off;
-    char *key;
-    uint16_t k_len;
-} ScanRow;
-
-static int scan_row_cmp(const void *pa, const void *pb)
-{
-    const ScanRow *a = pa;
-    const ScanRow *b = pb;
-    size_t n = a->k_len < b->k_len ? a->k_len : b->k_len;
-    int c = memcmp(a->key, b->key, n);
-    if (c) {
-        return c;
-    }
-    return (a->k_len > b->k_len) - (a->k_len < b->k_len);
-}
-
 static int do_scan(const char *t, const char *prefix)
 {
     if (!ht_cap) {
@@ -746,9 +728,6 @@ static int do_scan(const char *t, const char *prefix)
         return 0;
     }
 
-    ScanRow *rows = NULL;
-    uint64_t n = 0;
-    uint64_t cap = 0;
     for (uint64_t i = 0; i < ht_cap; i++) {
         if (!ht[i].off1) {
             continue;
@@ -764,27 +743,19 @@ static int do_scan(const char *t, const char *prefix)
         if (pl && (r->k_len < pl || memcmp(rec_k(r), prefix, pl))) {
             continue;
         }
-        if (n == cap) {
-            cap = cap ? cap * 2 : 1024;
-            ScanRow *p = realloc(rows, cap * sizeof(*rows));
-            if (!p) {
-                die("realloc");
-            }
-            rows = p;
+        if (fwrite(rec_k(r), 1, r->k_len, stdout) != r->k_len) {
+            die("fwrite");
         }
-        rows[n++] = (ScanRow){ht[i].off1 - 1, rec_k(r), r->k_len};
+        if (putchar('\t') == EOF) {
+            die("putchar");
+        }
+        if (fwrite(rec_v(r), 1, r->v_len, stdout) != r->v_len) {
+            die("fwrite");
+        }
+        if (putchar('\n') == EOF) {
+            die("putchar");
+        }
     }
-
-    qsort(rows, n, sizeof(*rows), scan_row_cmp);
-    for (uint64_t i = 0; i < n; i++) {
-        Record *r = rec_at(rows[i].off);
-        fwrite(rows[i].key, 1, rows[i].k_len, stdout);
-        putchar('\t');
-        fwrite(rec_v(r), 1, r->v_len, stdout);
-        putchar('\n');
-    }
-
-    free(rows);
     return 0;
 }
 
