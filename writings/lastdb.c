@@ -280,37 +280,21 @@ static void deduplicate_ht(void) {
     ht_len = out;
 }
 
-static uint64_t bit_floor(uint64_t x) {
-    if (x == 0) return 0;
-    return 1ULL << (63 - __builtin_clzll(x));
-}
-
-static uint64_t bit_ceil(uint64_t x) {
-    if (x <= 1) return 1;
-    return 1ULL << (64 - __builtin_clzll(x - 1));
-}
-
 static Node *ht_get(const char *t, uint16_t tl, const char *k, uint16_t kl)
 {
     if (!ht_len) return NULL;
     uint64_t hash = key_hash(t, tl, k, kl);
-    uint64_t length = ht_len;
-    Node *begin = ht;
-    uint64_t step = bit_floor(length);
-    if (step != length && begin[step].hash < hash) {
-        length -= step + 1;
-        if (length == 0) return NULL;
-        step = bit_ceil(length);
-        begin = ht + ht_len - step;
+    uint64_t n = ht_len;
+    Node *base = ht;
+    while (n > 1) {
+        uint64_t half = n / 2;
+        base += (base[half].hash < hash) ? half : 0;
+        n -= half;
     }
-    for (step /= 2; step != 0; step /= 2) {
-        if (begin[step].hash < hash)
-            begin += step;
-    }
-    begin += (begin[0].hash < hash);
-    while (begin < ht + ht_len && begin->hash == hash) {
-        if (key_eq(begin->off1 - 1, t, tl, k, kl)) return begin;
-        begin++;
+    base += (base->hash < hash);
+    while (base < ht + ht_len && base->hash == hash) {
+        if (key_eq(base->off1 - 1, t, tl, k, kl)) return base;
+        base++;
     }
     return NULL;
 }
@@ -1252,6 +1236,7 @@ int main(int argc, char **argv)
                 uint64_t c = 0;
                 size_t tl = strlen(args[1]);
                 size_t pl = n == 3 ? strlen(args[2]) : 0;
+                #pragma omp parallel for reduction(+:c) schedule(static, 4096) num_threads(worker_threads())
                 for (uint64_t i = 0; i < ht_len; i++) {
                     Record *r = rec_at(ht[i].off1 - 1);
                     if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
@@ -1259,6 +1244,23 @@ int main(int argc, char **argv)
                     c++;
                 }
                 printf("%llu\n", (unsigned long long)c);
+            }
+            else if (!strcmp(args[0], "sum") && n >= 2) {
+                double s = 0;
+                size_t tl = strlen(args[1]);
+                size_t pl = n == 3 ? strlen(args[2]) : 0;
+                #pragma omp parallel for reduction(+:s) schedule(static, 4096) num_threads(worker_threads())
+                for (uint64_t i = 0; i < ht_len; i++) {
+                    Record *r = rec_at(ht[i].off1 - 1);
+                    if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
+                    if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
+                    if (r->v_len > 0 && r->v_len < 64) {
+                        char buf[64] = {0};
+                        memcpy(buf, rec_v(r), r->v_len);
+                        s += strtod(buf, NULL);
+                    }
+                }
+                printf("%.17g\n", s);
             }
             else printf("ERR\n");
             fflush(stdout);
