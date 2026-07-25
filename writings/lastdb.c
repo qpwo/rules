@@ -2583,7 +2583,7 @@ w2_sum += eff_w * eff_w;
                                 if (max_wl < 0) max_wl = 0;
 double ess = count_est > 0 && w2_sum > 0 ? count_est * count_est / w2_sum : (count_est > 0 ? count_est : 0);
 double confidence = ess >= 1000 ? 1.0 : ess / 1000.0;
-if (max_wl > 0) confidence *= (20.0 - max_wl) / 20.0;
+if (max_wl > 0) confidence *= __builtin_exp2(-(double)max_wl * 0.25);
                                 if (count_est < 0.5) count_est = 0;
                                 if (__builtin_fabs(sum) < 5e-15) sum = 0;
                                 if (raw_count < 5) confidence *= (double)raw_count / 5.0;
@@ -3088,7 +3088,7 @@ if (threshold > 1.0) threshold = 1.0;
                 if (offs) munmap(offs, count * 8);
                 double conf = count_est > 0 ? (double)raw_c / __builtin_sqrt(count_est) : 1.0;
                 if (conf > 1.0) conf = 1.0;
-                if (max_wl > 0) conf *= (20.0 - max_wl) / 20.0;
+                if (max_wl > 0) conf *= __builtin_exp2(-(double)max_wl * 0.25);
                 printf("%.4g\t%llu\t%d\t%.4g\n", count_est, (unsigned long long)raw_c, max_wl, conf);
             }
             else if (!strcmp(args[0], "sum") && n >= 2) {
