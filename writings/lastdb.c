@@ -272,7 +272,7 @@ static void reserve_ram(size_t bytes)
 
 static int worker_threads(void)
 {
-    if (omp_in_parallel() || omp_get_active_level() > 1) {
+    if (omp_get_active_level() > 1) {
         return 1;
     }
 
@@ -2200,7 +2200,7 @@ static inline void srv_unlock_write_attr(int *dummy) {
 #define SRV_WRITE_LOCK(path) int _srv_dummy __attribute__((cleanup(srv_unlock_write_attr))) = srv_write_lock_func(path)
 
 static void do_serve(const char *db_path, int port, int32_t cipherkey) {
-    omp_set_dynamic(0);
+    omp_set_dynamic(1);
     omp_set_max_active_levels(2);
 
     struct rlimit rl;
@@ -2736,6 +2736,94 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 } else {
                                     send_response(fd, cipherkey, 2, "empty", 5);
                                 }
+                            } else if (op == 6) {
+                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
+                                char off_str[64] = {0};
+                                memcpy(off_str, k, kl < 63 ? kl : 63);
+                                uint64_t off = strtoull(off_str, NULL, 10);
+                                Chunk *out_c = chunk_pop();
+                                if (!out_c) { send_response(fd, cipherkey, 3, "shed", 4); chunk_push(c); continue; }
+                                size_t used = 0;
+                                { SRV_READ_LOCK(db_path);
+                                    while (off < valid_size) {
+                                        if (!rec_valid(off)) break;
+                                        Record *r = rec_at(off);
+                                        uint64_t next = off + r->len;
+                                        if (r->t_len == ft_len && !memcmp(rec_t(r), full_tenant, ft_len)) {
+                                            if (used + 256 + r->k_len + r->v_len > sizeof(out_c->data)) break;
+                                            int wl = snprintf((char*)out_c->data + used, 128, "%llu\t%llu\t%s\t%u\t", (unsigned long long)next, (unsigned long long)off, r->op == OP_PUT ? "put" : "del", 1U << r->weight_log);
+                                            used += wl;
+                                            memcpy(out_c->data + used, rec_k(r), r->k_len); used += r->k_len;
+                                            out_c->data[used++] = '\t';
+                                            if (r->op == OP_PUT) { memcpy(out_c->data + used, rec_v(r), r->v_len); used += r->v_len; }
+                                            out_c->data[used++] = '\n';
+                                        }
+                                        off = next;
+                                    }
+                                }
+                                send_response(fd, cipherkey, 0, out_c->data, used);
+                                chunk_push(out_c);
+                            } else if (op == 7) {
+                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
+                                char type_buf[16] = {0};
+                                memcpy(type_buf, v, vl < 15 ? vl : 15);
+                                float (*dot_fn)(const void *, const void *, size_t) = NULL;
+                                float best_score = -1e30f;
+                                char best_k_buf[65536];
+                                uint16_t best_k_len = 0;
+                                int found = 0;
+                                { SRV_READ_LOCK(db_path);
+                                    Node *n = ht_get(full_tenant, ft_len, k, kl);
+                                    if (n) {
+                                        Record *r = rec_at(n->off1 - 1);
+                                        if (r->op != OP_DEL && r->v_len > 0) {
+                                            if (!strcmp(type_buf, "f32") && r->v_len % 4 == 0) dot_fn = vec_dot_f32;
+                                            else if (!strcmp(type_buf, "f16") && r->v_len % 2 == 0) dot_fn = vec_dot_f16;
+                                            else if (!strcmp(type_buf, "i8")) dot_fn = vec_dot_i8;
+                                            else if (!strcmp(type_buf, "b8")) dot_fn = vec_dot_b8;
+                                            if (dot_fn) {
+                                                uint64_t start_idx, end_idx;
+                                                ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
+                                                uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
+                                                uint64_t *offs = get_sorted_offs(start_idx, count);
+                                                #pragma omp parallel num_threads(worker_threads())
+                                                {
+                                                    float local_best = -1e30f;
+                                                    const char *local_k = NULL;
+                                                    uint16_t local_k_len = 0;
+                                                    #pragma omp for schedule(static, 4096)
+                                                    for (uint64_t i = 0; i < count; i++) {
+                                                        uint64_t koff = offs ? offs[i] : ht[start_idx + i].off1 - 1;
+                                                        Record *c_rec = rec_at(koff);
+                                                        if (c_rec->op == OP_DEL || c_rec->t_len != r->t_len || c_rec->v_len != r->v_len) continue;
+                                                        if (koff + 1 == n->off1) continue;
+                                                        if (memcmp(rec_t(c_rec), full_tenant, r->t_len) != 0) continue;
+                                                        size_t p1 = r->v_len > 256 ? 256 : r->v_len;
+                                                        float s1 = dot_fn(rec_v(r), rec_v(c_rec), p1);
+                                                        if (p1 < r->v_len && s1 * ((float)r->v_len / p1) < local_best - 0.8f) continue;
+                                                        size_t p2 = r->v_len > 1024 ? 1024 : r->v_len;
+                                                        float s2 = p1 < p2 ? s1 + dot_fn(rec_v(r) + p1, rec_v(c_rec) + p1, p2 - p1) : s1;
+                                                        if (p2 < r->v_len && s2 * ((float)r->v_len / p2) < local_best - 0.3f) continue;
+                                                        float score = p2 < r->v_len ? s2 + dot_fn(rec_v(r) + p2, rec_v(c_rec) + p2, r->v_len - p2) : s2;
+                                                        if (score > local_best) {
+                                                            local_best = score; local_k = rec_k(c_rec); local_k_len = c_rec->k_len;
+                                                            if (score > *(volatile float *)&best_score) {
+                                                                #pragma omp critical
+                                                                { if (score > best_score) { best_score = score; memcpy(best_k_buf, local_k, local_k_len); best_k_len = local_k_len; found = 1; } }
+                                                            }
+                                                        }
+                                                        if (*(volatile float *)&best_score > local_best) local_best = *(volatile float *)&best_score;
+                                                    }
+                                                    #pragma omp critical
+                                                    { if (local_best > best_score && local_k) { best_score = local_best; memcpy(best_k_buf, local_k, local_k_len); best_k_len = local_k_len; found = 1; } }
+                                                }
+                                                if (offs) munmap(offs, count * 8);
+                                            }
+                                        }
+                                    }
+                                }
+                                if (found) send_response(fd, cipherkey, 0, best_k_buf, best_k_len);
+                                else send_response(fd, cipherkey, 2, "not found", 9);
                             } else if (op == 16) {
                                 if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
                                 int wrote = 0;

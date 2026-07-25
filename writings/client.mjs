@@ -109,6 +109,32 @@ export async function sum(client, color, tenant, words = '', prefix = '', thresh
     return { estimated: Number(p[0]), raw: Number(p[1]) };
 }
 
+export async function closest(client, color, tenant, key, type) {
+    return request(client, 'closest', color, tenant, key, type);
+}
+
+export async function tail(client, color, tenant, offset = 0) {
+    return request(client, 'tail', color, tenant, String(offset), '');
+}
+
+export async function* follow(client, color, tenant, offset = 0) {
+    var off = offset;
+    while (true) {
+        var res = await tail(client, color, tenant, off);
+        var str = res.toString();
+        if (!str) {
+            await new Promise(r => setTimeout(r, 1000));
+            continue;
+        }
+        var lines = str.split('\n');
+        for (var i = 0; i < lines.length - 1; i++) {
+            var parts = lines[i].split('\t');
+            off = parts[0];
+            yield parts;
+        }
+    }
+}
+
 
 
 export async function incr(client, color, tenant, key, delta) {
