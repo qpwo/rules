@@ -1,0 +1,147 @@
+oh no how do i stream from my shitty nextjs app that dont have websockets in backend
+oh no my redis bill is a million dollars because some moron stored a bunch of giant JSON blobs with no TTL
+oh no my cache hit rate is zero because the devs keep changing the key format without telling anyone
+oh no the intern just ran FLUSHALL on the production redis and now every user is logged out
+oh no i need a distributed lock but the last guy's implementation deadlocks the entire system if one pod restarts
+oh no my job queue is clogged with a million jobs because one poison pill message is crashing the worker in a loop
+oh no i need to find all keys matching a pattern but the ops team said if I use `KEYS *` again they'll have me fired
+oh no our sentinel failover works fine in staging but in prod it just sits there doing nothing while the primary is on fire
+oh no we're trying to use redis for a leaderboard but two users with the same score keep swapping places every time they refresh
+oh no i have to debug a lua script that someone wrote 5 years ago and it's using global variables and i want to die
+oh no my shitty B2B sass app needs to have an auth token now, but i have to rewrite 500 queries to add a `where tenant_id = ?` clause
+oh no the `ALTER TABLE` migration has been running for 8 hours and it's holding a lock that's blocking all writes to the users table
+oh no our database is 90% bloat because no one understands how to tune autovacuum and the ops team just says to buy a bigger server
+oh no we hit the `max_connections` limit again and the whole site is down, but the DBA refuses to raise it because "that's not the right solution"
+oh no my simple query is taking 30 seconds because the query planner suddenly decided to do a sequential scan on a billion-row table
+oh no i spent a week setting up row-level security and now i can't even see the data i just inserted
+oh no we have to upgrade from postgres 9.6 to 14 and the migration guide is longer than the bible
+oh no my logical replication slot has been down all weekend and now it's holding back terabytes of WAL files and the primary is out of disk space
+oh no the last dev stored everything in a single `jsonb` column and now i have to write these insane queries with `->>` operators everywhere
+oh no someone committed a transaction with a `LISTEN` call inside and now every `NOTIFY` is queued up and our whole event system is stuck
+oh no the braindead analysts want to be able to make their own columns in the db but they would ruin everything
+oh no my query is failing with `Too many parts` and the only solution on stack overflow is to `OPTIMIZE TABLE ... FINAL` which will take 3 days
+oh no my `GROUP BY` query just used 500GB of RAM and killed the server because I forgot to `GROUP BY` a low-cardinality key first
+oh no someone ingested a billion rows of numbers as `Nullable(String)` and now all my sum() queries are broken
+oh no i'm trying to join a 100-row dimension table and it's somehow taking longer than scanning the 10-terabyte fact table
+oh no i just want to delete one user's data for a GDPR request, why do i have to run an async mutation that might not finish until tomorrow
+oh no our zookeeper cluster is having a rolling restart and now clickhouse is read-only and flapping like a dying fish
+oh no my real-time insert stream created ten million tiny files and now my dashboard takes 5 minutes to load
+oh no my distributed query is hanging indefinitely because one replica in another continent is swapping to disk
+oh no i spent a week writing this IAM policy to give a lambda access to one prefix and it's still getting AccessDenied
+oh no i ran `aws s3 rm --recursive s3://my-bucket/tmp/` but I forgot the trailing slash and just deleted the entire bucket
+oh no my script writes a file and then immediately tries to read it, but it gets a 404 Not Found half the time because of eventual consistency
+oh no i've added every possible CORS header to my bucket policy and my browser upload still fails with 'No Access-Control-Allow-Origin header is present'
+oh no my presigned URLs expire in 15 minutes because that's the default and now my users' long-running data processing jobs are all failing
+oh no i hardcoded us-east-1 in my app but the bucket is in eu-west-2, and now every request is doing a slow, expensive cross-region redirect
+oh no someone logged a number as a string and now elasticsearch has a mapping conflict and is rejecting all logs from half our services
+oh no the cluster is "yellow" and i have no idea what that means but the ops team is yelling at me about "unassigned shards"
+oh no my simple search query is 300 lines of nested JSON with "must", "should", and "filter" blocks that make no sense
+oh no i have to change one field's analyzer, which means I have to reindex 50 terabytes of data and it's going to take a week
+oh no the heap size is 31GB but the JVM is garbage collecting every 10 seconds and my p99 query latency is 3 minutes
+oh no i'm just trying to count unique users but the cardinality aggregation is giving me a number that's off by 10%
+oh no my search for 'hello-world' returns no results because the default analyzer split it into 'hello' and 'world'
+oh no my node just ran out of disk space because of merge operations and now it's been kicked out of the cluster
+oh no i just want to find all documents from the last hour, why do i have to use this weird "now-1h/h" date math syntax
+oh no i'm trying to debug a slow query and the profile API just gave me a 10MB JSON file that looks like a schizophrenic's diary
+oh no there's one bad message in the stream that crashes my consumer, so it just gets redelivered forever in an infinite crash loop
+oh no my consumer is 12 hours behind and the broker is about to run out of disk space from all the unacknowledged messages
+oh no my pod just restarted and now the entire consumer group has paused for two minutes to "rebalance", bringing my whole application to a halt
+oh no i just want to send a message from service A to B, why do i need a three-node zookeeper cluster and a five-node broker cluster to do it
+oh no another team changed their event schema without telling anyone and now my service is throwing deserialization errors in production
+oh no i thought messages were processed in order, but because of partitions, a `user_updated` event arrived before the `user_created` event
+oh no my manager read a blog post and now demands "exactly-once semantics", and I've spent a week trying to explain why that's mostly a myth
+oh no i need to see all events from the beginning of time to rebuild my service's state, but the topic's retention policy is only 24 hours
+oh no my message just disappeared. the publisher said it sent, the broker logs are useless, and my consumer never saw it. it's just gone.
+The board wants to know why our TCO for this caching layer is higher than our entire analytics platform. The engineers just mumble about 'operational complexity' but can't give me a straight answer.
+The sales guy from the ClickHouse vendor keeps talking about 'enterprise support' but when I ask him if he'll guarantee our dashboards won't die during a board meeting, he changes the subject.
+My senior dev is begging me for a blank check for this 'Temporal' thing to orchestrate three background jobs that run once a day. I asked for an ROI and he sent me a 50-page whitepaper on 'durable execution'.
+The sales rep says their "active-active geo-replication" is mission-critical, but we're a cat photo sharing app serving one city. I feel like I'm being sold a Ferrari to go grocery shopping.
+So we're going to replace a free, open-source tool that works fine with a proprietary, expensive one that we don't have the skills to manage, just because a blog post said it was 'web scale'? Am I the only one who thinks this is insane?
+The engineer keeps saying 'idempotency' and 'workflow replay' like it's magic. I asked him to explain it in business terms and he just stared at me blankly for a full minute. I am not signing this PO.
+You sold me on 'free open-source PostHog', now you're telling me it needs a full-time engineer to babysit its database and our bill for the underlying cloud VMs is five grand a month?
+The product team has spent six months building dashboards in PostHog that no one looks at. Can someone please show me how this expensive new toy has moved a single KPI?
+Our self-hosted PostHog instance is down again, and the one person who knew how to fix it just quit. I thought 'open source' was supposed to save us money, not hold our analytics hostage.
+We bought Databricks to avoid vendor lock-in with Snowflake, but now all our data is in this proprietary 'Delta Lake' format and we're more locked in than ever.
+The engineer says the software is free, but the architecture diagram he showed me requires a new Kubernetes cluster, a managed database, and an on-call rotation. This is the most expensive 'free' software I've ever seen.
+So let me get this straight: to debug a failed order, instead of looking at a log file, I now have to use a special command-line tool to 'replay a workflow execution history' from a database I can't access? This sounds like job security for engineers, not a solution for the business.
+Our lead engineer just told me he 'accidentally deleted the wrong prefix' and we lost a year of customer invoices because 'versioning wasn't turned on'. Why is the default setting for the 'delete everything' button 'yes, and make it permanent'?
+My Datadog bill just came in and it's higher than my payroll. Are we monitoring a business or funding a small country?
+The sales guy sold me a 'single pane of glass', but my engineers have created 5,000 dashboards and now no one can find anything. It's a single pane of shattered, confusing glass.
+My team says we need to hire a full-time DBA because our queries are slow, but isn't this the most popular open-source database in the world? Why isn't it just fast out of the box?
+So we have to take the entire application offline for a whole weekend to perform a major version upgrade, and if anything goes wrong we might lose data? And this is what you call a 'mature' database?
+My engineers say they can't debug production without shipping terabytes of logs, and now my Datadog bill for 'log ingestion and indexing' is literally my biggest single line-item expense after salaries.
+The data team says they've 'optimized' their pipeline, but our Databricks bill went *up* by 30%. Their definition of 'optimized' seems to be 'use more expensive features'.
+We bought this thing to make data easier, but now I have engineers arguing about whether to use Koalas, Pandas API on Spark, or just plain PySpark. It's creating more meetings, not more insights.
+Our analytics team is begging for a massive ClickHouse cluster because 'Postgres is too slow'. Is it Postgres that's slow, or is it their SQL queries that look like someone fell asleep on the keyboard?
+The sales engineer from the ClickHouse vendor said we'd get 'interactive queries on petabytes'. He didn't mention that a single bad query from an intern could bring the entire company to a halt.
+oh no, our user signup process involves five different microservices and if any one of them fails, the user is left in a zombie state where they're half registered and can't log in.
+oh no, our nightly data pipeline is just a chain of cron jobs, and if one of them fails at 3 AM, the whole thing stops and no one knows until the next day when all the reports are empty.
+oh no, our order fulfillment logic is a mess of database status flags and message queue retries, and it's so brittle that a single network hiccup can result in a customer's order being lost forever.
+oh no, our main database is at 100% CPU all day just serving the same handful of queries over and over, and every engineer is too scared to touch it.
+oh no, every time we deploy a new web server, a third of our users get logged out because their session was stored in local memory on the old server.
+oh no, our background jobs are running on the same server as the web app, and whenever a big report runs, it starves the CPU and the whole site grinds to a halt.
+oh no the site is down and I have to ssh into twenty different servers to grep through logs while the CTO is yelling at me on slack
+oh no our checkout latency just doubled and I cant tell if it was my code push the database migration or a problem with our payment provider
+oh no we get a thousand alerts a day and the engineers ignore all of them so the only way we know we have an outage is when customers tweet at us
+oh no my database is melting and every page takes ten seconds to load
+oh no every time we deploy a new web server half our users get logged out
+oh no I just need to tell the browser a background job is done but I dont want to build a whole websocket thing
+oh no our dashboards are so slow they time out and my boss thinks our product is broken
+oh no I need to count how many unique people did a thing but my postgres query takes an hour and uses all the RAM
+oh no our log volume is doubling every month and our current analytics database is about to fall over and die
+oh no my system is down and I am completely blind I have no idea why
+oh no I have metrics in one system and logs in another and I cant connect a spike in errors to a server problem
+oh no the CEO wants a real-time graph of sales by country and all I can give him is a static report from yesterday
+oh no my users table has phone numbers in the email column and I cant trust any of the data
+oh no two people just bought the last ticket to the show and now I have to call one of them and tell them they cant go
+oh no the server crashed while writing a user file and now the JSON is corrupted and nobody can log in
+oh no I have no idea what features people actually use in my app
+oh no a user churned and I have no clue what they did before they left
+oh no I cant connect anonymous user behavior to the actual person in my database
+oh no the site is down and I am completely blind I have no idea why
+oh no I have metrics in one system and logs in another and I cant connect a spike in errors to a server problem
+oh no we get a thousand alerts a day and the engineers ignore all of them so the only way we know we have an outage is when customers tweet at us
+oh no our user signup process involves five different services and if one fails the whole thing is left in a zombie state
+oh no our nightly data pipeline is just a chain of cron jobs and if one breaks at 3am nobody knows until the next morning
+oh no our order fulfillment is a mess of database flags and retries and a single network blip can lose a customer order forever
+oh no I have no idea what features people actually use in my app
+oh no a user reported a bug and I have no way to see what they actually did
+oh no I spent six months building a new feature and I am terrified to launch it
+oh no our dashboards are so slow they time out and my boss thinks our product is broken
+oh no I need to count how many unique people did a thing but my postgres query takes an hour and uses all the RAM
+oh no our log volume is doubling every month and our current analytics database is about to fall over and die
+oh no my weekly user report takes all day to run and the board is waiting
+oh no we are losing log data because our database cant keep up with the writes
+oh no I need to analyze a billion events and my database just gives up and dies
+oh no our user signup calls five different services and if one fails the user is left in a broken state
+oh no our nightly data pipeline is a chain of cron jobs and if one fails at 3am the whole thing stops and no one knows
+oh no our order fulfillment is a mess of database flags and message queues and a single network blip can lose a customer's order
+oh no the site is down and I have to ssh into twenty servers to figure out why
+oh no my latency just spiked and I cant tell if its the code or the database
+oh no we get a thousand useless alerts a day and just missed a real outage
+oh no I built a bunch of features and have no idea if anyone is even clicking on them
+oh no I have all this anonymous usage data but I cant tell which paying customer is having a problem
+oh no the marketing team wants to test a new headline but it will take an engineer two weeks to build the test
+oh no my users table has phone numbers in the email column and I cant trust any of the data
+oh no two people just bought the last concert ticket and now I have to call one and apologize
+oh no the server crashed while writing a file and now the JSON is corrupted and nobody can log in
+oh no a user just paid us but the payment service was down and now we have no record of their order
+oh no our service restarted and charged the same customer twice because it processed the payment event again
+oh no we just launched a new feature and our event pipeline is completely overwhelmed and dropping half the data
+oh no our dashboards are so slow they time out and my boss thinks our product is broken
+oh no I need to count how many unique people did a thing but my postgres query takes an hour and uses all the RAM
+oh no our log volume is doubling every month and our current analytics database is about to fall over and die
+oh no my data scientists use python and my data engineers use sql and they cant work on the same data
+oh no our data lake is a swamp of random files and nobody can find or query anything reliably
+oh no our spark jobs are impossible to manage and debug and they fail half the time for no reason
+oh no my server hard drive died and I lost all my customer files
+oh no my website images are taking up all the server disk space and I have nowhere else to put them
+oh no I need to share a giant file with a contractor but I cant just email it and FTP is a nightmareoh no my users search for shoes for running in the rain but my product descriptions only say waterproof trainers
+oh no i have a million product images and no way to find which ones look like this new popular style
+oh no my site is full of duplicate product listings from different sellers and i need to group them together
+oh no my recommendation engine can only show users more of the same brand not things that are actually similar in style
+oh no my help docs search only returns documents with keywords not the actual answers to user questions
+oh no users want to search for pictures of a red dress at sunset but my images are just tagged with dress and evening
+oh no i have thousands of hours of customer calls and no way to find every time a competitor was mentioned
+oh no i need to find fraudulent users but they dont match any of my rules they just act weird
+oh no my users want to ask natural language questions about our product specs but all we have is a sql database
