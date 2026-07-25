@@ -413,6 +413,14 @@ static int append_raw(int fd, const char *t, size_t tl, const char *k, size_t kl
     r.key_hash = key_hash(t, r.t_len, k, r.k_len);
     r.check = rec_check(&r, t, k, v);
 
+    off_t pos = lseek(fd, 0, SEEK_END);
+    if (pos >= 0) {
+        off_t end = pos + (off_t)r.len;
+        if ((pos & 33554431) == 0 || ((pos ^ end) >> 25)) {
+            (void)fallocate(fd, 0, 0, (end + 33554431) & ~(off_t)33554431);
+        }
+    }
+
     struct iovec iov[4] = {
         {&r, sizeof(r)},
         {(void *)t, tl},
