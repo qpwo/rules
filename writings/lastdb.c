@@ -483,7 +483,7 @@ static void load_db(const char *path)
     if (close(fd)) {
         die("close");
     }
-    (void)posix_madvise(map_base, map_size, POSIX_MADV_NORMAL);
+    (void)posix_madvise(map_base, map_size, POSIX_MADV_SEQUENTIAL);
     uint64_t off = valid_size;
     uint64_t start_len = ht_len;
     uint64_t added = 0;
@@ -497,6 +497,7 @@ static void load_db(const char *path)
         added++;
     }
     valid_size = off;
+    (void)posix_madvise(map_base, map_size, POSIX_MADV_RANDOM);
     if (added && (!start_len || added >= 1024)) {
         deduplicate_ht();
     }
@@ -2577,9 +2578,13 @@ w2_sum += db_w * db_w;
 if (max_wl < 0) max_wl = 0;
 double rse = count_est > 0 ? __builtin_sqrt(w2_sum > count_est ? w2_sum - count_est : 0) / count_est : 0;
 double confidence = rse >= 1.0 ? 0.0 : 1.0 - rse;
+                                if (confidence < 0.5) {
+                                    send_response(fd, cipherkey, 2, "low_confidence", 14);
+                                } else {
                                 if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu\t%d\t%.4g", count_est, (unsigned long long)raw_count, max_wl, confidence);
                                 else vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%llu\t%d\t%.4g", sum, raw_sum, (unsigned long long)raw_count, max_wl, confidence);
                                     send_response(fd, cipherkey, 0, val, vl_out);
+                                }
                                 }
                             } else if (op == 10) {
                                 if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
