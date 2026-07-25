@@ -352,11 +352,12 @@ static void sync_fd(int fd)
     }
 }
 
-static void append_fd(int fd, const char *t, const char *k, const char *v, uint8_t op)
+static void append_raw(int fd, const char *t, size_t tl, const char *k, size_t kl, const char *v, size_t vl, uint8_t op)
 {
-    size_t tl = strlen(t);
-    size_t kl = strlen(k);
-    size_t vl = v ? strlen(v) : 0;
+    if (!v || op == OP_DEL) {
+        v = "";
+        vl = 0;
+    }
     if (tl > UINT16_MAX || kl > UINT16_MAX) diex("tenant/key too long");
     if (vl > UINT32_MAX) diex("value too long");
     if (sizeof(Record) + tl + kl + vl > UINT32_MAX) diex("record too long");
@@ -369,7 +370,7 @@ static void append_fd(int fd, const char *t, const char *k, const char *v, uint8
     r.v_len = (uint32_t)vl;
     r.op = op;
     r.key_hash = key_hash(t, r.t_len, k, r.k_len);
-    r.check = rec_check(&r, t, k, v ? v : "");
+    r.check = rec_check(&r, t, k, v);
 
     struct statvfs st;
     if (op != OP_DEL && !fstatvfs(fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
@@ -390,7 +391,7 @@ static void append_fd(int fd, const char *t, const char *k, const char *v, uint8
         {&r, sizeof(r)},
         {(void *)t, tl},
         {(void *)k, kl},
-        {(void *)(v ? v : ""), vl},
+        {(void *)v, vl},
     };
     int i = 0;
     while (i < 4) {
@@ -406,6 +407,11 @@ static void append_fd(int fd, const char *t, const char *k, const char *v, uint8
             iov[i].iov_len -= (size_t)got;
         }
     }
+}
+
+static void append_fd(int fd, const char *t, const char *k, const char *v, uint8_t op)
+{
+    append_raw(fd, t, strlen(t), k, strlen(k), v ? v : "", v ? strlen(v) : 0, op);
 }
 
 static int open_lockfile(const char *path)
@@ -1428,18 +1434,13 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 if (!(perms & req)) { send_response(fd, cipherkey, 1, "denied", 6); free(buf); continue; }
                                 #pragma omp critical (db)
                                 {
-                                    char k_null[65536]; if (kl > 65535) kl = 65535; memcpy(k_null, k, kl); k_null[kl] = 0;
-                                    char *v_null = NULL;
-                                    if (op == 2) { v_null = malloc(vl + 1); memcpy(v_null, v, vl); v_null[vl] = 0; }
-
                                     int lockfd = open_lockfile(db_path);
                                     load_db(db_path);
                                     int db_fd = open_append(db_path);
-                                    append_fd(db_fd, full_tenant, k_null, v_null, op == 2 ? OP_PUT : OP_DEL);
+                                    append_raw(db_fd, full_tenant, ft_len, k, kl, v, vl, op == 2 ? OP_PUT : OP_DEL);
                                     sync_fd(db_fd);
                                     close(db_fd);
                                     close(lockfd);
-                                    if (v_null) free(v_null);
                                 }
                                 send_response(fd, cipherkey, 0, "ok", 2);
                             }
