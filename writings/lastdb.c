@@ -468,6 +468,7 @@ static void load_db(const char *path)
     if (map_base && (st.st_ino != map_ino || st.st_size < (off_t)map_size)) {
         munmap(map_base, map_size);
         map_base = NULL; map_size = 0; valid_size = 0; ht_len = 0; ht_sorted_len = 0;
+        if (ht) { munmap(ht, (ht_cap + ht_max_probe) * sizeof(*ht)); ht = NULL; ht_cap = 0; ht_max_probe = 0; }
     }
     map_ino = st.st_ino;
     if (st.st_size <= (off_t)map_size) return;
@@ -2578,7 +2579,7 @@ if (threshold > 1.0) threshold = 1.0;
                                             }
                                         } else {
                                     if (eff_w < min_weight) continue;
-                                    count_est += w_weight;
+                                    count_est += eff_w;
                                     raw_count++;
                                             if (op == 9 && r->v_len > 0) {
                                                 if (is_decay) {
