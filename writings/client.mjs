@@ -121,8 +121,11 @@ export async function closest(client, color, tenant, keyOrType, typeOrVector) {
     return request(client, 'closest', color, tenant, keyOrType, typeOrVector);
 }
 
-export async function count(client, color, tenant, prefix = '', threshold = 1.0) {
-    var res = await request(client, 'count', color, tenant, prefix, String(threshold));
+export async function count(client, color, tenant, prefix = '', threshold = 1.0, now = null) {
+    if (now === null) now = Date.now() / 1000.0;
+    var val = String(threshold);
+    if (now !== null) val += '\t' + String(now);
+    var res = await request(client, 'count', color, tenant, prefix, val);
     var p = res.toString().split('\t');
     return { estimated: Number(p[0]), raw: Number(p[1]) };
 }
@@ -330,8 +333,8 @@ async function cli(client, a) {
     if (a[0] === 'closest' && a.length === 5) {
         return closest(client, parseI32(a[1]), a[2], a[3], a[4]);
     }
-    if (a[0] === 'count' && (a.length >= 3 && a.length <= 5)) {
-        return count(client, parseI32(a[1]), a[2], a[3] ?? '', a[4] ? Number(a[4]) : 1.0);
+    if (a[0] === 'count' && (a.length >= 3 && a.length <= 6)) {
+        return count(client, parseI32(a[1]), a[2], a[3] ?? '', a[4] ? Number(a[4]) : 1.0, a[5] ? Number(a[5]) : null);
     }
     if (a[0] === 'sum' && (a.length >= 3 && a.length <= 6)) {
         return sum(client, parseI32(a[1]), a[2], a[3] ?? '', a[4] ? Number(a[4]) : 1.0, a[5] ? Number(a[5]) : null);
@@ -431,7 +434,7 @@ function usage() {
         '  search COLOR TENANT WORD... [THRESHOLD]',
         '  tail COLOR [OFFSET]',
         '  closest COLOR TENANT KEY TYPE',
-        '  count COLOR TENANT [PREFIX] [THRESHOLD]',
+        '  count COLOR TENANT [PREFIX] [THRESHOLD] [NOW]',
         '  sum COLOR TENANT [PREFIX] [THRESHOLD] [NOW]',
         '  incr COLOR TENANT KEY DELTA',
         '  take COLOR TENANT KEY',
