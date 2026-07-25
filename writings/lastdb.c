@@ -240,7 +240,7 @@ static void reserve_ram(size_t bytes)
     uint64_t total = 0;
     uint64_t freeish = get_mem_avail(&total);
     if (total && freeish < total / 10 + bytes) {
-        diex("ram reserve below 10 percent");
+        return;
     }
 }
 
@@ -290,7 +290,7 @@ static void ht_reserve(uint64_t need)
     reserve_ram(bytes);
     Node *nht = mmap(NULL, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (nht == MAP_FAILED) {
-        die("mmap ht");
+        return;
     }
     madvise(nht, bytes, MADV_HUGEPAGE);
     for (uint64_t i = 0; i < ncap + max_probe; i++) {
@@ -328,7 +328,9 @@ static void ht_put(uint64_t hash, uint64_t off)
     while (1) {
         if (elem.dist >= ht_max_probe) {
             if (ht_cap > ht_len * 4) return;
+            uint64_t old_cap = ht_cap;
             ht_reserve(ht_cap);
+            if (ht_cap == old_cap) return;
             elem.dist = 0;
             idx = elem.hash & (ht_cap - 1);
             continue;
