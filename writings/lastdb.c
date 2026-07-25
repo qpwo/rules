@@ -2502,8 +2502,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
                                     Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
                                     if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
                                     if (pref_len > 0 && (r->k_len < pref_len || memcmp(rec_k(r), pref, pref_len))) continue;
-                                    if (r->weight_log > max_w) continue;
-                                    if (threshold < 1.0 && ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold)) continue;
+                                    if (threshold < 1.0 && r->weight_log < max_w && ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold)) continue;
 
                                     const char *out_val = rec_v(r);
                                     size_t out_vl = r->v_len;
@@ -2541,7 +2540,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
                                     }
                                     if (match) {
                                         double db_w = (double)(1U << r->weight_log);
-                                        double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
+                                        double qw = (threshold < 1.0 && r->weight_log < max_w) ? 1.0 / threshold : 1.0;
                                         double w_weight = db_w * qw;
                                         double eff_w = is_decay ? w_weight * cur : w_weight;
                                         if (eff_w < min_weight) continue;
