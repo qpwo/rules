@@ -3,3 +3,5 @@
 *.db.lock
 *.profraw
 .inputs.txt
+!needs.log
+!things.log
