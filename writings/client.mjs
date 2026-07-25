@@ -102,7 +102,7 @@ export async function count(client, color, tenant, words = '', prefix = '', thre
     if (min_weight !== null) k += '\t' + min_weight;
     var res = await request(client, 'count', color, tenant, k, Array.isArray(words) ? words.join('\t') : words);
     var p = res.toString().split('\t');
-    return { estimated: Number(p[0]), raw: Number(p[1]), max_wl: Number(p[2] || 0) };
+    return { estimated: Number(p[0]), raw: Number(p[1]), max_wl: Number(p[2] || 0), confidence: Number(p[3] || 1) };
 }
 
 export async function sum(client, color, tenant, words = '', prefix = '', threshold = 1.0, now = null, min_weight = null) {
@@ -110,6 +110,7 @@ export async function sum(client, color, tenant, words = '', prefix = '', thresh
     if (min_weight !== null) k += '\t' + min_weight;
     var res = await request(client, 'sum', color, tenant, k, Array.isArray(words) ? words.join('\t') : words);
     var p = res.toString().split('\t');
+    if (p.length >= 5) return { estimated: Number(p[0]), raw_sum: Number(p[1]), raw_count: Number(p[2]), max_wl: Number(p[3]), confidence: Number(p[4]) };
     if (p.length >= 4) return { estimated: Number(p[0]), raw_sum: Number(p[1]), raw_count: Number(p[2]), max_wl: Number(p[3]) };
     if (p.length >= 3) return { estimated: Number(p[0]), raw_sum: Number(p[1]), raw_count: Number(p[2]) };
     return { estimated: Number(p[0]), raw: Number(p[1]) };
