@@ -806,18 +806,18 @@ static int do_decay(const char *path, const char *t, const char *k, const char *
     double last = ts;
     double value = 0;
     int had = current_decay(t, k, &stored_hl, &last, &value);
-    if (had) {
-        if (stored_hl != hl) {
-            close(lockfd);
-            diex("decay half life changed");
-        }
-        if (ts < last) {
-            close(lockfd);
-            diex("time went backwards");
-        }
+    if (had && stored_hl != hl) {
+        close(lockfd);
+        diex("decay half life changed");
     }
 
-    double next = value * __builtin_exp2((last - ts) / hl) + d;
+    double next;
+    if (had && ts < last) {
+        next = value + d * __builtin_exp2((ts - last) / hl);
+        ts = last;
+    } else {
+        next = value * __builtin_exp2((last - ts) / hl) + d;
+    }
     if (!__builtin_isfinite(next)) {
         close(lockfd);
         diex("decay value not finite");
@@ -1266,13 +1266,19 @@ static int do_compact(const char *path)
         die("open tmp");
     }
 
+    int compact_wl = 0;
     struct statvfs st;
     if (!fstatvfs(fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
         uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
         uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.1L);
-        if (free_bytes < reserve_bytes || free_bytes - reserve_bytes < live_bytes) {
-            diex("compact needs temp space plus 10 percent disk reserve");
+        uint64_t target = free_bytes > reserve_bytes ? free_bytes - reserve_bytes : 0;
+        uint64_t disk_half = (uint64_t)st.f_blocks * st.f_frsize / 2;
+        if (target > disk_half) target = disk_half;
+        while (live_bytes > target && compact_wl < 31) {
+            compact_wl++;
+            live_bytes /= 2;
         }
+        if (live_bytes > target) diex("compact needs temp space plus 10 percent disk reserve");
     }
 
     (void)posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
@@ -1288,19 +1294,40 @@ static int do_compact(const char *path)
         Record *r = rec_at(off);
         Node *n = ht_get(rec_t(r), r->t_len, rec_k(r), r->k_len);
         if (n && (n->off1 - 1) == off && r->op != OP_DEL) {
-            if (r->len > COMPACT_WRITE_BYTES) {
-                if (used) {
-                    write_all(fd, buf, used);
-                    used = 0;
-                }
-                write_all(fd, r, r->len);
-            } else {
+            int keep = 1;
+            uint8_t new_wl = r->weight_log;
+            if (compact_wl > 0 && r->t_len > 0 && rec_t(r)[0] != '0') {
+                uint8_t twl = r->weight_log > compact_wl ? r->weight_log : compact_wl;
+                double gate = (double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32;
+                const char *sep = memchr(rec_k(r), '/', r->k_len);
+                if (sep) gate = (double)(key_hash(rec_t(r), r->t_len, rec_k(r), sep - rec_k(r)) & 0xFFFFFFFFULL) * 0x1.0p-32;
+                if (gate > 1.0 / (1U << twl)) keep = 0;
+                new_wl = twl;
+            }
+            if (keep) {
                 if (COMPACT_WRITE_BYTES - used < r->len) {
                     write_all(fd, buf, used);
                     used = 0;
                 }
-                memcpy(buf + used, r, r->len);
-                used += r->len;
+                if (r->len > COMPACT_WRITE_BYTES) {
+                    if (new_wl != r->weight_log) {
+                        Record tmp = *r;
+                        tmp.weight_log = new_wl;
+                        tmp.check = rec_check(&tmp, rec_t(r), rec_k(r), rec_v(r));
+                        write_all(fd, &tmp, sizeof(tmp));
+                        write_all(fd, rec_t(r), r->len - sizeof(tmp));
+                    } else {
+                        write_all(fd, r, r->len);
+                    }
+                } else {
+                    memcpy(buf + used, r, r->len);
+                    if (new_wl != r->weight_log) {
+                        Record *wr = (Record *)(buf + used);
+                        wr->weight_log = new_wl;
+                        wr->check = rec_check(wr, rec_t(wr), rec_k(wr), rec_v(wr));
+                    }
+                    used += r->len;
+                }
             }
         }
         off += r->len;
@@ -2279,9 +2306,14 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         }
                                     }
                                     if (had && stored_hl != hl) { ok = 0; strcpy(err_msg, "hl changed"); }
-                                    else if (had && ts < last) { ok = 0; strcpy(err_msg, "time reversed"); }
                                     else {
-                                        double next = value * __builtin_exp2((last - ts) / hl) + d;
+                                        double next;
+                                        if (had && ts < last) {
+                                            next = value + d * __builtin_exp2((ts - last) / hl);
+                                            ts = last;
+                                        } else {
+                                            next = value * __builtin_exp2((last - ts) / hl) + d;
+                                        }
                                         if (!__builtin_isfinite(next)) { ok = 0; strcpy(err_msg, "not finite"); }
                                         else if (__builtin_fabs(next) < 1e-12) {
                                             if (had) {
