@@ -1076,36 +1076,41 @@ typedef _Float16 unaligned_f16 __attribute__((aligned(1)));
 __attribute__((target("avx512f,avx512vl")))
 static float vec_dot_f32(const void *a, const void *b, size_t bytes) {
     size_t n = bytes / 4;
-    __m512 s = _mm512_set1_ps(0.0f);
+    __m512 d2_vec = _mm512_set1_ps(0.0f);
     const unaligned_f32 *fa = a, *fb = b;
     for (size_t i = 0; i < n; i += 16) {
         __mmask16 mask = n - i >= 16 ? 0xFFFF : ((1u << (n - i)) - 1u);
         __m512 va = _mm512_maskz_loadu_ps(mask, fa + i);
         __m512 vb = _mm512_maskz_loadu_ps(mask, fb + i);
-        s = _mm512_fmadd_ps(va, vb, s);
+        __m512 d_vec = _mm512_sub_ps(va, vb);
+        d2_vec = _mm512_fmadd_ps(d_vec, d_vec, d2_vec);
     }
-    return _mm512_reduce_add_ps(s);
+    return -_mm512_reduce_add_ps(d2_vec);
 }
 
 __attribute__((target("avx512fp16,avx512vl,avx512f")))
 static float vec_dot_f16(const void *a, const void *b, size_t bytes) {
     size_t n = bytes / 2;
-    __m512h s = _mm512_set1_ph(0);
+    __m512h d2_vec = _mm512_set1_ph(0);
     const unaligned_f16 *fa = a, *fb = b;
     for (size_t i = 0; i < n; i += 32) {
         __mmask32 mask = n - i >= 32 ? 0xFFFFFFFF : ((1u << (n - i)) - 1u);
         __m512i va = _mm512_maskz_loadu_epi16(mask, fa + i);
         __m512i vb = _mm512_maskz_loadu_epi16(mask, fb + i);
-        s = _mm512_fmadd_ph(_mm512_castsi512_ph(va), _mm512_castsi512_ph(vb), s);
+        __m512h d_vec = _mm512_sub_ph(_mm512_castsi512_ph(va), _mm512_castsi512_ph(vb));
+        d2_vec = _mm512_fmadd_ph(d_vec, d_vec, d2_vec);
     }
-    return (float)_mm512_reduce_add_ph(s);
+    return -(float)_mm512_reduce_add_ph(d2_vec);
 }
 
 static float vec_dot_i8(const void *a, const void *b, size_t bytes) {
     int32_t sum = 0;
     const int8_t *ca = a, *cb = b;
-    for (size_t i = 0; i < bytes; i++) sum += (int32_t)ca[i] * (int32_t)cb[i];
-    return (float)sum;
+    for (size_t i = 0; i < bytes; i++) {
+        int32_t d = (int32_t)ca[i] - (int32_t)cb[i];
+        sum += d * d;
+    }
+    return -(float)sum;
 }
 
 static int do_closest(const char *path, const char *type, const char *t, const char *k)
