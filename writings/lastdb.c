@@ -543,7 +543,7 @@ static int append_raw(int fd, const char *t, size_t tl, const char *k, size_t kl
             }
         }
         if (last_free < last_res + r.len) return 0;
-        if (tl > 0 && t[0] != '0') {
+        if (tl > 0 && t[0] != '0' && !(vl > 0 && v[0] == '\x1F')) {
             if (ht_cap) {
                 Node *n = ht_get(t, (uint16_t)tl, k, (uint16_t)kl);
                 if (n && rec_at(n->off1 - 1)->op != OP_DEL) {
@@ -1962,7 +1962,7 @@ static int batch_put(int fd, char *buf, size_t *used, const char *t, size_t tl, 
         uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.1L);
         if (free_bytes < reserve_bytes + r.len) return 0;
     }
-    if (tl > 0 && t[0] != '0') {
+    if (tl > 0 && t[0] != '0' && !(vl > 0 && v[0] == '\x1F')) {
         if (ht_cap) {
             Node *n = ht_get(t, r.t_len, k, r.k_len);
             if (n && rec_at(n->off1 - 1)->op != OP_DEL) {
@@ -2944,7 +2944,7 @@ if (max_wl < 0) max_wl = 0;
                                             uint32_t item_vl = ntohl(*(uint32_t*)(p + 2));
                                             p += 6;
                                             uint8_t twl = 0;
-                                            if (ft_len > 0 && full_tenant[0] != '0' && ht_cap) {
+                                            if (ft_len > 0 && full_tenant[0] != '0' && ht_cap && !(item_vl > 0 && p[item_kl] == '\x1F')) {
                                                 Node *n = ht_get(full_tenant, ft_len, p, item_kl);
                                                 if (n && rec_at(n->off1 - 1)->op != OP_DEL) twl = rec_at(n->off1 - 1)->weight_log;
                                             }
