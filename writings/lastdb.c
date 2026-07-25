@@ -1489,9 +1489,16 @@ static int batch_flush(int fd, char *buf, size_t *used)
     if (!fstatvfs(fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
         uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
         uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.1L);
-        if (free_bytes < reserve_bytes + *used) {
+        uint64_t need = *used + BATCH_WRITE_BYTES;
+        if (free_bytes < reserve_bytes + need) {
             return 0;
         }
+    }
+
+    off_t pos = lseek(fd, 0, SEEK_END);
+    if (pos >= 0) {
+        off_t end = pos + (off_t)*used;
+        (void)fallocate(fd, FALLOC_FL_KEEP_SIZE, 0, (end + 33554431) & ~(off_t)33554431);
     }
 
     write_all(fd, buf, *used);
