@@ -17,6 +17,7 @@
 #include <sys/uio.h>
 #include <unistd.h>
 #include <immintrin.h>
+#include <omp.h>
 
 #ifndef O_CLOEXEC
 #define O_CLOEXEC 0
@@ -209,6 +210,13 @@ static void reserve_ram(size_t bytes)
     if (freeish < total / 10 + bytes) {
         diex("ram reserve below 10 percent");
     }
+}
+
+static int worker_threads(void)
+{
+    int n = omp_get_num_procs();
+    int keep = (n + 9) / 10;
+    return n > keep ? n - keep : 1;
 }
 
 static void ht_put(uint64_t hash, uint64_t off)
@@ -858,7 +866,7 @@ static int do_search(const char *t, int argc, char **argv)
     size_t tl = strlen(t);
     if (tl > UINT16_MAX || !ht_cap) return 0;
 
-    #pragma omp parallel for schedule(dynamic, 1024)
+    #pragma omp parallel for schedule(dynamic, 1024) num_threads(worker_threads())
     for (uint64_t i = 0; i < ht_cap + 256; i++) {
             if (!ht[i].off1) continue;
             Record *r = rec_at(ht[i].off1 - 1);
@@ -1060,7 +1068,7 @@ static int do_closest(const char *path, const char *type, const char *t, const c
     const char *best_k = NULL;
     uint16_t best_k_len = 0;
 
-    #pragma omp parallel
+    #pragma omp parallel num_threads(worker_threads())
     {
         float local_best = -1e30f;
         const char *local_k = NULL;
