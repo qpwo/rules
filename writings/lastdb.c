@@ -1380,6 +1380,7 @@ static int do_compact(const char *path)
     madvise(buf, COMPACT_WRITE_BYTES, MADV_HUGEPAGE);
 
     size_t used = 0;
+    double compact_now = (double)time(NULL);
     for (uint64_t off = 0; off < valid_size;) {
         Record *r = rec_at(off);
         Node *n = ht_get(rec_t(r), r->t_len, rec_k(r), r->k_len);
@@ -1398,7 +1399,7 @@ static int do_compact(const char *path)
             }
             if (keep) {
                 double cur = 0;
-                if (r->v_len > 0 && r->v_len < 192 && decay_value_at(rec_v(r), r->v_len, (double)time(NULL), &cur) && cur == 0) {
+                if (r->v_len > 0 && r->v_len < 192 && decay_value_at(rec_v(r), r->v_len, compact_now, &cur) && cur == 0) {
                     keep = 0;
                 }
             }
