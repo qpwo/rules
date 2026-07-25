@@ -1175,8 +1175,12 @@ static void radix_sort_u64(uint64_t *a, size_t n) {
 }
 
 static uint64_t *get_sorted_offs(uint64_t start_idx, uint64_t count) {
-    if (!count) return NULL;
-    uint64_t *offs = mmap(NULL, count * 8, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (!count || count > SIZE_MAX / 8) return NULL;
+    size_t bytes = count * 8;
+    uint64_t total = 0;
+    uint64_t freeish = get_mem_avail(&total);
+    if (total && freeish < total / 10 + bytes) return NULL;
+    uint64_t *offs = mmap(NULL, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (offs != MAP_FAILED) {
         for (uint64_t i = 0; i < count; i++) offs[i] = ht[start_idx + i].off1 - 1;
         radix_sort_u64(offs, count);
