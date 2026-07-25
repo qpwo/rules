@@ -1130,13 +1130,85 @@ static int do_closest(const char *path, const char *type, const char *t, const c
     return 0;
 }
 
+enum { BATCH_WRITE_BYTES = 32 * 1024 * 1024 };
+
+static void batch_flush(int fd, char *buf, size_t *used)
+{
+    if (!*used) {
+        return;
+    }
+    write_all(fd, buf, *used);
+    *used = 0;
+}
+
+static void batch_put(int fd, char *buf, size_t *used, const char *t, const char *k, const char *v)
+{
+    size_t tl = strlen(t);
+    size_t kl = strlen(k);
+    size_t vl = strlen(v);
+    if (tl > UINT16_MAX || kl > UINT16_MAX) diex("tenant/key too long");
+    if (vl > UINT32_MAX) diex("value too long");
+    if (sizeof(Record) + tl + kl + vl > UINT32_MAX) diex("record too long");
+
+    Record r = {0};
+    r.magic = MAGIC;
+    r.len = (uint32_t)(sizeof(r) + tl + kl + vl);
+    r.t_len = (uint16_t)tl;
+    r.k_len = (uint16_t)kl;
+    r.v_len = (uint32_t)vl;
+    r.op = OP_PUT;
+    r.key_hash = key_hash(t, r.t_len, k, r.k_len);
+    r.check = rec_check(&r, t, k, v);
+
+    struct statvfs st;
+    if (!fstatvfs(fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
+        uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
+        uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.1L);
+        double avail = (double)st.f_bavail / st.f_blocks;
+        double keep = exp2(50.0 * (avail - 0.2));
+        double gate = (double)(r.check >> 11) * 0x1.0p-53;
+        if (free_bytes < reserve_bytes + r.len) {
+            diex("disk reserve below 10 percent");
+        }
+        if (avail < 0.2 && gate > keep) {
+            diex("disk pressure decay rejected write");
+        }
+    }
+
+    if (r.len > BATCH_WRITE_BYTES) {
+        batch_flush(fd, buf, used);
+        append_fd(fd, t, k, v, OP_PUT);
+        return;
+    }
+    if (BATCH_WRITE_BYTES - *used < r.len) {
+        batch_flush(fd, buf, used);
+    }
+
+    memcpy(buf + *used, &r, sizeof(r));
+    *used += sizeof(r);
+    memcpy(buf + *used, t, tl);
+    *used += tl;
+    memcpy(buf + *used, k, kl);
+    *used += kl;
+    memcpy(buf + *used, v, vl);
+    *used += vl;
+}
+
 static int do_batch(const char *path, const char *t)
 {
     int lockfd = open_lockfile(path);
     load_db(path);
     int fd = open_append(path);
     char *line = NULL;
+    char *buf = NULL;
     size_t cap = 0;
+    size_t used = 0;
+
+    reserve_ram(BATCH_WRITE_BYTES);
+    buf = malloc(BATCH_WRITE_BYTES);
+    if (!buf) {
+        die("malloc batch");
+    }
 
     for (;;) {
         ssize_t n = getline(&line, &cap, stdin);
@@ -1153,9 +1225,14 @@ static int do_batch(const char *path, const char *t)
         }
 
         *tab = 0;
-        append_fd(fd, t, line, tab + 1, OP_PUT);
+        batch_put(fd, buf, &used, t, line, tab + 1);
     }
 
+    if (ferror(stdin)) {
+        die("getline");
+    }
+    batch_flush(fd, buf, &used);
+    free(buf);
     free(line);
     sync_fd(fd);
     if (close(fd)) {
