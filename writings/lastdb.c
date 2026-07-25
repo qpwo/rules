@@ -1381,6 +1381,10 @@ static int do_scan(const char *t, const char *prefix)
         if (pl && (r->k_len < pl || memcmp(rec_k(r), prefix, pl))) {
             continue;
         }
+        if (r->v_len > 0 && r->v_len < 192 && rec_v(r)[0] == '\x1F') {
+            double dc;
+            if (decay_value_at(rec_v(r), r->v_len, now, &dc) && dc == 0) continue;
+        }
         #pragma omp critical
         write_weighted_record(r, now);
     }
