@@ -2292,17 +2292,17 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                 while (1) {
                     usleep(1000000);
                     int need_compact = 0;
-                    int sync_fd = srv_db_fd;
-                    if (sync_fd >= 0) {
-                        fdatasync(sync_fd);
+                    int fd_to_sync = srv_db_fd;
+                    if (fd_to_sync >= 0) {
+                        fdatasync(fd_to_sync);
                         struct statvfs st;
-                        if (!fstatvfs(sync_fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
+                        if (!fstatvfs(fd_to_sync, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
                             uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
                             uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.15L);
                             if (free_bytes < reserve_bytes) need_compact = 1;
                         }
                     }
-                    if (need_compact) { SRV_WRITE_LOCK(db_path); do_compact(db_path); }
+                    if (need_compact) { SRV_WRITE_LOCK(db_path); do_compact(db_path); if (srv_db_fd >= 0) { close(srv_db_fd); srv_db_fd = -1; } }
                 }
             }
             while (1) {
@@ -2486,7 +2486,6 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 }
 { double _sn = (double)time(NULL); if (eval_now < 1 || eval_now > _sn) eval_now = _sn; }
 double max_w = threshold > 1.0 ? threshold : 20.0;
-if (threshold > 1.0) threshold = 1.0;
 
                                 double count_est = 0; uint64_t raw_count = 0; double sum = 0; double raw_sum = 0;
 
@@ -2500,8 +2499,7 @@ if (threshold > 1.0) threshold = 1.0;
                                     Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
                                     if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
                                     if (pref_len > 0 && (r->k_len < pref_len || memcmp(rec_k(r), pref, pref_len))) continue;
-                                    if (threshold < 1.0 && r->weight_log == 0 && ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold)) continue;
-                                    if (threshold >= 1.0 && r->weight_log > max_w) continue;
+                                    if (r->weight_log > max_w) continue;
 
                                     const char *out_val = rec_v(r);
                                     size_t out_vl = r->v_len;
@@ -2539,8 +2537,8 @@ if (threshold > 1.0) threshold = 1.0;
                                     }
                                     if (match) {
                                         double db_w = (double)(1U << (r->weight_log > 20 ? 20 : r->weight_log));
-                                        double w_weight = (threshold < 1.0 && r->weight_log == 0) ? db_w / threshold : db_w;
-                                        double eff_w = w_weight;
+                                        double w_weight = db_w;
+                                        double eff_w = db_w;
                                         double disp_w = is_decay ? db_w * __builtin_fabs(cur) : db_w;
                                         if (op == 4 || op == 5) { if (disp_w < min_weight) continue;
                                             char weight[32];
