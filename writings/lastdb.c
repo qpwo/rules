@@ -1476,7 +1476,7 @@ static int do_compact(const char *path)
         uint64_t disk_half = (uint64_t)st.f_blocks * st.f_frsize / 2;
         if (target > disk_half) target = disk_half;
         if (live_bytes > target) {
-            double low = 0, high = 13.0 / valid_size;
+            double low = 0, high = 20.0 / valid_size;
             for (int step = 0; step < 40; step++) {
                 double mid = (low + high) / 2;
                 uint64_t stride = ht_len / 100000 + 1;
@@ -1487,7 +1487,7 @@ static int do_compact(const char *path)
                     int twl = r->weight_log;
                     if (r->t_len > 0 && rec_t(r)[0] != '0' && !(r->v_len > 0 && r->v_len < 192 && rec_v(r)[0] == '\x1F')) {
                         int ewl = (int)((valid_size - (ht[i].off1 - 1)) * mid);
-                        if (ewl > 13) ewl = 13;
+                        if (ewl > 20) ewl = 20;
                         if (ewl > twl) twl = ewl;
                     }
                     est += (double)(r->len >> (twl - r->weight_log));
@@ -1519,7 +1519,7 @@ static int do_compact(const char *path)
             uint8_t new_wl = r->weight_log;
             if (decay_factor > 0 && r->t_len > 0 && rec_t(r)[0] != '0' && !(r->v_len > 0 && r->v_len < 192 && rec_v(r)[0] == '\x1F')) {
                 int ewl = (int)((valid_size - off) * decay_factor);
-                if (ewl > 13) ewl = 13;
+                if (ewl > 20) ewl = 20;
                 uint8_t twl = r->weight_log > ewl ? r->weight_log : ewl;
                 double gate = (double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32;
                 if (gate > 1.0 / (1U << (twl - r->weight_log))) keep = 0;
@@ -2466,7 +2466,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     }
                                 }
 { double _sn = (double)time(NULL); if (eval_now < 1e9 || eval_now > _sn) eval_now = _sn; }
-double max_w = threshold > 1.0 ? threshold : 13.0;
+double max_w = threshold > 1.0 ? threshold : 20.0;
 double sample_rate = threshold < 1.0 ? threshold : 1.0;
 
                                 double count_est = 0; uint64_t raw_count = 0; double sum = 0; double raw_sum = 0; double w2_sum = 0; int max_wl = 0; int has_decay = 0;
@@ -2573,7 +2573,7 @@ w2_sum += disp_w * disp_w;
 if (max_wl < 0) max_wl = 0;
 double rse = count_est > 0 ? __builtin_sqrt(w2_sum > count_est ? w2_sum - count_est : 0) / count_est : 0;
 double confidence = rse >= 1.0 ? 0.0 : 1.0 - rse;
-                                if (confidence < 0.5) {
+                                if (confidence < 0.3) {
                                     send_response(fd, cipherkey, 2, "low_confidence", 14);
                                 } else {
                                 if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu\t%d\t%.4g", count_est, (unsigned long long)raw_count, max_wl, confidence);
@@ -3050,7 +3050,7 @@ int main(int argc, char **argv)
                 size_t tl = strlen(args[1]);
                 size_t pl = n >= 3 ? strlen(args[2]) : 0;
                 double threshold = n >= 4 ? strtod(args[3], NULL) : 1.0;
-double max_w = threshold > 1.0 ? threshold : 13.0;
+double max_w = threshold > 1.0 ? threshold : 20.0;
 if (threshold > 1.0) threshold = 1.0;
                 double now = (double)time(NULL);
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
@@ -3083,7 +3083,7 @@ if (threshold > 1.0) threshold = 1.0;
                 size_t tl = strlen(args[1]);
                 size_t pl = n >= 3 ? strlen(args[2]) : 0;
                 double threshold = n >= 4 ? strtod(args[3], NULL) : 1.0;
-double max_w = threshold > 1.0 ? threshold : 13.0;
+double max_w = threshold > 1.0 ? threshold : 20.0;
 if (threshold > 1.0) threshold = 1.0;
                 double sum_now = n >= 5 ? strtod(args[4], NULL) : (double)time(NULL);
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
