@@ -2582,6 +2582,7 @@ double confidence = rse >= 1.0 ? 0.0 : 1.0 - rse;
 if (decay_est > 0 && count_est > 0) { double decay_frac = decay_est / count_est; confidence *= 1.0 - decay_frac * 0.7; }
 if (max_wl > 0 && w2_sum > 0 && count_est > 0) { double ess = count_est * count_est / w2_sum; if (ess < 100.0) confidence *= ess / 100.0; }
 if (max_wl > 8) confidence *= 1.0 / (1U << (max_wl - 8 > 12 ? 12 : max_wl - 8));
+if (max_w < 20.0) confidence *= max_w / 20.0;
                                 if (count_est < 0.5) count_est = 0;
                                 if (__builtin_fabs(sum) < 5e-15) sum = 0;
                                 if (confidence < 0.01) { count_est = 0; sum = 0; confidence = 0; }
@@ -3085,6 +3086,7 @@ if (threshold > 1.0) threshold = 1.0;
                 double conf = count_est > 0 ? (double)raw_c / __builtin_sqrt(count_est) : 1.0;
                 if (conf > 1.0) conf = 1.0;
                 if (max_wl > 8) conf *= 1.0 / (1U << (max_wl - 8 > 12 ? 12 : max_wl - 8));
+if (max_w < 20.0) conf *= max_w / 20.0;
                 printf("%.4g\t%llu\t%d\t%.4g\n", count_est, (unsigned long long)raw_c, max_wl, conf);
             }
             else if (!strcmp(args[0], "sum") && n >= 2) {
