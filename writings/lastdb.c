@@ -1708,7 +1708,8 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     w += wl + 1;
                                 }
                             }
-                            #define APP(ptr, lll) do { size_t app_n = (lll); if (out_len + app_n <= 60u * 1024u * 1024u) { memcpy(out + out_len, ptr, app_n); out_len += app_n; } } while(0)
+                            #define OUT_CAP (60u * 1024u * 1024u)
+                            #define APP(ptr, lll) do { size_t app_n = (lll); if (out_len <= OUT_CAP && app_n <= OUT_CAP - out_len) { memcpy(out + out_len, ptr, app_n); out_len += app_n; } else { out_len = OUT_CAP + 1; } } while(0)
                             #pragma omp critical (db)
                             {
                                 load_db(db_path);
@@ -1745,7 +1746,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         }
                                     }
                                 }
-                                send_response(fd, cipherkey, 0, out, out_len);
+                                send_response(fd, cipherkey, out_len > OUT_CAP ? 4 : 0, out_len > OUT_CAP ? "more" : out, out_len > OUT_CAP ? 4 : out_len);
                                 chunk_push(out_c);
                             }
                             else if (op == 2 || op == 3) {
@@ -1791,7 +1792,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         off = next;
                                     }
                                 }
-                                send_response(fd, cipherkey, 0, out, out_len);
+                                send_response(fd, cipherkey, out_len > OUT_CAP ? 4 : 0, out_len > OUT_CAP ? "more" : out, out_len > OUT_CAP ? 4 : out_len);
                                 chunk_push(out_c);
                             } else if (op == 7) {
                                 if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
