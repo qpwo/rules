@@ -224,8 +224,18 @@ static void ht_put(uint64_t hash, uint64_t off)
     uint64_t d = 0;
     Record *new_r = rec_at(off);
 
+    int check_dup = 1;
     while (ht[pos].off1) {
-        if (ht[pos].hash == curr.hash) {
+        uint64_t existing_d = (pos - (ht[pos].hash & mask)) & mask;
+        if (existing_d < d) {
+            check_dup = 0;
+            Node tmp = ht[pos];
+            ht[pos] = curr;
+            curr = tmp;
+            d = existing_d;
+            new_r = rec_at(curr.off1 - 1);
+        }
+        if (check_dup && ht[pos].hash == curr.hash) {
             Record *old_r = rec_at(ht[pos].off1 - 1);
             if (old_r->t_len == new_r->t_len && old_r->k_len == new_r->k_len &&
                 !memcmp(rec_t(old_r), rec_t(new_r), old_r->t_len) &&
@@ -233,14 +243,6 @@ static void ht_put(uint64_t hash, uint64_t off)
                 ht[pos].off1 = curr.off1;
                 return;
             }
-        }
-        uint64_t existing_d = (pos - (ht[pos].hash & mask)) & mask;
-        if (existing_d < d) {
-            Node tmp = ht[pos];
-            ht[pos] = curr;
-            curr = tmp;
-            d = existing_d;
-            new_r = rec_at(curr.off1 - 1);
         }
         pos = (pos + 1) & mask;
         d++;
@@ -255,11 +257,15 @@ static Node *ht_get(const char *t, uint16_t tl, const char *k, uint16_t kl)
     uint64_t hash = key_hash(t, tl, k, kl);
     uint64_t mask = ht_cap - 1;
     uint64_t pos = hash & mask;
+    uint64_t d = 0;
     while (ht[pos].off1) {
+        uint64_t existing_d = (pos - (ht[pos].hash & mask)) & mask;
+        if (existing_d < d) return NULL;
         if (ht[pos].hash == hash) {
             if (key_eq(ht[pos].off1 - 1, t, tl, k, kl)) return &ht[pos];
         }
         pos = (pos + 1) & mask;
+        d++;
     }
     return NULL;
 }
