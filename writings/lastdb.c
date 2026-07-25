@@ -1285,6 +1285,7 @@ static int do_search(const char *t, int num_words, char **words)
     for (uint64_t i = 0; i < count; i++) {
         Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
         if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), t, tl)) continue;
+        if (r->weight_log > 0 && !(r->v_len > 0 && r->v_len < 192 && rec_v(r)[0] == '\x1F')) continue;
         if (!rec_has_terms(r, num_words, words, lens, term_bfs, now)) continue;
         #pragma omp critical
         {
@@ -2496,6 +2497,7 @@ double max_w = threshold > 1.0 ? threshold : 13.0;
                                     if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
                                     if (pref_len > 0 && (r->k_len < pref_len || memcmp(rec_k(r), pref, pref_len))) continue;
                                     if (r->weight_log > max_w) continue;
+                                    if (op == 5 && threshold <= 1.0 && r->weight_log > 0 && !(r->v_len > 0 && r->v_len < 192 && rec_v(r)[0] == '\x1F')) continue;
 
                                     const char *out_val = rec_v(r);
                                     size_t out_vl = r->v_len;
