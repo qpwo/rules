@@ -18,6 +18,7 @@
 #include <unistd.h>
 #include <immintrin.h>
 #include <omp.h>
+#include <sched.h>
 
 #ifndef O_CLOEXEC
 #define O_CLOEXEC 0
@@ -1310,7 +1311,11 @@ typedef struct __attribute__((aligned(64))) { BufCache x; char pad[64 - sizeof(B
 static RxSlot rx_desk[1024];
 
 static BufCache checkout_rx(BufCache iou) {
-    BufCache *slot = &rx_desk[omp_get_thread_num() % 1024].x;
+    int cpu = sched_getcpu();
+    if (cpu < 0) {
+        cpu = 0;
+    }
+    BufCache *slot = &rx_desk[(unsigned)cpu % 1024].x;
     BufCache old = *slot;
     *slot = iou;
     return old;
