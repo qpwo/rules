@@ -371,7 +371,7 @@ static void sync_fd(int fd)
     }
 }
 
-static void append_raw(int fd, const char *t, size_t tl, const char *k, size_t kl, const char *v, size_t vl, uint8_t op)
+static int append_raw(int fd, const char *t, size_t tl, const char *k, size_t kl, const char *v, size_t vl, uint8_t op)
 {
     if (!v || op == OP_DEL) {
         v = "";
@@ -400,10 +400,10 @@ static void append_raw(int fd, const char *t, size_t tl, const char *k, size_t k
         double keep = __builtin_exp2(50.0 * (avail - 0.2));
         double gate = (double)(r.check >> 11) * 0x1.0p-53;
         if (free_bytes < reserve_bytes + r.len) {
-            return;
+            return 0;
         }
         if (avail < 0.2 && gate > keep) {
-            return;
+            return 0;
         }
     }
 
@@ -427,11 +427,12 @@ static void append_raw(int fd, const char *t, size_t tl, const char *k, size_t k
             iov[i].iov_len -= (size_t)got;
         }
     }
+    return 1;
 }
 
-static void append_fd(int fd, const char *t, const char *k, const char *v, uint8_t op)
+static int append_fd(int fd, const char *t, const char *k, const char *v, uint8_t op)
 {
-    append_raw(fd, t, strlen(t), k, strlen(k), v ? v : "", v ? strlen(v) : 0, op);
+    return append_raw(fd, t, strlen(t), k, strlen(k), v ? v : "", v ? strlen(v) : 0, op);
 }
 
 static int open_lockfile(const char *path)
@@ -1645,14 +1646,16 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             else if (op == 2 || op == 3) {
                                 int req = op == 2 ? 2 : 4;
                                 if (!(perms & req)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
+                                int wrote = 0;
                                 #pragma omp critical (db)
                                 {
                                     if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
-                                    append_raw(srv_db_fd, full_tenant, ft_len, k, kl, v, vl, op == 2 ? OP_PUT : OP_DEL);
-                                    sync_fd(srv_db_fd);
+                                    wrote = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, v, vl, op == 2 ? OP_PUT : OP_DEL);
+                                    if (wrote) sync_fd(srv_db_fd);
                                     load_db(db_path);
                                 }
-                                send_response(fd, cipherkey, 0, "ok", 2);
+                                if (wrote) send_response(fd, cipherkey, 0, "ok", 2);
+                                else send_response(fd, cipherkey, 3, "shed", 4);
                             }
                             else if (op == 6) {
                                 if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
