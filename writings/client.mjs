@@ -60,12 +60,12 @@ export async function drop(client, color, tenant, key) {
     return request(client, 'del', color, tenant, key, '');
 }
 
-export async function scan(client, color, tenant, prefix = '') {
-    return parseWeighted(await request(client, 'scan', color, tenant, prefix, ''));
+export async function scan(client, color, tenant, prefix = '', threshold = 1.0) {
+    return parseWeighted(await request(client, 'scan', color, tenant, prefix, String(threshold)));
 }
 
-export async function search(client, color, tenant, words) {
-    return parseWeighted(await request(client, 'search', color, tenant, '', Array.isArray(words) ? words.join('\t') : words));
+export async function search(client, color, tenant, words, threshold = 1.0) {
+    return parseWeighted(await request(client, 'search', color, tenant, String(threshold), Array.isArray(words) ? words.join('\t') : words));
 }
 
 function parseWeighted(res) {
@@ -273,10 +273,14 @@ async function cli(client, a) {
     if (a[0] === 'del' && a.length === 4) {
         return drop(client, parseI32(a[1]), a[2], a[3]);
     }
-    if (a[0] === 'scan' && (a.length === 3 || a.length === 4)) {
-        return scan(client, parseI32(a[1]), a[2], a[3] ?? '');
+    if (a[0] === 'scan' && (a.length >= 3 && a.length <= 5)) {
+        return scan(client, parseI32(a[1]), a[2], a[3] ?? '', a[4] ? Number(a[4]) : 1.0);
     }
     if (a[0] === 'search' && a.length >= 4) {
+        var th = Number(a[a.length - 1]);
+        if (!Number.isNaN(th) && th > 0 && th <= 1) {
+            return search(client, parseI32(a[1]), a[2], a.slice(3, -1), th);
+        }
         return search(client, parseI32(a[1]), a[2], a.slice(3));
     }
     if (a[0] === 'tail' && (a.length === 2 || a.length === 3)) {
@@ -385,8 +389,8 @@ function usage() {
         '  get COLOR TENANT KEY',
         '  put COLOR TENANT KEY VALUE',
         '  del COLOR TENANT KEY',
-        '  scan COLOR TENANT [PREFIX]',
-        '  search COLOR TENANT WORD...',
+        '  scan COLOR TENANT [PREFIX] [THRESHOLD]',
+        '  search COLOR TENANT WORD... [THRESHOLD]',
         '  tail COLOR [OFFSET]',
         '  closest COLOR TENANT KEY TYPE',
         '  count COLOR TENANT [PREFIX] [THRESHOLD]',

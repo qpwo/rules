@@ -1798,6 +1798,10 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             }
                             #define OUT_CAP (60u * 1024u * 1024u)
                             #define APP(ptr, lll) do { size_t app_n = (lll); if (out_len <= OUT_CAP && app_n <= OUT_CAP - out_len) { memcpy(out + out_len, ptr, app_n); out_len += app_n; } else { out_len = OUT_CAP + 1; } } while(0)
+                            double threshold = 1.0;
+                            if (op == 4 && vl > 0) { char th_buf[64]={0}; memcpy(th_buf, v, vl < 63 ? vl : 63); threshold = strtod(th_buf, NULL); }
+                            if (op == 5 && kl > 0) { char th_buf[64]={0}; memcpy(th_buf, k, kl < 63 ? kl : 63); threshold = strtod(th_buf, NULL); }
+                            if (threshold <= 0 || threshold > 1.0) threshold = 1.0;
                             #pragma omp critical (db)
                             {
                                 load_db(db_path);
@@ -1807,6 +1811,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             for (uint64_t i = start_idx; i < end_idx; i++) {
                                 Record *r = rec_at(ht[i].off1 - 1);
                                 if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
+                                if (threshold < 1.0 && (double)(r->key_hash >> 32) * 0x1.0p-32 > threshold) continue;
                                     int match = 0;
                                     if (op == 4) {
                                         match = (kl == 0 || (r->k_len >= kl && !memcmp(rec_k(r), k, kl)));
@@ -1826,8 +1831,11 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         }
                                     }
                                         if (match) {
-                                            char weight[16];
-                                            int wlen = snprintf(weight, sizeof(weight), "%u\t", 1U << r->weight_log);
+                                            double db_w = (double)(1U << r->weight_log);
+                                            double qw = 1.0 / threshold;
+                                            double w = db_w > qw ? db_w : qw;
+                                            char weight[32];
+                                            int wlen = snprintf(weight, sizeof(weight), "%.0f\t", w);
                                             size_t rec_len = wlen + r->k_len + 1 + r->v_len + 1;
                                             size_t my_off;
                                             #pragma omp atomic capture
