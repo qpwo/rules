@@ -411,10 +411,10 @@ static void append_raw(int fd, const char *t, size_t tl, const char *k, size_t k
         double keep = exp2(50.0 * (avail - 0.2));
         double gate = (double)(r.check >> 11) * 0x1.0p-53;
         if (free_bytes < reserve_bytes + r.len) {
-            diex("disk reserve below 10 percent");
+            return;
         }
         if (avail < 0.2 && gate > keep) {
-            diex("disk pressure decay rejected write");
+            return;
         }
     }
 
@@ -1232,10 +1232,10 @@ static void batch_flush(int fd, char *buf, size_t *used)
         double keep = exp2(50.0 * (avail - 0.2));
         double gate = (double)(fnv_bytes(FNV0, buf, *used) >> 11) * 0x1.0p-53;
         if (free_bytes < reserve_bytes + *used) {
-            diex("disk reserve below 10 percent");
+            *used = 0; return;
         }
         if (avail < 0.2 && gate > keep) {
-            diex("disk pressure decay rejected batch");
+            *used = 0; return;
         }
     }
 

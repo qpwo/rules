@@ -239,14 +239,13 @@ function crypt(buf, key) {
         return buf;
     }
 
-    var out = Buffer.allocUnsafe(buf.length);
     for (var i = 0; i < buf.length; i++) {
         k ^= k << 13;
         k ^= k >>> 17;
         k ^= k << 5;
-        out[i] = buf[i] ^ (k & 255);
+        buf[i] ^= (k & 255);
     }
-    return out;
+    return buf;
 }
 
 function i32(x) {
