@@ -362,3 +362,5 @@ halp -y -h the help string should have one copypastable workingish example oneli
 halp -y -h the help string should have one copypastable workingish example oneliner per subcmd. and separate oneline description per subcmd. and nothing else. and it should appear if you do no arg or help arg or dash h or dash dash help,.... and all our subcmds should take file args probably ... or not ... or idfk
 halp -y -h the help string should have one copypastable workingish example oneliner per subcmd. and separate oneline description per subcmd. and nothing else. and it should appear if you do no arg or help arg or dash h or dash dash help,.... and all our subcmds should take file args probably ... or not ... or idfk... i said copypastable examples, not that retarded syntax
 git-acp .
+trash trash_py
+git-acp .
