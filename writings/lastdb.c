@@ -1196,7 +1196,7 @@ static int rec_has_terms(Record *r, int num_words, char **words, size_t *lens, u
     return 1;
 }
 
-static void write_weighted_record(Record *r);
+static void write_weighted_record(Record *r, double now);
 
 static int do_search(const char *t, int num_words, char **words)
 {
@@ -1228,14 +1228,31 @@ static int do_search(const char *t, int num_words, char **words)
         if (!rec_has_terms(r, num_words, words, lens, term_bfs, now)) continue;
         #pragma omp critical
         {
-            write_weighted_record(r);
+            write_weighted_record(r, now);
         }
     }
     return 0;
 }
 
-static void write_weighted_record(Record *r)
+static void write_weighted_record(Record *r, double now)
 {
+    const char *v = rec_v(r);
+    size_t vl = r->v_len;
+    char buf[64];
+    double cur = 0;
+
+    if (vl > 0 && vl < 192 && decay_value_at(v, vl, now, &cur)) {
+        if (cur == 0) {
+            return;
+        }
+        int n = snprintf(buf, sizeof(buf), "%.17g", cur);
+        if (n < 0 || n >= (int)sizeof(buf)) {
+            diex("decay value print failed");
+        }
+        v = buf;
+        vl = (size_t)n;
+    }
+
     if (printf("%u\t", 1U << r->weight_log) < 0) {
         die("printf");
     }
@@ -1245,7 +1262,7 @@ static void write_weighted_record(Record *r)
     if (putchar('\t') == EOF) {
         die("putchar");
     }
-    if (fwrite(rec_v(r), 1, r->v_len, stdout) != r->v_len) {
+    if (fwrite(v, 1, vl, stdout) != vl) {
         die("fwrite");
     }
     if (putchar('\n') == EOF) {
@@ -1265,6 +1282,7 @@ static int do_scan(const char *t, const char *prefix)
         return 0;
     }
 
+    double now = (double)time(NULL);
     uint64_t start_idx, end_idx;
     ht_tenant_range(t, tl, &start_idx, &end_idx);
     for (uint64_t i = start_idx; i < end_idx; i++) {
@@ -1278,7 +1296,7 @@ static int do_scan(const char *t, const char *prefix)
         if (pl && (r->k_len < pl || memcmp(rec_k(r), prefix, pl))) {
             continue;
         }
-        write_weighted_record(r);
+        write_weighted_record(r, now);
     }
     return 0;
 }
