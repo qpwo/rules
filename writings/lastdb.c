@@ -251,6 +251,11 @@ static int worker_threads(void)
     }
 
     int n = omp_get_num_procs();
+    double load[1];
+    if (getloadavg(load, 1) == 1) {
+        int budget = (int)(n * 0.9 - load[0] + 0.5);
+        return budget > 0 ? budget : 1;
+    }
     int keep = (n + 9) / 10;
     return n > keep ? n - keep : 1;
 }
