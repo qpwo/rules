@@ -1224,18 +1224,7 @@ static int cmp_u64(const void *a, const void *b) {
 }
 
 static void radix_sort_u64(uint64_t *a, size_t n) {
-    if (!n) return;
-    uint64_t *b = mmap(NULL, n * 8, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (b == MAP_FAILED) { qsort(a, n, sizeof(uint64_t), cmp_u64); return; }
-    for (int shift = 0; shift < 64; shift += 8) {
-        size_t cnt[256] = {0};
-        for (size_t i = 0; i < n; i++) cnt[(a[i] >> shift) & 255]++;
-        size_t pos[256], p = 0;
-        for (int i = 0; i < 256; i++) { pos[i] = p; p += cnt[i]; }
-        for (size_t i = 0; i < n; i++) b[pos[(a[i] >> shift) & 255]++] = a[i];
-        uint64_t *tmp = a; a = b; b = tmp;
-    }
-    munmap(b, n * 8);
+    qsort(a, n, sizeof(uint64_t), cmp_u64);
 }
 
 static uint64_t *get_sorted_offs(uint64_t start_idx, uint64_t count) {
@@ -1243,7 +1232,7 @@ static uint64_t *get_sorted_offs(uint64_t start_idx, uint64_t count) {
     size_t bytes = count * 8;
     uint64_t total = 0;
     uint64_t freeish = get_mem_avail(&total);
-    if (total && freeish < total / 10 + bytes * 2) return NULL;
+    if (total && freeish < total / 10 + bytes) return NULL;
     uint64_t *offs = mmap(NULL, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (offs != MAP_FAILED) {
         for (uint64_t i = 0; i < count; i++) offs[i] = ht[start_idx + i].off1 - 1;
@@ -2588,7 +2577,7 @@ if (max_wl > 0) confidence *= __builtin_exp2(-(double)max_wl * 0.125);
                                 if (count_est < 0.5) count_est = 0;
                                 if (__builtin_fabs(sum) < 5e-15) sum = 0;
                                 if (raw_count < 5) confidence *= (double)raw_count / 5.0;
-                                if (confidence < 0.15) { count_est = 0; sum = 0; confidence = 0; }
+                                if (confidence < 0.15 + 0.02 * max_wl) { count_est = 0; sum = 0; confidence = 0; }
                                 if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu\t%d\t%.4g", count_est, (unsigned long long)raw_count, max_wl, confidence);
                                 else vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%llu\t%d\t%.4g", sum, raw_sum, (unsigned long long)raw_count, max_wl, confidence);
                                 send_response(fd, cipherkey, 0, val, vl_out);
