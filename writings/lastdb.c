@@ -2771,6 +2771,7 @@ double confidence = rse >= 1.0 ? 0.0 : 1.0 - rse;
                                 }
                                 if (found_off1) {
                                     SRV_WRITE_LOCK(db_path);
+                                    if (found_off1 > valid_size || !rec_valid(found_off1 - 1)) { send_response(fd, cipherkey, 2, "empty", 5); chunk_push(c); continue; }
                                     Record *r = rec_at(found_off1 - 1);
                                     Node *rn = ht_get(full_tenant, ft_len, rec_k(r), r->k_len);
                                     if (rn && rn->off1 == found_off1 && r->op != OP_DEL && r->t_len == ft_len && !memcmp(rec_t(r), full_tenant, ft_len)) {
