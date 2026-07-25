@@ -1317,7 +1317,7 @@ static void write_weighted_record(Record *r, double now)
         vl = (size_t)n;
     }
 
-    double print_w = (double)(1U << (r->weight_log > 20 ? 20 : r->weight_log));
+    double print_w = (double)(1U << (r->weight_log > 13 ? 13 : r->weight_log));
     if (cur) print_w *= __builtin_fabs(cur);
     if (print_w < 0.5) return;
     char wbuf[32];
@@ -1456,7 +1456,7 @@ static int do_compact(const char *path)
         uint64_t disk_half = (uint64_t)st.f_blocks * st.f_frsize / 2;
         if (target > disk_half) target = disk_half;
         if (live_bytes > target) {
-            double low = 0, high = 20.0 / valid_size;
+            double low = 0, high = 13.0 / valid_size;
             for (int step = 0; step < 40; step++) {
                 double mid = (low + high) / 2;
                 uint64_t stride = ht_len / 100000 + 1;
@@ -1467,7 +1467,7 @@ static int do_compact(const char *path)
                     int twl = r->weight_log;
                     if (r->t_len > 0 && rec_t(r)[0] != '0') {
                         int ewl = (int)((valid_size - (ht[i].off1 - 1)) * mid);
-                        if (ewl > 20) ewl = 20;
+                        if (ewl > 13) ewl = 13;
                         if (ewl > twl) twl = ewl;
                     }
                     est += (double)(r->len >> (twl - r->weight_log));
@@ -1497,7 +1497,7 @@ static int do_compact(const char *path)
             uint8_t new_wl = r->weight_log;
             if (decay_factor > 0 && r->t_len > 0 && rec_t(r)[0] != '0') {
                 int ewl = (int)((valid_size - off) * decay_factor);
-                if (ewl > 20) ewl = 20;
+                if (ewl > 13) ewl = 13;
                 uint8_t twl = r->weight_log > ewl ? r->weight_log : ewl;
                 double gate = (double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32;
                 if (gate > 1.0 / (1U << twl)) keep = 0;
@@ -2484,7 +2484,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     }
                                 }
 { double _sn = (double)time(NULL); if (eval_now < 1 || eval_now > _sn) eval_now = _sn; }
-double max_w = threshold > 1.0 ? threshold : 20.0;
+double max_w = threshold > 1.0 ? threshold : 13.0;
 
                                 double count_est = 0; uint64_t raw_count = 0; double sum = 0; double raw_sum = 0;
 
@@ -2535,7 +2535,7 @@ double max_w = threshold > 1.0 ? threshold : 20.0;
                                         w_iter += wl + 1;
                                     }
                                     if (match) {
-                                        double db_w = (double)(1U << (r->weight_log > 20 ? 20 : r->weight_log));
+                                        double db_w = (double)(1U << (r->weight_log > 13 ? 13 : r->weight_log));
                                         double w_weight = db_w;
                                         double eff_w = db_w;
                                         double disp_w = is_decay ? db_w * __builtin_fabs(cur) : db_w;
@@ -3050,7 +3050,7 @@ int main(int argc, char **argv)
                 size_t tl = strlen(args[1]);
                 size_t pl = n >= 3 ? strlen(args[2]) : 0;
                 double threshold = n >= 4 ? strtod(args[3], NULL) : 1.0;
-double max_w = threshold > 1.0 ? threshold : 20.0;
+double max_w = threshold > 1.0 ? threshold : 13.0;
 if (threshold > 1.0) threshold = 1.0;
                 double now = (double)time(NULL);
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
@@ -3065,7 +3065,7 @@ if (threshold > 1.0) threshold = 1.0;
             if (threshold < 1.0 && r->weight_log == 0) {
                 if ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
             }
-            double db_w = (double)(1U << (r->weight_log > 20 ? 20 : r->weight_log));
+            double db_w = (double)(1U << (r->weight_log > 13 ? 13 : r->weight_log));
 
             double w = (threshold < 1.0 && r->weight_log == 0) ? db_w / threshold : db_w;
             if (r->v_len > 0 && r->v_len < 192) {
@@ -3083,7 +3083,7 @@ if (threshold > 1.0) threshold = 1.0;
                 size_t tl = strlen(args[1]);
                 size_t pl = n >= 3 ? strlen(args[2]) : 0;
                 double threshold = n >= 4 ? strtod(args[3], NULL) : 1.0;
-double max_w = threshold > 1.0 ? threshold : 20.0;
+double max_w = threshold > 1.0 ? threshold : 13.0;
 if (threshold > 1.0) threshold = 1.0;
                 double sum_now = n >= 5 ? strtod(args[4], NULL) : (double)time(NULL);
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
@@ -3098,7 +3098,7 @@ if (threshold > 1.0) threshold = 1.0;
             if (threshold < 1.0 && r->weight_log == 0) {
                 if ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
             }
-            double db_w = (double)(1U << (r->weight_log > 20 ? 20 : r->weight_log));
+            double db_w = (double)(1U << (r->weight_log > 13 ? 13 : r->weight_log));
 
             double w = (threshold < 1.0 && r->weight_log == 0) ? db_w / threshold : db_w;
             int is_decay = 0;
