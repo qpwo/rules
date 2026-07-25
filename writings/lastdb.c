@@ -304,7 +304,7 @@ static void load_db(const char *path)
     }
 
     map_size = (size_t)st.st_size;
-    map_base = mmap(NULL, map_size, PROT_READ, MAP_SHARED | MAP_POPULATE, fd, 0);
+    map_base = mmap(NULL, map_size, PROT_READ, MAP_SHARED, fd, 0);
     if (close(fd)) {
         die("close");
     }
