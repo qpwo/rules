@@ -2577,6 +2577,7 @@ double rse = count_est > 0 ? __builtin_sqrt(w2_sum > count_est ? w2_sum - count_
 double confidence = rse >= 1.0 ? 0.0 : 1.0 - rse;
 if (decay_w > 0 && count_est > 0) { double decay_frac = decay_w / count_est; if (decay_frac > 1) decay_frac = 1; confidence *= (1.0 - decay_frac) * (1.0 - decay_frac) * (1.0 - decay_frac); }
 if (decay_est > 0) { double decay_dom = decay_est / (decay_est + __builtin_fabs(sum) + 1e-30); if (decay_dom > 0.3) confidence *= (1.0 - decay_dom) / 0.7; }
+if (decay_w > 0) { double avg_decay = decay_est / decay_w; if (avg_decay < 0.3) confidence *= avg_decay / 0.3; }
 if (max_wl > 0 && w2_sum > 0 && count_est > 0) { double ess = count_est * count_est / w2_sum; if (ess < 100.0) confidence *= ess / 100.0; }
 if (max_wl > 8) confidence *= 8.0 / (double)max_wl;
 if (max_w < 20.0) confidence *= max_w / 20.0;
