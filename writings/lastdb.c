@@ -2579,7 +2579,7 @@ if (threshold > 1.0) threshold = 1.0;
                                             }
                                         } else {
                                     if (eff_w < min_weight) continue;
-                                    count_est += eff_w;
+                                    count_est += w_weight;
                                     raw_count++;
                                             if (op == 9 && r->v_len > 0) {
                                                 if (is_decay) {
