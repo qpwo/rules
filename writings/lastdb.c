@@ -3068,7 +3068,7 @@ int main(int argc, char **argv)
             else if (!strcmp(args[0], "search") && n >= 3) do_search(args[1], n - 2, args + 2);
             else if (!strcmp(args[0], "closest") && n == 4) do_closest(db, args[1], args[2], args[3]);
             else if (!strcmp(args[0], "count") && n >= 2) {
-                double count_est = 0; uint64_t raw_c = 0; int max_wl = 0;
+                double count_est = 0; uint64_t raw_c = 0; double w2_sum = 0; int max_wl = 0;
                 size_t tl = strlen(args[1]);
                 size_t pl = n >= 3 ? strlen(args[2]) : 0;
                 double threshold = n >= 4 ? strtod(args[3], NULL) : 1.0;
@@ -3078,7 +3078,7 @@ if (threshold > 1.0) threshold = 1.0;
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
             uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
             uint64_t *offs = get_sorted_offs(start_idx, count);
-            #pragma omp parallel for reduction(+:count_est,raw_c) reduction(max:max_wl) schedule(static, 4096) num_threads(worker_threads())
+            #pragma omp parallel for reduction(+:count_est,raw_c,w2_sum) reduction(max:max_wl) schedule(static, 4096) num_threads(worker_threads())
             for (uint64_t i = 0; i < count; i++) {
                 if (i + 16 < count) __builtin_prefetch(map_base + (offs ? offs[i + 16] : (ht[start_idx + i + 16].off1 - 1)), 0, 0);
                 Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
@@ -3093,12 +3093,13 @@ if (threshold > 1.0) threshold = 1.0;
 
             double w = (threshold < 1.0 && r->weight_log == 0) ? db_w / threshold : db_w;
             count_est += w;
+            w2_sum += w * w;
             raw_c++;
 
                 }
                 if (offs) munmap(offs, count * 8);
-                double conf = count_est > 0 ? (double)raw_c / __builtin_sqrt(count_est) : 1.0;
-                if (conf > 1.0) conf = 1.0;
+                double ess = count_est > 0 && w2_sum > 0 ? count_est * count_est / w2_sum : (count_est > 0 ? count_est : 0);
+                double conf = ess >= 1000 ? 1.0 : ess / 1000.0;
                 if (max_wl > 0) conf *= __builtin_exp2(-(double)max_wl * 0.0625);
                 if (count_est < 0.5) count_est = 0;
                 if (raw_c < 5) conf *= (double)raw_c / 5.0;
