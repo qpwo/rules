@@ -2209,7 +2209,7 @@ static inline int srv_read_lock_func(const char *db_path) {
     pthread_rwlock_rdlock(&srv_rw);
     struct stat st, fd_st;
     int needs_reopen = (srv_db_fd < 0) || (!stat(db_path, &st) && (!fstat(srv_db_fd, &fd_st) && st.st_ino != fd_st.st_ino || st.st_size > (off_t)map_size));
-    if (needs_reopen || ht_len != ht_sorted_len) {
+    if (needs_reopen || ht_len > ht_sorted_len + 65536 || (ht_sorted_len && ht_len > ht_sorted_len * 17 / 16)) {
         pthread_rwlock_unlock(&srv_rw);
         pthread_rwlock_wrlock(&srv_rw);
         needs_reopen = (srv_db_fd < 0) || (!stat(db_path, &st) && (!fstat(srv_db_fd, &fd_st) && st.st_ino != fd_st.st_ino || st.st_size > (off_t)map_size));
@@ -2218,7 +2218,7 @@ static inline int srv_read_lock_func(const char *db_path) {
             load_db(db_path);
             if (srv_db_fd < 0) srv_db_fd = open_append(db_path);
         }
-        if (ht_len != ht_sorted_len) deduplicate_ht();
+        if (ht_len > ht_sorted_len + 65536 || (ht_sorted_len && ht_len > ht_sorted_len * 17 / 16)) deduplicate_ht();
         pthread_rwlock_unlock(&srv_rw);
         pthread_rwlock_rdlock(&srv_rw);
     }
