@@ -2615,7 +2615,7 @@ double confidence = ess_conf * decay_conf;
                                 if (count_est < 0.5) count_est = 0;
                                 if (__builtin_fabs(sum) < 5e-15) sum = 0;
                                 if (raw_count < 5) confidence *= (double)raw_count / 5.0;
-                                if (ess < 30.0 * (double)(1 + max_wl)) { count_est = 0; sum = 0; }
+                                if (ess < 30.0 * (double)(1 + max_wl) || confidence < 0.02) { count_est = 0; sum = 0; }
                                 if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu\t%d\t%.4g", count_est, (unsigned long long)raw_count, max_wl, confidence);
                                 else vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%llu\t%d\t%.4g", sum, raw_sum, (unsigned long long)raw_count, max_wl, confidence);
                                 send_response(fd, cipherkey, 0, val, vl_out);
