@@ -1215,10 +1215,15 @@ static const void *memmem_pivot(const void *haystack, size_t hay_len, const void
     return memmem_pivot_scan_avx2(hay, hay_len, need, needle_len, pivot);
 }
 
+static int cmp_u64(const void *a, const void *b) {
+    uint64_t x = *(const uint64_t *)a, y = *(const uint64_t *)b;
+    return (x > y) - (x < y);
+}
+
 static void radix_sort_u64(uint64_t *a, size_t n) {
     if (!n) return;
     uint64_t *b = mmap(NULL, n * 8, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (b == MAP_FAILED) return;
+    if (b == MAP_FAILED) { qsort(a, n, sizeof(uint64_t), cmp_u64); return; }
     for (int shift = 0; shift < 64; shift += 8) {
         size_t cnt[256] = {0};
         for (size_t i = 0; i < n; i++) cnt[(a[i] >> shift) & 255]++;
