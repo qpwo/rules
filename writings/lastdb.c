@@ -2278,19 +2278,17 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                 while (1) {
                     usleep(1000000);
                     int need_compact = 0;
-                    int sync_fd = -1;
                     { SRV_READ_LOCK(db_path);
-                        sync_fd = srv_db_fd;
-                        if (sync_fd >= 0) {
+                        if (srv_db_fd >= 0) {
                             struct statvfs st;
-                            if (!fstatvfs(sync_fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
+                            if (!fstatvfs(srv_db_fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
                                 uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
                                 uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.15L);
                                 if (free_bytes < reserve_bytes) need_compact = 1;
                             }
+                            fdatasync(srv_db_fd);
                         }
                     }
-                    if (sync_fd >= 0) fdatasync(sync_fd);
                     if (need_compact) { SRV_WRITE_LOCK(db_path); do_compact(db_path); if (srv_db_fd >= 0) { close(srv_db_fd); srv_db_fd = -1; } }
                 }
             }
