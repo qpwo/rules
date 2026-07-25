@@ -1229,11 +1229,11 @@ static void radix_sort_u64(uint64_t *a, size_t n) {
 }
 
 static uint64_t *get_sorted_offs(uint64_t start_idx, uint64_t count) {
-    if (!count || count > SIZE_MAX / 8) return NULL;
+    if (!count || count > SIZE_MAX / 16) return NULL;
     size_t bytes = count * 8;
     uint64_t total = 0;
     uint64_t freeish = get_mem_avail(&total);
-    if (total && freeish < total / 10 + bytes) return NULL;
+    if (total && freeish < total / 10 + bytes * 2) return NULL;
     uint64_t *offs = mmap(NULL, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (offs != MAP_FAILED) {
         for (uint64_t i = 0; i < count; i++) offs[i] = ht[start_idx + i].off1 - 1;
@@ -2462,7 +2462,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         }
                                     }
                                 }
-{ double _sn = (double)time(NULL); if (eval_now < 1e9 || eval_now > _sn) eval_now = _sn; }
+{ double _sn = (double)time(NULL); if (!__builtin_isfinite(eval_now) || eval_now < 1e9 || eval_now > _sn) eval_now = _sn; }
 double max_w = threshold > 1.0 ? threshold : 20.0;
 double sample_rate = threshold < 1.0 ? threshold : 1.0;
 
@@ -2526,7 +2526,7 @@ if (match) {
 
                                         double disp_w = is_decay ? db_w * __builtin_fabs(cur) : db_w;
                                         if ((op == 4 || op == 5) && disp_w < min_weight) continue;
-                                        if ((op == 8 || op == 9) && db_w < min_weight) continue;
+                                        if ((op == 8 || op == 9) && disp_w < min_weight) continue;
                                         if (r->weight_log > max_wl) max_wl = r->weight_log;
                                         if (op == 4 || op == 5) {
                                             char weight[32];
