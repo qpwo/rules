@@ -1262,6 +1262,7 @@ static int rec_has_terms(Record *r, int num_words, char **words, size_t *lens, u
     return 1;
 }
 
+static void write_all(int fd, const void *p, size_t n);
 static void write_weighted_record(Record *r, double now);
 
 static int do_search(const char *t, int num_words, char **words)
@@ -1322,20 +1323,25 @@ static void write_weighted_record(Record *r, double now)
 
     double print_w = (double)(1U << r->weight_log);
     if (cur > 0) print_w *= cur;
-    if (printf("%.5g\t", print_w) < 0) {
-        die("printf");
-    }
-    if (fwrite(rec_k(r), 1, r->k_len, stdout) != r->k_len) {
-        die("fwrite");
-    }
-    if (putchar('\t') == EOF) {
-        die("putchar");
-    }
-    if (fwrite(v, 1, vl, stdout) != vl) {
-        die("fwrite");
-    }
-    if (putchar('\n') == EOF) {
-        die("putchar");
+    char wbuf[32];
+    int wl = snprintf(wbuf, sizeof(wbuf), "%.5g\t", print_w);
+    if (wl < 0 || wl >= (int)sizeof(wbuf)) diex("weight print failed");
+    char lbuf[8192];
+    size_t total = (size_t)wl + r->k_len + 1 + vl + 1;
+    if (total <= sizeof(lbuf)) {
+        size_t off = 0;
+        memcpy(lbuf, wbuf, wl); off = wl;
+        memcpy(lbuf + off, rec_k(r), r->k_len); off += r->k_len;
+        lbuf[off++] = '\t';
+        memcpy(lbuf + off, v, vl); off += vl;
+        lbuf[off++] = '\n';
+        write_all(1, lbuf, off);
+    } else {
+        write_all(1, wbuf, wl);
+        write_all(1, rec_k(r), r->k_len);
+        write_all(1, "\t", 1);
+        write_all(1, v, vl);
+        write_all(1, "\n", 1);
     }
 }
 
@@ -1356,6 +1362,7 @@ static int do_scan(const char *t, const char *prefix)
     ht_tenant_range(t, tl, &start_idx, &end_idx);
     uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
     uint64_t *offs = get_sorted_offs(start_idx, count);
+    #pragma omp parallel for schedule(static, 4096) num_threads(worker_threads())
     for (uint64_t i = 0; i < count; i++) {
         Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
         if (r->op == OP_DEL || r->t_len != tl) {
@@ -1367,6 +1374,7 @@ static int do_scan(const char *t, const char *prefix)
         if (pl && (r->k_len < pl || memcmp(rec_k(r), prefix, pl))) {
             continue;
         }
+        #pragma omp critical
         write_weighted_record(r, now);
     }
     if (offs) munmap(offs, count * 8);
