@@ -65,6 +65,9 @@ static size_t valid_size;
 static Node *ht;
 static uint64_t ht_cap;
 static uint64_t ht_len;
+static uint64_t ht_sorted_len;
+
+static void deduplicate_ht(void);
 
 static void die(const char *msg)
 {
@@ -122,31 +125,30 @@ static uint64_t key_hash(const char *t, uint16_t tl, const char *k, uint16_t kl)
 }
 
 static uint64_t ht_lower_bound(uint64_t hash) {
-    if (!ht_len) return 0;
-    uint64_t length = ht_len;
-    Node *begin = ht;
-    Node *end = ht + length;
-    uint64_t step = 1ULL << (63 - __builtin_clzll(length));
-    if (step != length && begin[step].hash < hash) {
-        length -= step + 1;
-        if (length == 0) return ht_len;
-        step = length <= 1 ? 1 : 1ULL << (64 - __builtin_clzll(length - 1));
-        begin = end - step;
+    uint64_t lo = 0;
+    uint64_t hi = ht_sorted_len;
+    while (lo < hi) {
+        uint64_t mid = lo + (hi - lo) / 2;
+        if (ht[mid].hash < hash) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
     }
-    for (step /= 2; step != 0; step /= 2) {
-        begin += step & -(uint64_t)(begin[step].hash < hash);
-    }
-    return (begin - ht) + (begin->hash < hash);
+    return lo;
 }
 
 static void ht_tenant_range(const char *t, uint16_t tl, uint64_t *start_idx, uint64_t *end_idx) {
-    if (!ht_len) { *start_idx = 0; *end_idx = 0; return; }
+    if (ht_sorted_len != ht_len) {
+        deduplicate_ht();
+    }
+    if (!ht_sorted_len) { *start_idx = 0; *end_idx = 0; return; }
     uint64_t th = fnv_bytes(FNV0, t, tl);
     uint64_t h_start = th << 32;
     uint64_t h_end = h_start | 0xFFFFFFFFULL;
     if (h_start == 0) h_start = 1;
     *start_idx = ht_lower_bound(h_start);
-    *end_idx = h_end == UINT64_MAX ? ht_len : ht_lower_bound(h_end + 1);
+    *end_idx = h_end == UINT64_MAX ? ht_sorted_len : ht_lower_bound(h_end + 1);
 }
 
 static uint64_t rec_check(const Record *r, const char *t, const char *k, const char *v)
@@ -247,8 +249,6 @@ static int worker_threads(void)
     return n > keep ? n - keep : 1;
 }
 
-static void deduplicate_ht(void);
-
 static void ht_reserve(uint64_t need)
 {
     if (need <= ht_cap) {
@@ -288,11 +288,15 @@ static void ht_reserve(uint64_t need)
 
 static void ht_put(uint64_t hash, uint64_t off)
 {
-    if (ht_len >= ht_cap && ht_len >= 1048576) {
+    if ((ht_len >= ht_cap && ht_len >= 1048576) || ht_len - ht_sorted_len >= 65536) {
         deduplicate_ht();
     }
     ht_reserve(ht_len + 1);
+    int stays_sorted = ht_len == ht_sorted_len && (!ht_len || ht[ht_len - 1].hash <= hash);
     ht[ht_len++] = (Node){hash, off + 1};
+    if (stays_sorted) {
+        ht_sorted_len = ht_len;
+    }
 }
 
 static int cmp_node(const void *a, const void *b) {
@@ -302,7 +306,10 @@ static int cmp_node(const void *a, const void *b) {
 }
 
 static void deduplicate_ht(void) {
-    if (!ht_len) return;
+    if (!ht_len) {
+        ht_sorted_len = 0;
+        return;
+    }
     qsort(ht, ht_len, sizeof(*ht), cmp_node);
     uint64_t out = 0;
     for (uint64_t i = 0; i < ht_len; ) {
@@ -324,34 +331,20 @@ static void deduplicate_ht(void) {
         i = j;
     }
     ht_len = out;
+    ht_sorted_len = out;
 }
 
-static void ht_insert_latest(uint64_t hash, uint64_t off)
-{
-    Record *r = rec_at(off);
-    uint64_t idx = ht_lower_bound(hash);
-    uint64_t end = idx;
-    while (end < ht_len && ht[end].hash == hash) {
-        if (key_eq(ht[end].off1 - 1, rec_t(r), r->t_len, rec_k(r), r->k_len)) {
-            ht[end].off1 = off + 1;
-            return;
-        }
-        end++;
-    }
-
-    ht_reserve(ht_len + 1);
-    memmove(ht + idx + 1, ht + idx, (ht_len - idx) * sizeof(*ht));
-    ht[idx] = (Node){hash, off + 1};
-    ht_len++;
-}
 
 static Node *ht_get(const char *t, uint16_t tl, const char *k, uint16_t kl)
 {
     if (!ht_len) return NULL;
     uint64_t hash = key_hash(t, tl, k, kl);
+    for (uint64_t i = ht_len; i-- > ht_sorted_len; ) {
+        if (ht[i].hash == hash && key_eq(ht[i].off1 - 1, t, tl, k, kl)) return ht + i;
+    }
     uint64_t idx = ht_lower_bound(hash);
     Node *begin = ht + idx;
-    Node *end = ht + ht_len;
+    Node *end = ht + ht_sorted_len;
     while (begin < end && begin->hash == hash) {
         if (key_eq(begin->off1 - 1, t, tl, k, kl)) return begin;
         begin++;
@@ -388,11 +381,7 @@ static void load_db(const char *path)
             break;
         }
         Record *r = rec_at(off);
-        if (start_len && added < 1024) {
-            ht_insert_latest(r->key_hash, off);
-        } else {
-            ht_put(r->key_hash, off);
-        }
+        ht_put(r->key_hash, off);
         off += r->len;
         added++;
     }
