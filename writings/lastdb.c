@@ -665,20 +665,37 @@ static int do_verify(const char *path)
     uint64_t records = 0;
     uint64_t puts = 0;
     uint64_t dels = 0;
+    uint64_t put_bytes = 0;
+    uint64_t del_bytes = 0;
+    uint64_t value_bytes = 0;
+    uint64_t live_keys = 0;
+    uint64_t live_record_bytes = 0;
+    uint64_t live_value_bytes = 0;
 
     for (uint64_t off = 0; off < valid_size;) {
         Record *r = rec_at(off);
         records++;
         puts += r->op == OP_PUT;
         dels += r->op == OP_DEL;
+        put_bytes += r->op == OP_PUT ? r->len : 0;
+        del_bytes += r->op == OP_DEL ? r->len : 0;
+        value_bytes += r->op == OP_PUT ? r->v_len : 0;
         off += r->len;
     }
 
-    uint64_t live_keys = 0;
     for (uint64_t i = 0; i < ht_cap; i++) {
-        if (ht[i].off1) {
-            live_keys += rec_at(ht[i].off1 - 1)->op != OP_DEL;
+        if (!ht[i].off1) {
+            continue;
         }
+
+        Record *r = rec_at(ht[i].off1 - 1);
+        if (r->op == OP_DEL) {
+            continue;
+        }
+
+        live_keys++;
+        live_record_bytes += r->len;
+        live_value_bytes += r->v_len;
     }
 
     printf("file_bytes\t%llu\n", (unsigned long long)map_size);
@@ -687,8 +704,15 @@ static int do_verify(const char *path)
     printf("records\t%llu\n", (unsigned long long)records);
     printf("puts\t%llu\n", (unsigned long long)puts);
     printf("dels\t%llu\n", (unsigned long long)dels);
+    printf("put_bytes\t%llu\n", (unsigned long long)put_bytes);
+    printf("del_bytes\t%llu\n", (unsigned long long)del_bytes);
+    printf("value_bytes\t%llu\n", (unsigned long long)value_bytes);
     printf("keys\t%llu\n", (unsigned long long)ht_len);
     printf("live_keys\t%llu\n", (unsigned long long)live_keys);
+    printf("live_record_bytes\t%llu\n", (unsigned long long)live_record_bytes);
+    printf("live_value_bytes\t%llu\n", (unsigned long long)live_value_bytes);
+    printf("dead_records\t%llu\n", (unsigned long long)(records - live_keys));
+    printf("compact_saves_bytes\t%llu\n", (unsigned long long)(valid_size - live_record_bytes));
     if (map_size != valid_size) {
         printf("bad_offset\t%llu\n", (unsigned long long)valid_size);
         return 1;
