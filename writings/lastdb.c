@@ -1199,9 +1199,9 @@ int main(int argc, char **argv)
                 int fd = open(db, O_RDONLY | O_CLOEXEC);
                 if (fd >= 0) {
 #ifdef __linux__
-                    void *nm = mremap(map_base, map_size, st.st_size, MREMAP_MAYMOVE);
+                    void *nm = map_size ? mremap(map_base, map_size, st.st_size, MREMAP_MAYMOVE) : mmap(NULL, st.st_size, PROT_READ, MAP_SHARED, fd, 0);
 #else
-                    munmap(map_base, map_size);
+                    if (map_size) munmap(map_base, map_size);
                     void *nm = mmap(NULL, st.st_size, PROT_READ, MAP_SHARED, fd, 0);
 #endif
                     if (nm != MAP_FAILED) {
