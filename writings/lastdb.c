@@ -2341,6 +2341,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     if (wrote) send_response(fd, cipherkey, 0, v, vl);
                                     else send_response(fd, cipherkey, 3, "shed", 4);
                                 } else if (vl == 1 && v[0] == '*') {
+                                    if (kl < 3) { send_response(fd, cipherkey, 1, "prefix too short", 16); chunk_push(c); continue; }
                                     { SRV_WRITE_LOCK(db_path);
                                         uint64_t start_idx, end_idx;
                                         ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
