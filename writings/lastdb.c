@@ -2582,7 +2582,7 @@ double confidence = rse >= 1.0 ? 0.0 : 1.0 - rse;
 if (decay_est > 0 && count_est > 0) { double decay_frac = decay_est / count_est; confidence *= 1.0 - decay_frac; }
 if (max_wl > 0 && w2_sum > 0 && count_est > 0) { double ess = count_est * count_est / w2_sum; if (ess < 100.0) confidence *= ess / 100.0; }
 if (max_wl > 8) confidence *= 1.0 / (1U << (max_wl - 8 > 12 ? 12 : max_wl - 8));
-                                if (confidence < 0.05) { count_est = raw_count; sum = raw_sum; }
+                                if (confidence < 0.05 && !(count_est > 0 && decay_est > count_est * 0.5)) { count_est = raw_count; sum = raw_sum; }
                                 if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu\t%d\t%.4g", count_est, (unsigned long long)raw_count, max_wl, confidence);
                                 else vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%llu\t%d\t%.4g", sum, raw_sum, (unsigned long long)raw_count, max_wl, confidence);
                                 send_response(fd, cipherkey, 0, val, vl_out);
