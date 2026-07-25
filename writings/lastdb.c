@@ -44,13 +44,15 @@ typedef struct __attribute__((packed)) {
 static uint64_t compute_bf(const char *data, size_t len) {
     uint64_t bf = 0;
     const unsigned char *p = (const unsigned char *)data;
-    for (size_t i = 0; i + 2 < len; i++) {
-        uint32_t gram = p[i] | (p[i+1] << 8) | (p[i+2] << 16);
-        gram *= 0x85ebca6b;
-        gram ^= gram >> 13;
-        gram *= 0xc2b2ae35;
-        gram ^= gram >> 16;
+    for (size_t i = 0; i + 3 < len; i++) {
+        uint64_t gram = p[i] | ((uint64_t)p[i+1] << 8) | ((uint64_t)p[i+2] << 16) | ((uint64_t)p[i+3] << 24);
+        gram ^= FNV0;
+        gram *= 0xff51afd7ed558ccdULL;
+        gram ^= gram >> 33;
+        gram *= 0xc4ceb9fe1a85ec53ULL;
+        gram ^= gram >> 33;
         bf |= 1ULL << (gram & 63);
+        bf |= 1ULL << ((gram >> 32) & 63);
     }
     return bf;
 }
