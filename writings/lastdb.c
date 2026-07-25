@@ -130,7 +130,7 @@ static uint64_t ht_lower_bound(uint64_t hash) {
         begin = end - step;
     }
     for (step /= 2; step != 0; step /= 2) {
-        if (begin[step].hash < hash) begin += step;
+        begin += step & -(uint64_t)(begin[step].hash < hash);
     }
     return (begin - ht) + (begin->hash < hash);
 }
