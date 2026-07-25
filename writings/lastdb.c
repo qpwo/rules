@@ -1449,13 +1449,31 @@ static float vec_dot_f32(const void *a, const void *b, size_t bytes) {
     __m256 sum1 = _mm256_setzero_ps();
     __m256 sum2 = _mm256_setzero_ps();
     __m256 sum3 = _mm256_setzero_ps();
+    __m256 sum4 = _mm256_setzero_ps();
+    __m256 sum5 = _mm256_setzero_ps();
+    __m256 sum6 = _mm256_setzero_ps();
+    __m256 sum7 = _mm256_setzero_ps();
     size_t i = 0;
+    for (; i + 63 < n; i += 64) {
+        sum0 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i), _mm256_loadu_ps(fb + i), sum0);
+        sum1 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i + 8), _mm256_loadu_ps(fb + i + 8), sum1);
+        sum2 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i + 16), _mm256_loadu_ps(fb + i + 16), sum2);
+        sum3 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i + 24), _mm256_loadu_ps(fb + i + 24), sum3);
+        sum4 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i + 32), _mm256_loadu_ps(fb + i + 32), sum4);
+        sum5 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i + 40), _mm256_loadu_ps(fb + i + 40), sum5);
+        sum6 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i + 48), _mm256_loadu_ps(fb + i + 48), sum6);
+        sum7 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i + 56), _mm256_loadu_ps(fb + i + 56), sum7);
+    }
     for (; i + 31 < n; i += 32) {
         sum0 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i), _mm256_loadu_ps(fb + i), sum0);
         sum1 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i + 8), _mm256_loadu_ps(fb + i + 8), sum1);
         sum2 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i + 16), _mm256_loadu_ps(fb + i + 16), sum2);
         sum3 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i + 24), _mm256_loadu_ps(fb + i + 24), sum3);
     }
+    sum0 = _mm256_add_ps(sum0, sum4);
+    sum1 = _mm256_add_ps(sum1, sum5);
+    sum2 = _mm256_add_ps(sum2, sum6);
+    sum3 = _mm256_add_ps(sum3, sum7);
     sum0 = _mm256_add_ps(sum0, sum1);
     sum2 = _mm256_add_ps(sum2, sum3);
     sum0 = _mm256_add_ps(sum0, sum2);
@@ -1477,13 +1495,31 @@ static float vec_dot_f16(const void *a, const void *b, size_t bytes) {
     __m256 sum1 = _mm256_setzero_ps();
     __m256 sum2 = _mm256_setzero_ps();
     __m256 sum3 = _mm256_setzero_ps();
+    __m256 sum4 = _mm256_setzero_ps();
+    __m256 sum5 = _mm256_setzero_ps();
+    __m256 sum6 = _mm256_setzero_ps();
+    __m256 sum7 = _mm256_setzero_ps();
     size_t i = 0;
+    for (; i + 63 < n; i += 64) {
+        sum0 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i))), sum0);
+        sum1 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i + 8))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i + 8))), sum1);
+        sum2 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i + 16))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i + 16))), sum2);
+        sum3 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i + 24))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i + 24))), sum3);
+        sum4 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i + 32))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i + 32))), sum4);
+        sum5 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i + 40))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i + 40))), sum5);
+        sum6 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i + 48))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i + 48))), sum6);
+        sum7 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i + 56))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i + 56))), sum7);
+    }
     for (; i + 31 < n; i += 32) {
         sum0 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i))), sum0);
         sum1 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i + 8))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i + 8))), sum1);
         sum2 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i + 16))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i + 16))), sum2);
         sum3 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i + 24))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i + 24))), sum3);
     }
+    sum0 = _mm256_add_ps(sum0, sum4);
+    sum1 = _mm256_add_ps(sum1, sum5);
+    sum2 = _mm256_add_ps(sum2, sum6);
+    sum3 = _mm256_add_ps(sum3, sum7);
     sum0 = _mm256_add_ps(sum0, sum1);
     sum2 = _mm256_add_ps(sum2, sum3);
     sum0 = _mm256_add_ps(sum0, sum2);
