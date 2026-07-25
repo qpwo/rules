@@ -441,12 +441,14 @@ static int append_raw(int fd, const char *t, size_t tl, const char *k, size_t kl
         uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
         uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.1L);
         double avail = (double)st.f_bavail / st.f_blocks;
-        double keep = __builtin_exp2(50.0 * (avail - 0.2));
+        int wl = avail < 0.2 ? (int)(-50.0 * (avail - 0.2)) : 0;
+        if (wl > 31) wl = 31;
+        double keep = 1.0 / (1U << wl);
         double gate = (double)(key_hash(t, r.t_len, k, r.k_len) >> 32) * 0x1.0p-32;
         if (free_bytes < reserve_bytes + r.len) {
             return 0;
         }
-        if (avail < 0.2) {
+        if (wl > 0) {
             int exists = (op == OP_DEL);
             if (!exists && ht_cap) {
                 Node *n = ht_get(t, (uint16_t)tl, k, (uint16_t)kl);
@@ -454,8 +456,7 @@ static int append_raw(int fd, const char *t, size_t tl, const char *k, size_t kl
             }
             if (!exists) {
                 if (gate > keep) return 0;
-                int wl = (int)(-50.0 * (avail - 0.2));
-                r.weight_log = wl > 31 ? 31 : wl;
+                r.weight_log = wl;
             }
         }
     }
@@ -1404,10 +1405,13 @@ static int do_closest(const char *path, const char *type, const char *t, const c
             if (ht[i].off1 == n->off1) continue; // skip self
             if (memcmp(rec_t(c), t, r->t_len) != 0) continue;
 
-            size_t p_len = r->v_len > 256 ? 256 : r->v_len;
-            float p_score = dot_fn(rec_v(r), rec_v(c), p_len);
-            if (p_len < r->v_len && p_score * ((float)r->v_len / p_len) < local_best - 0.5f) continue;
-            float score = p_len < r->v_len ? p_score + dot_fn(rec_v(r) + p_len, rec_v(c) + p_len, r->v_len - p_len) : p_score;
+            size_t p1 = r->v_len > 256 ? 256 : r->v_len;
+            float s1 = dot_fn(rec_v(r), rec_v(c), p1);
+            if (p1 < r->v_len && s1 * ((float)r->v_len / p1) < local_best - 0.8f) continue;
+            size_t p2 = r->v_len > 1024 ? 1024 : r->v_len;
+            float s2 = p1 < p2 ? s1 + dot_fn(rec_v(r) + p1, rec_v(c) + p1, p2 - p1) : s1;
+            if (p2 < r->v_len && s2 * ((float)r->v_len / p2) < local_best - 0.3f) continue;
+            float score = p2 < r->v_len ? s2 + dot_fn(rec_v(r) + p2, rec_v(c) + p2, r->v_len - p2) : s2;
             if (score > local_best) {
                 local_best = score;
                 local_k = rec_k(c);
@@ -1482,9 +1486,9 @@ static int batch_pressure(int fd, size_t need, double *keep, uint8_t *weight_log
         return 1;
     }
 
-    *keep = __builtin_exp2(50.0 * (avail - 0.2));
     int wl = (int)(-50.0 * (avail - 0.2));
     *weight_log = wl > 31 ? 31 : wl;
+    *keep = 1.0 / (1U << *weight_log);
     return 1;
 }
 
@@ -1990,10 +1994,13 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                                 if (c_rec->op == OP_DEL || c_rec->t_len != ft_len || c_rec->v_len != q_len) continue;
                                                 if (n && ht[i].off1 == n->off1) continue;
                                                 if (memcmp(rec_t(c_rec), full_tenant, ft_len) != 0) continue;
-                                                size_t p_len = q_len > 256 ? 256 : q_len;
-                                                float p_score = dot_fn(q_vec, rec_v(c_rec), p_len);
-                                                if (p_len < q_len && p_score * ((float)q_len / p_len) < local_best - 0.5f) continue;
-                                                float score = p_len < q_len ? p_score + dot_fn(q_vec + p_len, rec_v(c_rec) + p_len, q_len - p_len) : p_score;
+                                                size_t p1 = q_len > 256 ? 256 : q_len;
+                                                float s1 = dot_fn(q_vec, rec_v(c_rec), p1);
+                                                if (p1 < q_len && s1 * ((float)q_len / p1) < local_best - 0.8f) continue;
+                                                size_t p2 = q_len > 1024 ? 1024 : q_len;
+                                                float s2 = p1 < p2 ? s1 + dot_fn(q_vec + p1, rec_v(c_rec) + p1, p2 - p1) : s1;
+                                                if (p2 < q_len && s2 * ((float)q_len / p2) < local_best - 0.3f) continue;
+                                                float score = p2 < q_len ? s2 + dot_fn(q_vec + p2, rec_v(c_rec) + p2, q_len - p2) : s2;
                                                 if (score > local_best) { local_best = score; local_k = rec_k(c_rec); local_k_len = c_rec->k_len; }
                                             }
                                             #pragma omp critical (best)
