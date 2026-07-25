@@ -1468,29 +1468,24 @@ static void send_response(int fd, int32_t cipherkey, int32_t status, const void 
     if (resp_c) chunk_push(resp_c);
 }
 
-typedef struct {
-    Chunk *chunk;
-    char pad[64 - sizeof(Chunk *)];
-} CacheLine;
-static CacheLine cpu_chunks[1024] __attribute__((aligned(64)));
+static __thread Chunk *tls_chunk;
 
 static inline void chunk_push(Chunk *chunk) {
-    int cpu = sched_getcpu();
-    if (cpu >= 0 && cpu < 1024) {
-        Chunk *old = __atomic_exchange_n(&cpu_chunks[cpu].chunk, chunk, __ATOMIC_ACQ_REL);
-        if (old) munmap(old, sizeof(*old));
-    } else if (munmap(chunk, sizeof(*chunk))) {
+    if (!tls_chunk) {
+        tls_chunk = chunk;
+        return;
+    }
+    if (munmap(chunk, sizeof(*chunk))) {
         die("munmap chunk");
     }
 }
 
 static inline Chunk *chunk_pop(void) {
-    int cpu = sched_getcpu();
-    Chunk *chunk = NULL;
-    if (cpu >= 0 && cpu < 1024) {
-        chunk = __atomic_exchange_n(&cpu_chunks[cpu].chunk, NULL, __ATOMIC_ACQ_REL);
+    Chunk *chunk = tls_chunk;
+    if (chunk) {
+        tls_chunk = NULL;
+        return chunk;
     }
-    if (chunk) return chunk;
     reserve_ram(sizeof(*chunk));
     chunk = mmap(NULL, sizeof(*chunk), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
     if (chunk == MAP_FAILED) {
