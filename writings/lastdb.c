@@ -2557,7 +2557,7 @@ if (threshold > 1.0) threshold = 1.0;
                                                 out[my_off++] = '\n';
                                             }
                                         } else {
-                                    if (eff_w < min_weight) continue;
+                                    if (disp_w < min_weight) continue;
                                     count_est += eff_w;
                                     raw_count++;
                                             if (op == 9 && r->v_len > 0) {
