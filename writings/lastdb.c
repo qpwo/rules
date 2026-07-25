@@ -2573,6 +2573,7 @@ w2_sum += disp_w * disp_w;
 if (max_wl < 0) max_wl = 0;
 double rse = count_est > 0 ? __builtin_sqrt(w2_sum > count_est ? w2_sum - count_est : 0) / count_est : 0;
 double confidence = rse >= 1.0 ? 0.0 : 1.0 - rse;
+if (has_decay && raw_count > 0 && count_est < (double)raw_count * 0.01) confidence = 0;
                                 if (confidence < 0.3) {
                                     send_response(fd, cipherkey, 2, "low_confidence", 14);
                                 } else {
