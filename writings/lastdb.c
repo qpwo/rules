@@ -214,7 +214,7 @@ static int rec_valid(uint64_t off)
         return 0;
     }
 
-    return 1; // Defer key/value checking to verify command to allow instant loading of 10TB datasets
+    return r->check == rec_check(r, rec_t(r), rec_k(r), rec_v(r));
 }
 
 static int key_eq(uint64_t off, const char *t, uint16_t tl, const char *k, uint16_t kl)
