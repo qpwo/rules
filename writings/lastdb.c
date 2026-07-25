@@ -303,7 +303,7 @@ static void load_db(const char *path)
         die("mmap");
     }
     (void)posix_madvise(map_base, map_size, POSIX_MADV_SEQUENTIAL);
-    (void)posix_madvise(map_base, map_size, POSIX_MADV_WILLNEED);
+    (void)posix_madvise(map_base, map_size, POSIX_MADV_NOREUSE);
 
     uint64_t off = 0;
     while (off < map_size) {
