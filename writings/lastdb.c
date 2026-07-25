@@ -1246,60 +1246,32 @@ static int do_compact(const char *path)
 typedef float unaligned_f32 __attribute__((aligned(1)));
 typedef uint16_t unaligned_f16 __attribute__((aligned(1)));
 
-__attribute__((target("avx2,fma")))
+__attribute__((target("avx512f,avx512vl,fma")))
 static float vec_dot_f32(const void *a, const void *b, size_t bytes) {
     size_t n = bytes / 4;
-    __m256 sum0 = _mm256_setzero_ps(), sum1 = _mm256_setzero_ps();
-    __m256 sum2 = _mm256_setzero_ps(), sum3 = _mm256_setzero_ps();
     const unaligned_f32 *fa = a, *fb = b;
-    size_t i = 0;
-    for (; i + 31 < n; i += 32) {
-        sum0 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i), _mm256_loadu_ps(fb + i), sum0);
-        sum1 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i + 8), _mm256_loadu_ps(fb + i + 8), sum1);
-        sum2 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i + 16), _mm256_loadu_ps(fb + i + 16), sum2);
-        sum3 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i + 24), _mm256_loadu_ps(fb + i + 24), sum3);
+    __m512 sum = _mm512_setzero_ps();
+
+    for (size_t i = 0; i < n; i += 16) {
+        __mmask16 mask = n - i >= 16 ? 0xFFFF : (__mmask16)((1u << (n - i)) - 1u);
+        sum = _mm512_fmadd_ps(_mm512_maskz_loadu_ps(mask, fa + i), _mm512_maskz_loadu_ps(mask, fb + i), sum);
     }
-    sum0 = _mm256_add_ps(sum0, sum1);
-    sum2 = _mm256_add_ps(sum2, sum3);
-    sum0 = _mm256_add_ps(sum0, sum2);
-    for (; i + 7 < n; i += 8) {
-        sum0 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i), _mm256_loadu_ps(fb + i), sum0);
-    }
-    float buf[8];
-    _mm256_storeu_ps(buf, sum0);
-    float sum = buf[0] + buf[1] + buf[2] + buf[3] + buf[4] + buf[5] + buf[6] + buf[7];
-    for (; i < n; i++) sum += fa[i] * fb[i];
-    return sum;
+
+    return _mm512_reduce_add_ps(sum);
 }
 
-__attribute__((target("avx2,fma,f16c")))
+__attribute__((target("avx512f,avx512bw,avx512vl,f16c,fma")))
 static float vec_dot_f16(const void *a, const void *b, size_t bytes) {
     size_t n = bytes / 2;
-    __m256 sum0 = _mm256_setzero_ps(), sum1 = _mm256_setzero_ps();
-    __m256 sum2 = _mm256_setzero_ps(), sum3 = _mm256_setzero_ps();
     const unaligned_f16 *fa = a, *fb = b;
-    size_t i = 0;
-    for (; i + 31 < n; i += 32) {
-        sum0 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i))), sum0);
-        sum1 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i + 8))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i + 8))), sum1);
-        sum2 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i + 16))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i + 16))), sum2);
-        sum3 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i + 24))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i + 24))), sum3);
+    __m512 sum = _mm512_setzero_ps();
+
+    for (size_t i = 0; i < n; i += 16) {
+        __mmask16 mask = n - i >= 16 ? 0xFFFF : (__mmask16)((1u << (n - i)) - 1u);
+        sum = _mm512_fmadd_ps(_mm512_cvtph_ps(_mm256_maskz_loadu_epi16(mask, fa + i)), _mm512_cvtph_ps(_mm256_maskz_loadu_epi16(mask, fb + i)), sum);
     }
-    sum0 = _mm256_add_ps(sum0, sum1);
-    sum2 = _mm256_add_ps(sum2, sum3);
-    sum0 = _mm256_add_ps(sum0, sum2);
-    for (; i + 7 < n; i += 8) {
-        sum0 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i))), sum0);
-    }
-    float buf[8];
-    _mm256_storeu_ps(buf, sum0);
-    float sum = buf[0] + buf[1] + buf[2] + buf[3] + buf[4] + buf[5] + buf[6] + buf[7];
-    for (; i < n; i++) {
-        __m128 va = _mm_cvtph_ps(_mm_cvtsi32_si128(fa[i]));
-        __m128 vb = _mm_cvtph_ps(_mm_cvtsi32_si128(fb[i]));
-        sum += _mm_cvtss_f32(va) * _mm_cvtss_f32(vb);
-    }
-    return sum;
+
+    return _mm512_reduce_add_ps(sum);
 }
 
 __attribute__((target("avx2")))
