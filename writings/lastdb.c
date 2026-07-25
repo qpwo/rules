@@ -2003,7 +2003,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 send_response(fd, cipherkey, 0, val, vl_out);
                             } else if (op == 10) {
                                 if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
-                                char val[64]; int vl_out = 0;
+                                char val[64]; int vl_out = 0; int wrote = 0;
                                 #pragma omp critical (db)
                                 {
                                     if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
@@ -2014,10 +2014,14 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     long long d = strtoll(d_buf, NULL, 10);
                                     long long next = cur + d;
                                     vl_out = snprintf(val, sizeof(val), "%lld", next);
-                                    append_raw(srv_db_fd, full_tenant, ft_len, k, kl, val, vl_out, OP_PUT);
-                                    load_db(db_path);
+                                    wrote = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, val, vl_out, OP_PUT);
+                                    if (wrote) {
+                                        sync_fd(srv_db_fd);
+                                        load_db(db_path);
+                                    }
                                 }
-                                send_response(fd, cipherkey, 0, val, vl_out);
+                                if (wrote) send_response(fd, cipherkey, 0, val, vl_out);
+                                else send_response(fd, cipherkey, 3, "shed", 4);
                             } else if (op == 11) {
                                 char target_buf[32] = {0};
                                 char grant_buf[64] = {0};
@@ -2035,17 +2039,21 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 if (user_key_len <= 0 || user_key_len >= (int)sizeof(user_key) || user_val_len <= 0 || user_val_len >= (int)sizeof(user_val)) {
                                     send_response(fd, cipherkey, 1, "bad grant", 9); chunk_push(c); continue;
                                 }
+                                int wrote = 0;
                                 #pragma omp critical (db)
                                 {
                                     if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
-                                    append_raw(srv_db_fd, "0:users", 7, user_key, user_key_len, user_val, user_val_len, OP_PUT);
-                                    sync_fd(srv_db_fd);
-                                    load_db(db_path);
+                                    wrote = append_raw(srv_db_fd, "0:users", 7, user_key, user_key_len, user_val, user_val_len, OP_PUT);
+                                    if (wrote) {
+                                        sync_fd(srv_db_fd);
+                                        load_db(db_path);
+                                    }
                                 }
-                                send_response(fd, cipherkey, 0, "ok", 2);
+                                if (wrote) send_response(fd, cipherkey, 0, "ok", 2);
+                                else send_response(fd, cipherkey, 3, "shed", 4);
                             } else if (op == 12) {
                                 if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
-                                char val[64]; int vl_out = 0; int ok = 0;
+                                char val[64]; int vl_out = 0; int ok = 0; int shed = 0;
                                 #pragma omp critical (db)
                                 {
                                     if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
@@ -2054,30 +2062,37 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     if (n) { Record *r = rec_at(n->off1 - 1); if (r->op != OP_DEL && r->v_len < 64) { char buf[64]={0}; memcpy(buf, rec_v(r), r->v_len); cur = strtoll(buf, NULL, 10); } }
                                     if (cur > 0) {
                                         vl_out = snprintf(val, sizeof(val), "%lld", cur - 1);
-                                        append_raw(srv_db_fd, full_tenant, ft_len, k, kl, val, vl_out, OP_PUT);
-                                        load_db(db_path);
-                                        ok = 1;
+                                        ok = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, val, vl_out, OP_PUT);
+                                        if (ok) {
+                                            sync_fd(srv_db_fd);
+                                            load_db(db_path);
+                                        } else {
+                                            shed = 1;
+                                        }
                                     }
                                 }
                                 if (ok) send_response(fd, cipherkey, 0, val, vl_out);
+                                else if (shed) send_response(fd, cipherkey, 3, "shed", 4);
                                 else send_response(fd, cipherkey, 2, "zero", 4);
                             } else if (op == 13) {
                                 if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
-                                int wrote = 0;
+                                int wrote = 0; int exists = 0;
                                 #pragma omp critical (db)
                                 {
                                     if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
                                     Node *n = ht_get(full_tenant, ft_len, k, kl);
-                                    int exists = 0;
                                     if (n) { Record *r = rec_at(n->off1 - 1); if (r->op != OP_DEL) exists = 1; }
                                     if (!exists) {
                                         wrote = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, v, vl, OP_PUT);
-                                        if (wrote) sync_fd(srv_db_fd);
-                                        load_db(db_path);
+                                        if (wrote) {
+                                            sync_fd(srv_db_fd);
+                                            load_db(db_path);
+                                        }
                                     }
                                 }
                                 if (wrote) send_response(fd, cipherkey, 0, v, vl);
-                                else send_response(fd, cipherkey, 2, "exists", 6);
+                                else if (exists) send_response(fd, cipherkey, 2, "exists", 6);
+                                else send_response(fd, cipherkey, 3, "shed", 4);
                             } else if (op == 14) {
                                 if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
                                 char *tab = memchr(v, '\t', vl);
@@ -2085,23 +2100,25 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 size_t old_len = tab - (char*)v;
                                 char *new_val = tab + 1;
                                 size_t new_len = vl - old_len - 1;
-                                int wrote = 0;
+                                int wrote = 0; int match = 0;
                                 #pragma omp critical (db)
                                 {
                                     if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
                                     Node *n = ht_get(full_tenant, ft_len, k, kl);
-                                    int match = 0;
                                     if (n) {
                                         Record *r = rec_at(n->off1 - 1);
                                         if (r->op != OP_DEL && r->v_len == old_len && !memcmp(rec_v(r), v, old_len)) match = 1;
                                     }
                                     if (match) {
                                         wrote = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, new_val, new_len, OP_PUT);
-                                        if (wrote) sync_fd(srv_db_fd);
-                                        load_db(db_path);
+                                        if (wrote) {
+                                            sync_fd(srv_db_fd);
+                                            load_db(db_path);
+                                        }
                                     }
                                 }
                                 if (wrote) send_response(fd, cipherkey, 0, new_val, new_len);
+                                else if (match) send_response(fd, cipherkey, 3, "shed", 4);
                                 else send_response(fd, cipherkey, 2, "mismatch", 8);
                             } else if (op == 15) {
                                 if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
@@ -2117,7 +2134,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     send_response(fd, cipherkey, 1, "bad arg", 7); chunk_push(c); continue;
                                 }
 
-                                char val[192]; int vl_out = 0; int ok = 1; char err_msg[32] = "error";
+                                char val[192]; int vl_out = 0; int ok = 1; int shed = 0; char err_msg[32] = "error";
                                 #pragma omp critical (db)
                                 {
                                     if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
@@ -2143,19 +2160,22 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         if (!__builtin_isfinite(next)) { ok = 0; strcpy(err_msg, "not finite"); }
                                         else if (__builtin_fabs(next) < 1e-12) {
                                             if (had) {
-                                                append_raw(srv_db_fd, full_tenant, ft_len, k, kl, NULL, 0, OP_DEL);
-                                                sync_fd(srv_db_fd);
+                                                ok = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, NULL, 0, OP_DEL);
+                                                if (ok) sync_fd(srv_db_fd);
+                                                else shed = 1;
                                             }
                                             strcpy(val, "0"); vl_out = 1;
                                         } else {
                                             vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%.17g", hl, ts, next);
-                                            append_raw(srv_db_fd, full_tenant, ft_len, k, kl, val, vl_out, OP_PUT);
-                                            sync_fd(srv_db_fd);
+                                            ok = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, val, vl_out, OP_PUT);
+                                            if (ok) sync_fd(srv_db_fd);
+                                            else shed = 1;
                                         }
-                                        load_db(db_path);
+                                        if (ok) load_db(db_path);
                                     }
                                 }
                                 if (ok) send_response(fd, cipherkey, 0, val, vl_out);
+                                else if (shed) send_response(fd, cipherkey, 3, "shed", 4);
                                 else send_response(fd, cipherkey, 2, err_msg, strlen(err_msg));
                             } else if (op == 16) {
                                 if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
