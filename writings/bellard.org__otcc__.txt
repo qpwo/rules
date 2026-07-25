@@ -97,5 +97,3 @@ Tiny ELF programs from Brian Raiter.
 Linux assembly projects.
 License
 The obfuscated OTCC and OTCCELF are public domain. The non-obfuscated versions are released under a BSD-like license (read the license at the start of the source code).
-This page is Copyright (c) 2002 Fabrice Bellard
-Fabrice Bellard - https://bellard.org/ - https://bellard.org/tcc/

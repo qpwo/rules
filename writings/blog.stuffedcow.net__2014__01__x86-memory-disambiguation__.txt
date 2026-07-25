@@ -1,5 +1,3 @@
-BLOG
-
 Random stuff…
 
 	
@@ -274,7 +272,7 @@ these two core in a Bulldozer module seem to share not only their decoder but al
 Henry
 2014/09/07 at 12:03 pm · Reply
 
-Hmm… Getting almost exactly half the throughput with two threads seems like something is shared. But I don’t think sharing the load/store unit and L1 cache makes much sense. If the load/store unit were shared, the L1 data caches wouldn’t be placed far apart, as seen in the die photo: http://i.imgur.com/b33tNAp.jpg
+Hmm… Getting almost exactly half the throughput with two threads seems like something is shared. But I don’t think sharing the load/store unit and L1 cache makes much sense. If the load/store unit were shared, the L1 data caches wouldn’t be placed far apart, as seen in the die photo: [IMAGE DESCRIPTION: This image is a horizontal composite featuring three distinct panels side-by-side, sitting above a solid green footer bar. The image compares computer processor architectures, specifically AMD's "Piledriver" and "Steamroller" microarchitectures. Left Panel: Piledriver (Block Diagram) This panel shows a semi-transparent, brownish-grey microchip die shot overlaid with a white block diagram labeling the internal components. Top Section: Top-left: A box labeled "Microcode ROM". Top-right: A box labeled "Instruction Fetch". Below "Microcode ROM": A box labeled "Branch Pr...]
 
 The memory dependence predictor being shared seems plausible if it’s located in decode (and searched by EIP?)
 
@@ -333,64 +331,3 @@ Haining
 2025/09/09 at 4:00 am · Reply
 
 Oh nevermind, I just realized that we could vary the value of these registers to get the 2-D graph of latency of load-store pairs with different alignments. Clever design.
-
-Leave a Reply
-
-You can use these HTML tags
-
-  Name (required)
-
-  Email (will not be published) (required)
-
-  Website
-
- Save my name, email, and website in this browser for the next time I comment.
-
-« RTL8192CU and Linux 3.13.10  
-  AMD Bulldozer/Piledriver Modules and Hyper-Threading »
-	
-RECENT POSTS
-Hyundai Ioniq Electric (28 kWh) battery aging
-Tyan GT62D-B7106 + S7106GMR-CGN: Why are CPUs slower than expected?
-Shell Scripting in C++
-Microwave Oven Failure: Spontaneously turned on… by its LED display
-Calculator
-Lenovo Thunderbolt Dock Type 40AC
-Depstech DW49 Webcam — Teardown and Measurements
-Capacitors in storage can get the plague too
-Portland Black Lives Matter Mural
-Elections 2019: Who is really getting a tax cut?
-Discovering Hard Disk Physical Geometry through Microbenchmarking
-A Cardboard Haswell Box
-The Microarchitecture Behind Meltdown
-PET is hygroscopic: Water diffuses out of a Sprite bottle
-Microbenchmarking Return Address Branch Prediction
-AMD Polaris (RX 550) on Mageia Linux 6
-Cyclone/Stratix V Carry-Lookahead…bug?
-BIND patch for Mandriva 2010.2
-TLB and Pagewalk Coherence in x86 Processors
-Windows 9x TLB Invalidation Bug
-META
-Log in
-WordPress
-
-Copyright © 2026 Blog - All Rights Reserved
-
-IMAGES
-https://blog.stuffedcow.net/wp-content/uploads/2014/01/ldst_code.png
-https://blog.stuffedcow.net/wp-content/uploads/2014/01/Core2_stlf_time-360x312.png
-https://blog.stuffedcow.net/wp-content/uploads/2014/01/Lynnfield_stlf_time-360x312.png
-http://blog.stuffedcow.net/wp-content/uploads/2014/01/SNB_stlf_time.png
-http://blog.stuffedcow.net/wp-content/uploads/2014/01/IVB_stlf_time.png
-http://blog.stuffedcow.net/wp-content/uploads/2014/01/Haswell_stlf_time.png
-http://blog.stuffedcow.net/wp-content/uploads/2014/01/Phenom_stlf_time.png
-http://blog.stuffedcow.net/wp-content/uploads/2014/01/PhenomII_stlf_time.png
-http://blog.stuffedcow.net/wp-content/uploads/2014/01/Bulldozer_stlf_time.png
-http://blog.stuffedcow.net/wp-content/uploads/2014/01/Piledriver_stlf_time-360x312.png
-https://blog.stuffedcow.net/wp-content/themes/atahualpa/images/icons/folder-gray.gif
-https://blog.stuffedcow.net/wp-content/themes/atahualpa/images/icons/tag-gray.gif
-https://secure.gravatar.com/avatar/004fcae42a55884b2b838b06768d46faa4194484fa565e5a7eac0f16dd79d16e?s=65&d=mm&r=g
-https://secure.gravatar.com/avatar/7c0d022dc9c1a89b86dc9de01daf3ea92e027600f419a0d9f90978087fa8605b?s=65&d=mm&r=g
-https://secure.gravatar.com/avatar/2a0500dab8f854f94cf1190d037b59a2a446804f87dfe561e05c2addfa90bd2a?s=65&d=mm&r=g
-https://secure.gravatar.com/avatar/3853bba28e749922ed1a907bef1d9f73d79c51e78d566b20fa2515011ee1cbde?s=65&d=mm&r=g
-https://secure.gravatar.com/avatar/fc04c0fa54678a2c449945c687d33702423e61e48bab1aff74eae216156c7444?s=65&d=mm&r=g

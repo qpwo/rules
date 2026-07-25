@@ -1,8 +1,3 @@
-PAUL KHUONG: SOME LISP
-Blog
-Archives
-RSS
-
 Restartable sequences with the polysemic null segment selector
 
 Aug 25th, 2018 | Comments
@@ -282,24 +277,3 @@ I guess that’s what systems programming is about. We take our tools, get comfo
 
 Thank you Andrew for a fun conversation that showed the segment hack might be of interest to someone else, and to Gabe for snarkily reminding us Rseq is another Linux/Silicon Valley re-invention.
 
-That’s not as nice as rewinding the PC to just before the syscall, with a fixed up state that will resume the operation, but is simpler to implement, and usually good enough. Classic worst is better (Unix semantics are also safer with concurrency, but that could have been opt-in…). ↩
-
-That’s not a new observation, and SUN heads like to point to prior art like Dice’s and Garthwaite’s Mostly Lock-Free Malloc, Garthwaite’s, Dice’s, and White’s work on Preemption notification for per-CPU buffers, or Harris’s and Fraser’s Revocable locks. Linux sometimes has to reinvent everything with its special flavour. ↩
-
-For instance, SuperMalloc optimistically uses TSX to access per-CPU caches, but TSX is slow enough that SuperMalloc first tries to use a per-thread cache. Dice and Harris explored the use of hardware transactional lock elision solely to abort on context switches; they maintained high system throughput under contention by trying the transaction once before falling back to a regular lock. ↩
-
-I did not expect systems programming to get near multi-agent epistemic logic ;) ↩
-
-Which is fixable with LOCKed instructions, but that defeats the purpose of per-CPU data. ↩
-
-I actually found the logic bug before the Spectre/Meltdown fire drill and was worried the hole would be plugged. This one survived the purge. fingers crossed ↩
-
-Text authored by Paul Khuong Aug 25th, 2018
-In categories: AsymmetricSynchronisation
-
-« The Confidence Sequence Method: a computer-age test for statistical SLOs
-Preemption is GC for memory reordering »
-
-Comments
-
-Website copyright © 2026 - Paul Khuong | Powered by Octopress | Themed with Königspress

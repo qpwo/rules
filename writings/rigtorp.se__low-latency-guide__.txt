@@ -334,7 +334,3 @@ References:
 
 “Real Time Throttling”. https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux_for_real_time/7/html/tuning_guide/real_time_throttling
 “Real-Time group scheduling”. https://www.kernel.org/doc/html/latest/scheduler/sched-rt-group.html
-Other posts
-Optimizing a ring buffer for throughput Using huge pages on Linux Fuzzing floating point code Generating std::ostream &operator<< for C++ enums and structs using libClang Tips for using the sockets API Uses of immediately invoked function expressions (IIFE) in C++ Latency implications of virtual memory Aligned AVX loads and stores are atomic Correctly implementing a spinlock in C++ Low latency tuning guide Performance impact of split locks C++ Best Practices Estimating order queue position Designing a high performance market data feed handler Efficient rolling statistics with NumPy Erlang Latency Guide
-
-© 2022 Erik Rigtorp <erik@rigtorp.se> GitHub LinkedIn

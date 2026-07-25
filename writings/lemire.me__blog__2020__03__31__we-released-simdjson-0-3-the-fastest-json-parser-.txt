@@ -1,5 +1,3 @@
-Skip to content
-
 Daniel Lemire's blog
 
 Daniel Lemire is a software performance expert. He ranks among the top 2% of scientists globally (Stanford/Elsevier 2025) and is one of GitHub's top 1000 most followed developers.
@@ -415,36 +413,3 @@ December 8, 2020 at 1:05 am
 We support 64-bit ARM platforms with accelerated kernels. See https://lemire.me/blog/2019/08/01/a-new-release-of-simdjson-runtime-dispatching-64-bit-arm-support-and-more/
 
 REPLY
-Leave a Reply
-
-Your email address will not be published.
-
-COMMENT *
-
-NAME *
-
-EMAIL *
-
-WEBSITE
-
- Save my name, email, and website in this browser for the next time I comment.
-
-You can also subscribe by email to this blog (non-commercial, no ads, weekly email).
-
-How to post code (C, C++, Java, Python, etc.):
-
-Wrap your code in backticks, like this:
-
-`int main() {
-    return 0;
-}`
-
-Post navigation
-PREVIOUS
-Previous post:
-Science and Technology links (March 28th 2020)
-NEXT
-Next post:
-Science and Technology links (April 4th 2020)
-Terms of use
-

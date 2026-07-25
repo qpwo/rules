@@ -1,10 +1,3 @@
-MaskRay
-Home
-Archives
-Feeds
-TIL
-Presentations
-
 2021-12-19
 Why isn't ld.lld faster?
 
@@ -881,24 +874,3 @@ mold brings more parallelizable passes to the table. This is great.
 
 Features and generality require abstraction. Abstraction has costs. Costs can be tangible (performance) and intangible (reduced design space). For symbol table initialization, symbol resolution, relocation scan, I believe ld.lld has found a good balancing among different trade-offs. These passes have been ruthlessly challenged by mold. However, with various constraints they may be difficult to change and there is an upper bound on what we can improve. Perhaps 99% people will not feel sympathy for that:( When archive semantics and COMDAT were designed, did the designers anticipated that after some decades there are linker developers struggling with finding a good balance? :)
 
-Share
-linker
-llvm
-NEWER
-2021年總結
-OLDER
-.init, .ctors, and .init_array
-POPULAR
-TAG CLOUD
-adc ai9 algorithm arm asc assembler automaton awesome bctf binary binutils bmc build system c c++ ccls cgc chroot clang clang-format codegen codinsanity coffee script compiler compression computer security contest csv ctf data structure data-structures debug defcon desktop docker elf emacs email emoji emscripten event expect ext4 fdpic feeds firmware floating point forensics fp freebsd game gcc gdb gentoo git github glibc graph graph drawing gtk hacker culture hackerrank hanoi haskell hpc image inotify ipsec irc isc j javascript josephus problem jq kernel kythe ld leetcode libunwind linker linux lld lldb llvm lsp m68k makefile math maze mirror ml musl mutt n-body neovim network nginx nim nlp node.js noip notmuch npm ocaml offlineimap oi oj openwrt parallel parser generator performance perl powerpc presentation puzzle python qq radare2 regex regular expression release reverse engineering review riscv router rtld ruby ructfe s390x sanitizer scheme search security sframe shell ssh stringology student festival puzzle suffix array suffix automaton summary suricata telegram telegramircd terminal tls travel traversal tree trendmicro udev unicode unix usb vim vpn vte wargame web analytics webqqircd website wechat wechatircd window manager windows x86 xbindkeys xmonad xz yanshi
-BLOGROLL
-BYVoid
-fqj1994
-ppwwyyxx
-© 2026 MaskRay
-Powered by Hexo
-Home Archives Feeds TIL Presentations
-
-IMAGES
-https://maskray.me/icon/github.svg
-https://maskray.me/icon/twitter.svg

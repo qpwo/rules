@@ -1,9 +1,3 @@
-Paul Khuong mostly on Lisp
-
-rss feed
-
-Sun, 11 Jul 2010
- 
 There's more to locality than caches
 
 After some theoretical experiments on hash tables, I implemented a prototype for 2-left hash tables with large buckets (16 entries) to see how it’d work in the real world. It worked pretty well, but the way its performance scaled with table size sometimes baffled me. Playing with the layout (despite not fully understanding the initial prototype’s behaviour) helped, but the results were still confounding. The obvious solution was to run microbenchmarks and update my mental performance model for accesses to memory!
@@ -345,10 +339,3 @@ Cycle/pattern   |  37.25   41.50   52.00   55.25 :  22.00  24.75   30.50   37.00
                 +--------------------------------+---------------------------------+
 
 Figure 4:	Working sets exceed caches and TLBs
-
-posted at: 22:31 | /LowLevel | permalink
-
- Contact me by email: pvk@pvk.ca.
-
-IMAGES
-http://pyblosxom.bluesock.org/images/pb_pyblosxom.gif

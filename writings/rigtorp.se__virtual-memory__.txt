@@ -168,8 +168,3 @@ On the AMD64 / x86-64 architecture TLB entries are invalidated using the INVLPG 
 On the ARM architecture TLB entries are invalidated using the TLBI instruction.
 
 More information on TLB invalidation can be found in The Linux Kernel documentation. ↩︎
-
-Other posts
-Optimizing a ring buffer for throughput Using huge pages on Linux Fuzzing floating point code Generating std::ostream &operator<< for C++ enums and structs using libClang Tips for using the sockets API Uses of immediately invoked function expressions (IIFE) in C++ Latency implications of virtual memory Aligned AVX loads and stores are atomic Correctly implementing a spinlock in C++ Low latency tuning guide Performance impact of split locks C++ Best Practices Estimating order queue position Designing a high performance market data feed handler Efficient rolling statistics with NumPy Erlang Latency Guide
-
-© 2022 Erik Rigtorp <erik@rigtorp.se> GitHub LinkedIn

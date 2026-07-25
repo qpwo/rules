@@ -252,23 +252,3 @@ make-true.sh
 
 Is the C compiler done bootstrapping yet?
 
- linux x86 
-
-Have a comment on this article? Start a discussion in my public inbox by sending an email to ~skeeto/public-inbox@lists.sr.ht [mailing list etiquette] , or see existing discussions.
-
-«
-Baking Data with Serialization
-»
-Portable Structure Access with Member Offset Constants
-null program
-Chris Wellons
-wellons@nullprogram.com (PGP)
-~skeeto/public-inbox@lists.sr.ht (view)
-Index Tags Feed About Tools Toys GitHub
-
-All information on this blog, unless otherwise noted, is hereby released into the public domain, with no rights reserved.
-
-IMAGES
-http://imgs.xkcd.com/comics/real_programmers.png
-https://nullprogram.com/img/steady-hand/xor.png
-https://nullprogram.com/img/steady-hand/elf.svg

@@ -1,5 +1,3 @@
-SIBOEHM
-ABOUT
 How to Optimize a CUDA Matmul Kernel for cuBLAS-like Performance: a Worklog
  Subscribe Si_Boehm  Comments (16)
 
@@ -682,38 +680,3 @@ It seems like there aren’t any good official resources for understanding SASS.
 I’m collecting examples of readable, yet optimized CUDA code to learn from:
 ONNX Runtime’s CUDA provider, e.g. their implementation of softmax.
 NVIDIA’s Open Source CUTLASS library, e.g. their GEMM implementation which uses double-buffering to prefetch the innermost dimension, which is still missing in my kernels.
-
-Get new posts sent to your inbox:
-
-Subscribe
-       Imprint
-
-IMAGES
-https://siboehm.com/assets/img/CUDA-MMM/CUDA_thread_hierarchy.png
-https://siboehm.com/assets/img/CUDA-MMM/Tile_quantization.png
-https://siboehm.com/assets/img/CUDA-MMM/naive-kernel.png
-https://siboehm.com/assets/img/CUDA-MMM/naive_kernel_mem_access.png
-https://siboehm.com/assets/img/CUDA-MMM/threadId_to_warp_mapping.png
-https://siboehm.com/assets/img/CUDA-MMM/GMEM_coalescing.png
-https://siboehm.com/assets/img/CUDA-MMM/random_access_coalescing.png
-https://siboehm.com/assets/img/CUDA-MMM/Naive_kernel_mem_coalescing.png
-https://siboehm.com/assets/img/CUDA-MMM/Naive_kernel_improved_access.png
-https://siboehm.com/assets/img/CUDA-MMM/memory-hierarchy-in-gpus.png
-https://siboehm.com/assets/img/CUDA-MMM/cache-blocking.png
-https://siboehm.com/assets/img/CUDA-MMM/roofline_kernel_3.png
-https://siboehm.com/assets/img/CUDA-MMM/Cusp_behaviour.png
-https://siboehm.com/assets/img/CUDA-MMM/kernel_3_profiler_instr_mix.png
-https://siboehm.com/assets/img/CUDA-MMM/kernel_3_profiler_warp_stalls.png
-https://siboehm.com/assets/img/CUDA-MMM/kernel_4_1D_blocktiling.png
-https://siboehm.com/assets/img/CUDA-MMM/Kernel_4_profiler_warp_stalls.png
-https://siboehm.com/assets/img/CUDA-MMM/1d_warp_tiling.png
-https://siboehm.com/assets/img/CUDA-MMM/raising_arith_inten.png
-https://siboehm.com/assets/img/CUDA-MMM/kernel_5_GMEM_loading.png
-https://siboehm.com/assets/img/CUDA-MMM/kernel_5_2D_blocktiling.png
-https://siboehm.com/assets/img/CUDA-MMM/kernel_5_reg_blocking.png
-https://siboehm.com/assets/img/CUDA-MMM/kernel_6_As_transpose.png
-https://siboehm.com/assets/img/CUDA-MMM/Loop_structure.png
-https://siboehm.com/assets/img/CUDA-MMM/WarpSchedulers.png
-https://siboehm.com/assets/img/CUDA-MMM/kernel_10_warp_tiling.png
-https://siboehm.com/assets/img/CUDA-MMM/cublas_vs_kernel_10_sizes.png
-https://siboehm.com/assets/img/CUDA-MMM/split_k.png

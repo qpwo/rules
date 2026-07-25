@@ -1,19 +1,3 @@
-LWN
-.net
-News from the source
-Content
-Weekly Edition
-Archives
-Search
-Kernel
-Security
-Events calendar
-Unread comments
-LWN FAQ
-Write for us
-Edition
-Return to the Kernel page
-User:  Password:   |  | 
 Tux3, a Versioning Filesystem
 From:	 	Daniel Phillips <phillips@phunq.net>
 To:	 	linux-kernel@vger.kernel.org
@@ -409,15 +393,3 @@ Daniel
 was due to me, and of course Graydon Hoare (google Quicksort) deserves
 more credit than anyone.
 --
-To unsubscribe from this list: send the line "unsubscribe linux-kernel" in
-the body of a message to majordomo@vger.kernel.org
-More majordomo info at  http://vger.kernel.org/majordomo-info.html
-Please read the FAQ at  http://www.tux.org/lkml/
-
-Copyright © 2008, Eklektix, Inc.
-Comments and public postings are copyrighted by their creators.
-Linux is a registered trademark of Linus Torvalds
-
-IMAGES
-https://static.lwn.net/images/logo/barepenguin-70.webp
-https://static.lwn.net/images/lcorner-ss.png

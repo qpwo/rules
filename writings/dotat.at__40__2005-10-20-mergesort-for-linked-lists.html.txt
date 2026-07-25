@@ -1,5 +1,3 @@
-Tony Finch – blog
- home  search  archive  recent  feed  links  elsewhere
 2005-10-20 – mergesort for linked lists
 ⇐ 2005-10-13 ⫤
  
@@ -107,10 +105,3 @@ The main difference here is that the tests for the end of the B loop on lines 19
 
 This is pretty much the algorithm that Simon describes. However he skips the elements of A rather than taking them from the list, which adds complexity to the merge function’s end-detection for A similar to that for B. An in-place implementation of take() would have the same effect.
 
-⇐ 2005-10-13 ⇐ ☆ ⇐
-⇒ ☆ ⇒ 2005-10-21 ⇒
-
-Tony Finch <dot@dotat.at>
-
-IMAGES
-https://dotat.at/graphics/dotat-64.png

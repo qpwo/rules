@@ -348,5 +348,3 @@ References
 
 [4] Ian Witten, Alistair Moffat, and Timothy Bell, Managing Gigabytes: Compressing and Indexing Documents and Images, 1994. Second Edition, 1999.
 
-Copyright © 2012 Russ Cox. All Rights Reserved.
-https://swtch.com/~rsc/regexp/

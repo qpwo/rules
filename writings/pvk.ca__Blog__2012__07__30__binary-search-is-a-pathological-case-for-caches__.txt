@@ -348,15 +348,11 @@ Comments
 Website copyright © 2026 - Paul Khuong | Powered by Octopress | Themed with Königspress
 
 IMAGES
-https://pvk.ca/images/2012-07-30-binary-search-is-a-pathological-case-for-caches/bsearch-first-cycles.png
-https://pvk.ca/images/2012-07-30-binary-search-is-a-pathological-case-for-caches/bsearch-first-cache-misses.png
-https://pvk.ca/images/2012-07-30-binary-search-is-a-pathological-case-for-caches/prelim-first-cycles.png
-https://pvk.ca/images/2012-07-30-binary-search-is-a-pathological-case-for-caches/prelim-first-cache-misses.png
-https://pvk.ca/images/2012-07-30-binary-search-is-a-pathological-case-for-caches/prelim-random-cycles.png
-https://pvk.ca/images/2012-07-30-binary-search-is-a-pathological-case-for-caches/prelim-random-cache-misses.png
-https://pvk.ca/images/2012-07-30-binary-search-is-a-pathological-case-for-caches/real-first-cycles.png
-https://pvk.ca/images/2012-07-30-binary-search-is-a-pathological-case-for-caches/real-random-cycles.png
-https://pvk.ca/images/2012-07-30-binary-search-is-a-pathological-case-for-caches/real-subrange-small-cycles.png
-https://pvk.ca/images/2012-07-30-binary-search-is-a-pathological-case-for-caches/real-subrange-large-cycles.png
-https://pvk.ca/images/2012-07-30-binary-search-is-a-pathological-case-for-caches/real-stride-short-cycles.png
-https://pvk.ca/images/2012-07-30-binary-search-is-a-pathological-case-for-caches/real-stride-medium-cycles.png
+[IMAGE DESCRIPTION: To recreate this graph exactly, you will need a data visualization tool (like R with ggplot2 or Python with matplotlib/seaborn). The graph represents a performance benchmark for binary search runtimes across different input sizes. 1. Data Structure You need a dataset with two primary columns: X-Axis (Independent Variable): An integer sequence representing the size of the vector expressed as $\log_2(n)$. The range is from approximately 4 to 30. Y-Axis (Dependent Variable): The number of CPU cycles. The values range from approximately 10 to 1000, with significant variance (noise) appe...]
+
+[IMAGE DESCRIPTION: To recreate this plot exactly, you need to use R with the ggplot2 library. The plot is a combination of a scatter plot (for the noisy data) and line plots (for the smooth data), overlaid on a grey theme. Here is the detailed breakdown of the visual elements and the code to generate it. Visual Description Chart Type: A combination scatter/line plot. Theme: theme_gray() (The default ggplot2 theme with a grey background and white grid lines). Title: "Runtimes for repeated searches in sorted vectors" (Centered at the top). X-Axis: Label: "Size of vector (lg(n))" Ra...]
+
+[IMAGE DESCRIPTION: To recreate this chart exactly, you would need a data visualization tool like R (using the ggplot2 library), as the styling (the grey background grid, the font, and the legend layout) is characteristic of the default theme_grey() in ggplot2. 1. General Layout & Styling Chart Type: A multi-line graph with shaded confidence intervals (ribbons) around each line. Background: Light grey background with a white major grid (both horizontal and vertical). Axes: X-Axis: Labelled "Size of vector (lg(n))". The scale ranges from roughly 4 to 31. Major tick marks are at 5, 10, 15, 20, ...]
+[IMAGE DESCRIPTION: To recreate this plot exactly, you would use R with the ggplot2 library. The plot displays the performance (measured in CPU cycles) of six different search methods as the size of the input vector increases exponentially. Here is the detailed technical breakdown: 1. Data Structure You need a data frame with three columns: x (Size of vector): A numerical variable representing $\lg(n)$, ranging from approximately 4 to 30. y (Cycles): A numerical variable representing the CPU cycles, ranging from 0 to 1000. method: A categorical factor with six levels: goog, ob, oq, stl, tb, and ter...]
+[IMAGE DESCRIPTION: To recreate this chart exactly, you would likely use R with the ggplot2 package. The chart is a multi-panel line plot with shaded confidence intervals (ribbons), faceted by dataset size. Here is the detailed breakdown required for reconstruction: 1. Overall Layout & Theme Plot Type: Line chart with geom_ribbon (shaded areas) representing variance or standard deviation. Faceting: The plot is divided into three vertical panels (columns) arranged horizontally. Background: Light grey background (EBEBEB) with white grid lines (standard theme_gray() in ggplot2). Font: Sans-serif (l...]
+

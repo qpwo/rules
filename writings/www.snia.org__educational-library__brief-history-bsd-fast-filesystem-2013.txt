@@ -57,73 +57,8 @@ Chat provider: LiveChat
 Copyright © 2026 SNIA
 
 IMAGES
-https://www.snia.org/themes/custom/snia/images/calendarfavorite02.svg
-https://www.snia.org/themes/custom/snia/images/frame-769.svg
-https://www.snia.org/themes/custom/snia/images/vector.svg
-https://www.snia.org/themes/custom/snia/images/vector-1.svg
-[IMAGE DESCRIPTION: To recreate this image exactly, you will need to construct a logo consisting of text and a geometric icon set against a black background. Here is the breakdown:
 
-**1. The Text**
-*   **Content:** The letters "SNIA" in all uppercase.
-*   **Font:** A bold, geometric sans-serif typeface (similar to *Futura Bold*, *Gotham Bold*, or *Helvetica Neue Bold*). The letters should be thick and uniform in stroke width.
-*   **Color:** A dark charcoal grey (approximate Hex code: `#333333` or `#3D3D3D`).
-*   **Spacing:** The kerning (spacing between letters) is standard, perhaps slightly tight, keeping the word compact.
+[IMAGE DESCRIPTION: To recreate this image exactly, you will need to construct a logo consisting of text and a geometric icon set against a black background. Here is the breakdown: 1. The Text Content: The letters "SNIA" in all uppercase. Font: A bold, geometric sans-serif typeface (similar to Futura Bold, Gotham Bold, or Helvetica Neue Bold). The letters should be thick and uniform in stroke width. Color: A dark charcoal grey (approximate Hex code: 333333 or 3D3D3D). Spacing: The kerning (spacing between letters) is standard, perhaps slightly tight, keeping the word compact. 2. The Graphic Icon To the immedia...]
 
-**2. The Graphic Icon**
-To the immediate right of the letter "A" is a stylized arrow pointing to the right. It is composed of two distinct shapes separated by a thin vertical gap of the background color.
+[IMAGE DESCRIPTION: To recreate this image exactly, you would need to construct a scene featuring a woman standing in front of a glass-walled server room. Here is a detailed breakdown of the elements, from foreground to background: 1. The Subject (Foreground/Right Side) Person: An African American woman with voluminous, dark, curly hair styled in a natural afro. Clothing: She is wearing an all-black outfit consisting of a fitted, long-sleeved turtleneck sweater (with the faint word "KALMA" visible on the chest), black skinny jeans, and black knee-high boots. Pose & Action: She is standing slightly angled towar...]
 
-*   **Left Shape (The Tail):** This is a purple parallelogram (or a trapezoid slanted to the right). It represents the left half of a chevron.
-    *   **Color:** A medium, vibrant purple (approximate Hex code: `#6A4C9C` or `#7B3FA0`).
-    *   **Alignment:** Its vertical height matches the height of the letters.
-*   **Right Shape (The Head):** This is a dark grey chevron shape (like a "greater than" sign `>`). It represents the right half of the arrow.
-    *   **Color:** The same dark charcoal grey as the text (`#333333`).
-    *   **Alignment:** It is aligned perfectly with the purple shape to form a cohesive arrow, but separated by a small gap.
-
-**3. The Background**
-*   **Color:** Solid Black (`#000000`).
-
-**Summary of Layout:**
-Imagine the word "SNIA" on the left. To its right, floating in the negative space, is an arrow. The arrow is split in the middle: the left side is purple, and the right side is dark grey, creating a sense of forward motion. The entire composition is horizontally centered or aligned to the left depending on your canvas.]
-https://www.snia.org/themes/custom/snia/images/login_hamburger.svg
-https://www.snia.org/themes/custom/snia/images/menu-hamburger.svg
-https://www.snia.org/themes/custom/snia/images/Frame_771_menu.svg
-https://www.snia.org/themes/custom/snia/images/Chevron%20Bottom%20Main%20Navigation.svg
-[IMAGE DESCRIPTION: To recreate this image exactly, you would need to construct a scene featuring a woman standing in front of a glass-walled server room. Here is a detailed breakdown of the elements, from foreground to background:
-
-**1. The Subject (Foreground/Right Side)**
-*   **Person:** An African American woman with voluminous, dark, curly hair styled in a natural afro.
-*   **Clothing:** She is wearing an all-black outfit consisting of a fitted, long-sleeved turtleneck sweater (with the faint word "KALMA" visible on the chest), black skinny jeans, and black knee-high boots.
-*   **Pose & Action:** She is standing slightly angled toward the left but facing forward. She is holding a silver laptop (resembling a Microsoft Surface with a keyboard cover) with both hands at waist/chest height. She is looking down intently at the screen.
-*   **Position:** She stands on the right side of the frame, occupying the vertical space from the floor to the top of her head.
-
-**2. The Glass Partition & Logo Strip (Mid-ground)**
-*   **Barrier:** A large, clear glass wall separates the woman from the server room behind her. You can see faint vertical reflections on the glass.
-*   **Logo Banner:** Running horizontally along the bottom third of the glass is a white strip featuring a series of technology company logos in black text. Reading from left to right, they are:
-    1.  **Emerson Network Power** (partially cut off on the far left edge).
-    2.  **Emulex** (with its distinctive infinity-symbol logo).
-    3.  **HP** (the circular logo).
-    4.  **Intel** (the swirl logo).
-    5.  **NetApp** (the square 'n' logo).
-    6.  **Schneider Electric** (with its symbol).
-    7.  **Dell** (visible just behind the woman's right hip).
-    8.  **EMC²** (visible behind her left side).
-    9.  **Emerson Network Power** (visible again further right).
-
-**3. The Server Room (Background)**
-*   **Racks:** Behind the glass are rows of tall, black server racks filled with hardware. The lighting inside the racks is a cool, electric blue.
-*   **Specific Hardware (Left to Right):**
-    *   **Far Left Rack:** Near the top, there are four distinct red server units labeled **GRIDSTORE**. Below those is a unit labeled **Violin**, and near the bottom is a unit labeled **NUTANIX** with a curved blue light strip across it.
-    *   **Vertical APC Units:** Separating the server sections are tall, thin black units labeled **APC** (American Power Conversion) in red text. They have small, green LCD screens near the middle showing data. There are three visible APC units.
-    *   **Center/Right Racks:** These are filled with standard black server blades and networking equipment with blinking blue LED lights.
-*   **Top of Racks:** A strip of blue LED lights runs along the very top edge of the rack infrastructure. Thick blue cables hang down from the ceiling area near the top right.
-
-**4. Lighting and Environment**
-*   **Flooring:** The floor in the foreground (where the woman stands) is a solid, medium-blue carpet.
-*   **Lighting:** The overall scene is dominated by cool blue tones from the server room lights. The woman is lit softly, likely by overhead room lighting, which creates a slight contrast with the intense blue glow behind her. There are reflections of the room lights on the glass pane.]
-https://www.snia.org/themes/custom/snia/images/breadcrumb_home.svg
-https://www.snia.org/sites/default/files/2025-01/ed-library.png
-
-https://www.snia.org/themes/custom/snia/images/x.svg
-https://www.snia.org/themes/custom/snia/images/linkedin.svg
-https://www.snia.org/themes/custom/snia/images/facebook.svg
-https://www.snia.org/themes/custom/snia/images/youtube.svg

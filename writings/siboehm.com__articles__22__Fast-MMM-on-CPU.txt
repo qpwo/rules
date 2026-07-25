@@ -1,5 +1,3 @@
-SIBOEHM
-ABOUT
 Fast Multidimensional Matrix Multiplication on CPU from Scratch
  Subscribe Si_Boehm
 
@@ -265,16 +263,3 @@ There are other algorithm’s for matrix multiplication that have an asymptotic 
 Just for comparison, a 2021 MacBook Pro with an M1 Pro chip runs the same Numpy code in 1ms, if you use Apple’s accelerate BLAS implementation. The M1 chips have undocumented matrix-matrix assembly instructions that only Apple can compile for, which is where this speedup comes from (with OpenBLAS, the MBP takes ~8ms). Similar AMX instructions (but documented) are included in Intel’s Sapphire Rapids microarchitecture.
 I was led down this rabbit hole of optimization when I stumbled over marek.ai/matrix-multiplication-on-cpu a few weeks ago.
 github.com/flame/how-to-optimize-gemm goes much further and explains how to actually reach BLAS-like performance from scratch.
-
-Get new posts sent to your inbox:
-
-Subscribe
-       Imprint
-
-IMAGES
-[IMAGE DESCRIPTION: To recreate this image exactly, follow these specifications:  Canvas and Style    Background: Solid black (000000).    Aesthetic: Hand-drawn, sketchy style. Lines should be slightly uneven and not perfectly straight, resembling a marker or pen drawing.    Colors:        Grid lines and text: Dark grey (approx. 666666).        Shading/Fill: Bright cyan-blue (approx. 0099FF).  Layout There are three main elements arranged horizontally from left to right, labeled A, B, and C.  1. Grid A (Left)    Structure: A 5x5 grid (5 rows, 5 columns) drawn with grey lines.    Shading: The entire top row (Ro...]
-[IMAGE DESCRIPTION: To recreate this image exactly, you would need to create a digital illustration with a specific "sketchy" or "hand-drawn" aesthetic. Here is a detailed breakdown of the elements:  1. Canvas and Background    Background: Solid, pure black (000000).  2. The Left Group (Small Squares)    Position: Located on the left side of the canvas, vertically centered.    Arrangement: Three small squares arranged in a horizontal row.    Spacing: There is a consistent gap between each square (roughly 1.5 times the width of a square).    Colors (from left to right):     1.  Cyan/Light Blue     2.  Magenta/P...]
-
-[IMAGE DESCRIPTION: To recreate this image exactly, you need a black background with three distinct diagrams arranged horizontally. The style is hand-drawn and sketchy.  Common Elements (Present in all three diagrams):    The Grid: Each diagram features a grid of 5 rows and 7 columns. The grid lines are drawn in a sketchy, dashed grey style (looking like separate L-shapes or segments rather than continuous lines).    The Highlight: In every diagram, the very top row of the grid is highlighted. This is enclosed in a rough, hand-drawn grey rectangle. Inside the rectangle, there is a cross-hatch pattern: light bl...]
-[IMAGE DESCRIPTION: To recreate this image, you are looking at a hand-drawn style technical diagram on a black background. It illustrates loop nesting and memory access patterns, likely for matrix operations. The drawing style uses sketchy, uneven lines, similar to a digital whiteboard tool.  Here is the breakdown by section:  General Layout    Background: Solid black (000000).    Arrangement: Three distinct grid diagrams are arranged horizontally across the center.    Grid Style: Each diagram features a 5x5 grid. The grid lines are not solid squares but rather dashed gray "L" shapes or corner brackets for eac...]
-

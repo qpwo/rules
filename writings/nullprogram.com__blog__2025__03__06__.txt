@@ -161,18 +161,3 @@ $ cc -static -nostartfiles -no-pie -o pkg-config openbsd_main.c
 
 Though it pulls in a lot of bloat (~8x size increase), and teasing out the necessary objects isn’t trivial.
 
- c bsd x86 
-
-Have a comment on this article? Start a discussion in my public inbox by sending an email to ~skeeto/public-inbox@lists.sr.ht [mailing list etiquette] , or see existing discussions.
-
-«
-Robust Wavefront OBJ model parsing in C
-»
-Lessons learned from my first dive into WebAssembly
-null program
-Chris Wellons
-wellons@nullprogram.com (PGP)
-~skeeto/public-inbox@lists.sr.ht (view)
-Index Tags Feed About Tools Toys GitHub
-
-All information on this blog, unless otherwise noted, is hereby released into the public domain, with no rights reserved.

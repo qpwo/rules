@@ -208,19 +208,3 @@ compilers: GCC, Clang, MSC
 hosts: Linux, Windows, BSD
 
 Since I wanted to test across a variety of implementations, especially under Thread Sanitizer (TSan). On a similar note, I also implemented a concurrent queue shared between C and Go: queue.go.
-
- c optimization 
-
-Have a comment on this article? Start a discussion in my public inbox by sending an email to ~skeeto/public-inbox@lists.sr.ht [mailing list etiquette] , or see existing discussions.
-
-«
-Luhn algorithm using SWAR and SIMD
-»
-My take on "where's all the code"
-null program
-Chris Wellons
-wellons@nullprogram.com (PGP)
-~skeeto/public-inbox@lists.sr.ht (view)
-Index Tags Feed About Tools Toys GitHub
-
-All information on this blog, unless otherwise noted, is hereby released into the public domain, with no rights reserved.

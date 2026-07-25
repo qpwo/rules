@@ -1,10 +1,3 @@
-A-programmer's-cave
-Posts
-Tags
-email
-gh
-twtr
-TheBinder
 AMD GCN ISA: a first dive
 Table of contents:
 Where to start
@@ -215,37 +208,3 @@ Thanks to the help from Rohan (thanks again), we found the issue was from my ret
 At the end of the day I don’t know yet if this would actually give a performance benefit or not, on the surface we can see packed instructions, one less register used and less instructions for exports. This was just some fooling around, I plan to test RPM with a meatier shader.
 
 That is it for now folks!
-
-#shader #disassembly
-Mar 10, 2019
-Email
-GitHub
-Twitter
-RSS
-Comments Policy
-Copyright (c) 2018 - present, all rights reserved.
-Powered by Hugo.
-
-IMAGES
-https://giordi91.github.io/images/14_amd_gcn_first_dive/gcn_logo.png
-https://giordi91.github.io/images/14_amd_gcn_first_dive/rgp.png
-https://giordi91.github.io/images/14_amd_gcn_first_dive/pixDis.png
-https://giordi91.github.io/images/14_amd_gcn_first_dive/pixCounters.png
-https://giordi91.github.io/images/14_amd_gcn_first_dive/pixOccupancy.png
-https://giordi91.github.io/images/14_amd_gcn_first_dive/bg.png
-https://giordi91.github.io/images/14_amd_gcn_first_dive/01_start.png
-https://giordi91.github.io/images/14_amd_gcn_first_dive/01_stats.png
-https://giordi91.github.io/images/14_amd_gcn_first_dive/01_interp.png
-https://giordi91.github.io/images/14_amd_gcn_first_dive/mac.png
-https://giordi91.github.io/images/14_amd_gcn_first_dive/mad.png
-https://giordi91.github.io/images/14_amd_gcn_first_dive/01_clamp.png
-https://giordi91.github.io/images/14_amd_gcn_first_dive/01_clamp2.png
-https://giordi91.github.io/images/14_amd_gcn_first_dive/01_export.png
-https://giordi91.github.io/images/14_amd_gcn_first_dive/error.png
-https://giordi91.github.io/images/14_amd_gcn_first_dive/03_y_assembly.png
-https://giordi91.github.io/images/14_amd_gcn_first_dive/03_y_stats.png
-https://giordi91.github.io/images/14_amd_gcn_first_dive/04_pk.png
-https://giordi91.github.io/images/14_amd_gcn_first_dive/04_pk_mul.png
-https://giordi91.github.io/images/14_amd_gcn_first_dive/04_pk_mulpk.png
-https://giordi91.github.io/images/14_amd_gcn_first_dive/04_pk_cvt.png
-https://giordi91.github.io/images/14_amd_gcn_first_dive/noExport.png

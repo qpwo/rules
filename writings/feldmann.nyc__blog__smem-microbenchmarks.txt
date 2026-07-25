@@ -1,5 +1,3 @@
-Axel Feldmann
-ResearchResumeBlog
 Notes About Nvidia GPU Shared Memory Banks
 
 [December 19, 2024]
@@ -204,21 +202,3 @@ In this writeup, we looked at several different shared memory behaviors and test
 
 Thanks to my good friend Yifan Yang who helped with inventing + debugging microbenchmarks.
 
-Not quite, but close enough. ↩
-
-One interesting thing that I learned while putting together these microbenchmarks is that you can mark ptx instructions as volatile. Weird! What does it even mean for an instruction to be volatile? It turns out that marking ptx instructions as volatile is a directive for the ptx assembler that lowers them to SASS. This volatile marking stops the ptx assembler from optimizing out all of my loads. ↩
-
-axelf AT csail DOT mit DOT edu
-
-Github
-Google Scholar
-
-IMAGES
-https://feldmann.nyc/posts/smem-microbenchmarks/array.drawio.svg
-https://feldmann.nyc/posts/smem-microbenchmarks/no-conflicts.svg
-https://feldmann.nyc/posts/smem-microbenchmarks/all-conflicts.svg
-https://feldmann.nyc/posts/smem-microbenchmarks/warp-conflict.svg
-https://feldmann.nyc/posts/smem-microbenchmarks/broadcast.svg
-https://feldmann.nyc/posts/smem-microbenchmarks/ratnest.svg
-https://feldmann.nyc/posts/smem-microbenchmarks/v4loads.svg
-https://feldmann.nyc/posts/smem-microbenchmarks/2amplify.svg

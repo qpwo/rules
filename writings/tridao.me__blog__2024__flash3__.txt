@@ -140,13 +140,13 @@ Mamba-3 Part 1
 © Copyright 2026 Tri Dao.
 
 IMAGES
-https://tridao.me/assets/img/2024-07-11-flash3/flash_recap_diagram-1400.webp
-https://tridao.me/assets/img/2024-07-11-flash3/h100_wgmma-1400.webp
-https://tridao.me/assets/img/2024-07-11-flash3/h100_tma-1400.webp
-https://tridao.me/assets/img/2024-07-11-flash3/h100_wgmma_fp8-1400.webp
-https://tridao.me/assets/img/2024-07-11-flash3/pingpong_pipelining-1400.webp
-https://tridao.me/assets/img/2024-07-11-flash3/2_stage_pipelining-1400.webp
-https://tridao.me/assets/img/2024-07-11-flash3/flash3_numerical_error-1400.webp
-https://tridao.me/assets/img/2024-07-11-flash3/flash3_fp16_fwd-1400.webp
-https://tridao.me/assets/img/2024-07-11-flash3/flash3_fp16_bwd-1400.webp
-https://tridao.me/assets/img/2024-07-11-flash3/flash3_fp8_fwd-1400.webp
+
+
+
+
+
+
+
+
+
+

@@ -153,17 +153,3 @@ bool insert(Thing *thing, Thing **table, int exp)
 }
 
 This is quite similar my hash trie concurrency enhancement a few years ago.
-
- c 
-
-Have a comment on this article? Start a discussion in my public inbox by sending an email to ~skeeto/public-inbox@lists.sr.ht [mailing list etiquette] , or see existing discussions.
-
-«
-I have officially retired from Emacs
-null program
-Chris Wellons
-wellons@nullprogram.com (PGP)
-~skeeto/public-inbox@lists.sr.ht (view)
-Index Tags Feed About Tools Toys GitHub
-
-All information on this blog, unless otherwise noted, is hereby released into the public domain, with no rights reserved.

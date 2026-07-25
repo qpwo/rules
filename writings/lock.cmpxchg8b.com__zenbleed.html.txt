@@ -265,23 +265,3 @@ Acknowledgements
 This bug was discovered by me, Tavis Ormandy from Google Information Security!
 
 I couldn’t have found it without help from my colleagues, in particular Eduardo Vela Nava and Alexandra Sandulescu. I also had help analyzing the bug from Josh Eads.
-
-You don’t need to set ymm0 explicitly, all VEX encoded instructions that write to xmm automatically zero the upper part.↩︎
-
-See Software Optimization Guide for AMD EPYC™ 7003 Processors, section 2.11.5.↩︎
-
-See Software Optimization Guide for AMD EPYC™ 7003 Processors, section 2.11.5.↩︎
-
-In fact, conditional branches are not necessary at all because of SLS.↩︎
-
-HOME • ABOUT • CONTACT
-
-IMAGES
-https://lock.cmpxchg8b.com/img/zb-vpxor.svg
-https://lock.cmpxchg8b.com/img/zb-vpcmpeqb.svg
-https://lock.cmpxchg8b.com/img/zb-vpmovmskb.svg
-https://lock.cmpxchg8b.com/img/zb-tzcnt.svg
-https://lock.cmpxchg8b.com/img/zb-vzeroupper.svg
-https://lock.cmpxchg8b.com/img/zb-zbit.svg
-https://lock.cmpxchg8b.com/img/zb-leaking.gif
-https://lock.cmpxchg8b.com/img/zb-exploit.gif

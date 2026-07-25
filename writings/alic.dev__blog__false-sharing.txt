@@ -1,7 +1,3 @@
-Blog
-Repos
-Github
-Linkedin
 Measuring the impact of false sharing
 January 2023 - RSS
 I recently began writing a bounded, wait-free, multi-producer single-consumer (MPSC) queue. An often cited wisdom for ring-buffer based implementations goes as follows:
@@ -99,10 +95,3 @@ Sorin, Daniel J., Mark D. Hill, and David A. Wood. "A primer on memory consisten
 Hennessy, John L., and David A. Patterson. Computer architecture: a quantitative approach. Elsevier, 2011. [PDF]
 David, Tudor, Rachid Guerraoui, and Vasileios Trigonakis. "Everything you always wanted to know about synchronization but were afraid to ask."  Proceedings of the Twenty-Fourth ACM Symposium on Operating Systems Principles. 2013. [PDF]
 Liu, Tongping, and Emery D. Berger. "Sheriff: precise detection and automatic mitigation of false sharing."  Proceedings of the 2011 ACM international conference on Object oriented programming systems languages and applications. 2011.
-
-IMAGES
-https://alic.dev/static/false-sharing/ccnuma.webp
-https://alic.dev/static/false-sharing/false-sharing.webp
-https://alic.dev/static/mpsc/dsdesign.webp
-https://alic.dev/static/false-sharing/fs-mpsc.webp
-https://alic.dev/static/false-sharing/offset-versions.webp

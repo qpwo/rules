@@ -1,17 +1,3 @@
-LWN
-.net
-News from the source
-Content
-Weekly Edition
-Archives
-Search
-Kernel
-Security
-Events calendar
-Unread comments
-LWN FAQ
-Write for us
-User:  Password:   |  | 
 FS-Cache Benchmarks
 [Posted December 24, 2008 by jake]
 
@@ -159,11 +145,3 @@ probably got loaded in optimal order; the cache was large enough to never need
 culling; only one program (cat or tar) was run at once.
 
 David
-
- to post comments
-
-Copyright © 2008, Eklektix, Inc.
-Comments and public postings are copyrighted by their creators.
-Linux is a registered trademark of Linus Torvalds
-
-

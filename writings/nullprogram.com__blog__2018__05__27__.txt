@@ -159,21 +159,3 @@ It’s no mystery
 
 Given these results, it’s really no mystery that LuaJIT can generate more efficient dynamic function calls than a PLT, even if they still end up being indirect calls. In my benchmark, the non-PLT indirect calls were 28% faster than the PLT, and the direct calls 43% faster than the PLT. That’s a small edge that JIT-enabled programs have over plain old native programs, though it comes at the cost of absolutely no code sharing between processes.
 
- c x86 linux optimization 
-
-Have a comment on this article? Start a discussion in my public inbox by sending an email to ~skeeto/public-inbox@lists.sr.ht [mailing list etiquette] , or see existing discussions.
-
-«
-When the Compiler Bites
-»
-Emacs 26 Brings Generators and Threads
-null program
-Chris Wellons
-wellons@nullprogram.com (PGP)
-~skeeto/public-inbox@lists.sr.ht (view)
-Index Tags Feed About Tools Toys GitHub
-
-All information on this blog, unless otherwise noted, is hereby released into the public domain, with no rights reserved.
-
-IMAGES
-https://nullprogram.com/img/diagram/plt.svg

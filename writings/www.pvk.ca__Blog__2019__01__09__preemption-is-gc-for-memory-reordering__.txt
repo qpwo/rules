@@ -1,8 +1,3 @@
-PAUL KHUONG: SOME LISP
-Blog
-Archives
-RSS
-
 Preemption is GC for memory reordering
 
 Jan 9th, 2019 | 9 Comments
@@ -333,43 +328,3 @@ The separate “sleepers flag” word doubles the space usage, compared to the s
 
 But, we’ll see, maybe we can make the above work on AArch64 or POWER.
 
-I actually prefer another, more intuitive, explanation that isn’t backed by official documentation.The store buffer in x86-TSO doesn’t actually exist in silicon: it represents the instructions waiting to be retired in the out-of-order execution engine. Precise interrupts seem to imply that even entering the interrupt handler flushes the OOE engine’s state, and thus acts as a full barrier that flushes the conceptual store buffer. ↩
-
-I used raw eBPF instead of the C frontend because that frontend relies on a ridiculous amount of runtime code that parses an ELF file when loading the eBPF snippet to know what eBPF maps to setup and where to backpatch their fd number. I also find there’s little advantage to the C frontend for the scale of eBPF programs (at most 4096 instructions, usually much fewer). I did use clang to generate a starting point, but it’s not that hard to tighten 30 instructions in ways that a compiler can’t without knowing what part of the program’s semantics is essential. The bpf syscall can also populate a string buffer with additional information when loading a program. That’s helpful to know that something was assembled wrong, or to understand why the verifier is rejecting your program. ↩
-
-I computed these extreme confidence intervals with my old code to test statistical SLOs. ↩
-
-Text authored by Paul Khuong Jan 9th, 2019
-In categories: AsymmetricSynchronisation
-
-« Restartable sequences with the polysemic null segment selector
-The unscalable, deadlock-prone, thread pool »
-
-Comments
-
-Website copyright © 2026 - Paul Khuong | Powered by Octopress | Themed with Königspress
-
-IMAGES
-https://pvk.ca/images/2019-01-09-preemption-is-gc-for-memory-reordering/unsafe-waitqueue-ssww.png
-https://pvk.ca/images/2019-01-09-preemption-is-gc-for-memory-reordering/unsafe-waitqueue-swsw.png
-https://pvk.ca/images/2019-01-09-preemption-is-gc-for-memory-reordering/unsafe-waitqueue-swws.png
-https://pvk.ca/images/2019-01-09-preemption-is-gc-for-memory-reordering/unsafe-waitqueue-wwss.png
-https://pvk.ca/images/2019-01-09-preemption-is-gc-for-memory-reordering/unsafe-waitqueue-wsws.png
-https://pvk.ca/images/2019-01-09-preemption-is-gc-for-memory-reordering/unsafe-waitqueue-wssw.png
-https://pvk.ca/images/2019-01-09-preemption-is-gc-for-memory-reordering/sc-flip-ffss.png
-https://pvk.ca/images/2019-01-09-preemption-is-gc-for-memory-reordering/sc-flip-fsfs.png
-https://pvk.ca/images/2019-01-09-preemption-is-gc-for-memory-reordering/sc-flip-fssf.png
-https://pvk.ca/images/2019-01-09-preemption-is-gc-for-memory-reordering/sc-flip-ssff.png
-https://pvk.ca/images/2019-01-09-preemption-is-gc-for-memory-reordering/sc-flip-sfsf.png
-https://pvk.ca/images/2019-01-09-preemption-is-gc-for-memory-reordering/sc-flip-sffs.png
-https://pvk.ca/images/2019-01-09-preemption-is-gc-for-memory-reordering/tso-flip-ffss.png
-https://pvk.ca/images/2019-01-09-preemption-is-gc-for-memory-reordering/tso-flip-fsfs.png
-https://pvk.ca/images/2019-01-09-preemption-is-gc-for-memory-reordering/tso-flip-fssf.png
-https://pvk.ca/images/2019-01-09-preemption-is-gc-for-memory-reordering/tso-flip-ssff.png
-https://pvk.ca/images/2019-01-09-preemption-is-gc-for-memory-reordering/tso-flip-sfsf.png
-https://pvk.ca/images/2019-01-09-preemption-is-gc-for-memory-reordering/tso-flip-sffs.png
-https://pvk.ca/images/2019-01-09-preemption-is-gc-for-memory-reordering/tso-flip-barrier-fssf.png
-https://pvk.ca/images/2019-01-09-preemption-is-gc-for-memory-reordering/unloaded-global-ipi.png
-https://pvk.ca/images/2019-01-09-preemption-is-gc-for-memory-reordering/loaded-global-ipi.png
-https://pvk.ca/images/2019-01-09-preemption-is-gc-for-memory-reordering/unloaded-global-preemption.png
-https://pvk.ca/images/2019-01-09-preemption-is-gc-for-memory-reordering/loaded-global-preemption.png

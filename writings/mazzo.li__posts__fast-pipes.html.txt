@@ -1,5 +1,3 @@
-←
-2022-06-01
 How fast are Linux pipes anyway?
 
 In this post, we will explore how Unix pipes are implemented in Linux by iteratively optimizing a test program that writes and reads data through a pipe.1
@@ -573,14 +571,3 @@ Acknowledgements #
 
 Many thanks to Alexandru Scvorţov, Max Staudt, Alex Appetiti, Alex Sayers, Stephen Lavelle, Peter Cawley, and Niklas Hambüchen for reviewing drafts of this post. Max Staudt also helped me understand some subtleties of get_user_pages.
 
-f@mazzo.li · twitter · mastodon · source
-
-IMAGES
-https://mazzo.li/assets/images/fast-pipe-chart.svg
-https://mazzo.li/assets/images/fast-pipes-pipe-ring.png
-https://mazzo.li/assets/images/write-to-pipe.svg
-https://mazzo.li/assets/images/vmsplice-intuition.svg
-https://mazzo.li/assets/images/virtual-phsyical.svg
-https://mazzo.li/assets/images/example-allocation.svg
-https://mazzo.li/assets/images/virtual-address-resolution.svg
-https://mazzo.li/assets/images/head-tail-pages.svg

@@ -1,5 +1,3 @@
-Tony Finch – blog
- home  search  archive  recent  feed  links  elsewhere
 2010-01-22 – Coroutines in less than 20 lines of standard C
 ⇐ 2009-12-16 ⫤
  
@@ -64,10 +62,3 @@ Here's a little test program to demonstrate these functions in action.
 	return 0;
     }
 
-⇐ 2009-12-16 ⇐ stupid email disclaimers ⇐
-⇒ Generalized literal syntax for programming languages ⇒ 2010-02-05 ⇒
-
-Tony Finch <dot@dotat.at>
-
-IMAGES
-https://dotat.at/graphics/dotat-64.png

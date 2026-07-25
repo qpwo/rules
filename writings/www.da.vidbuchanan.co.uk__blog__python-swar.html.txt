@@ -1,17 +1,3 @@
-Welcome to my
-
-::'########::'##::::::::'#######:::'######:::
-:: ##.... ##: ##:::::::'##.... ##:'##... ##::
-:: ##:::: ##: ##::::::: ##:::: ##: ##:::..:::
-:: ########:: ##::::::: ##:::: ##: ##::'####:
-:: ##.... ##: ##::::::: ##:::: ##: ##::: ##::
-:: ##:::: ##: ##::::::: ##:::: ##: ##::: ##::
-:: ########:: ########:. #######::. ######:::
-::........:::........:::.......::::......::::
-
-CTF writeups, programming, and miscellaneous stuff.
-
-Blog Index
 SIMD in Pure Python
 
 By David Buchanan, 4th January 2024
@@ -520,13 +506,3 @@ As a reminder, both approaches are O(n), but the faster version gets to spend mo
 If I rewrote this whole thing in C using SIMD intrinsics (combined with SWAR or other tricks), I predict that I'd get somewhere between 10x and 100x further speedup, due to more efficient use of SIMD registers and memory accesses. A GPU implementation could be faster still. Those speedups would be nice to have, but I think it's interesting how far I was able to get just by optimising the Python version.
 
 The source code is available here.
-
-Homepage - Blog Index - RSS
-
-This blog is part of the Haunted Webring
-
-< Previous - Random - Next >
-
-IMAGES
-https://www.da.vidbuchanan.co.uk/blog/static/7667e64aef10d616a747afadc76eeb3733a50afcd3ea9ae04ecd6630efa96a82.png
-https://www.da.vidbuchanan.co.uk/blog/video_ad.banner_ad.gif

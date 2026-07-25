@@ -1,15 +1,3 @@
-ISSUE 265
-Server As Code Dot Com
-ARCHIVE
-2025 NOVEMBER
-¥980
-
-A techno-blog for our techno-times
-
-Curtis Collicutt
-TIDAL SERIES Newsletter
-LinkedIn
-GitHub
 Ten Million Packets per Second with Moongen
 
 December 31, 2018
@@ -105,33 +93,4 @@ In situations that call for high performance using considerably fewer CPU resour
 Moongen is truly an amazing piece of software. Thanks to the relatively few people who put this project together, especially Mr. Paul Emmerich.
 
 I also want to give a shout out to the CloudFlare folks. I don’t know if they know how important their network performance blog posts are. I also used some of their example code. Thanks greatly!
-
-↑ Back to Contents
-
-© 2025 Server As Code Dot Com. All rights reserved.
-
-265
-
-IMAGES
-
-[IMAGE DESCRIPTION: To recreate this image exactly, you would need to set up a portrait shoot with the following specific details:
-
-**The Subject**
-*   **Person:** A middle-aged Caucasian male with a fair complexion.
-*   **Head:** He is completely bald on top (shaven head).
-*   **Facial Hair:** He has a full, thick beard. The beard is "salt and pepper" but predominantly grey and white, particularly around the chin and cheeks. It is well-groomed but has natural texture. He has a mustache that connects seamlessly to the beard.
-*   **Eyes:** He is looking directly at the camera with a neutral, slightly pleasant expression.
-*   **Eyebrows:** Thin, light brown/grey eyebrows.
-
-**Accessories**
-*   **Glasses:** He is wearing rectangular eyeglasses with rounded corners. The frames have a **tortoiseshell pattern** (a mix of mottled browns, ambers, and blacks). The arms (temples) of the glasses appear to be thin metal.
-
-**Clothing**
-*   **Outer Layer:** A black hooded sweatshirt (hoodie). It appears to be a zip-up style, though the zipper isn't clearly visible, just the collar area. The fabric looks like a standard cotton fleece.
-*   **Inner Layer:** Underneath the hoodie, a dark grey or charcoal t-shirt is visible at the neckline.
-
-**Setting and Lighting**
-*   **Background:** A plain, stark white wall. There are no distractions or textures.
-*   **Lighting:** The lighting is soft and diffused, likely from a studio softbox placed slightly in front and above the subject. This creates even illumination on the face with very soft shadows under the chin and nose, eliminating harsh contrasts.
-*   **Framing:** This is a standard head-and-shoulders portrait. The subject is centered in the frame.]
 

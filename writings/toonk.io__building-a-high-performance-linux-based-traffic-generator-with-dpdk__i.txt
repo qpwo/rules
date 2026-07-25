@@ -1,6 +1,3 @@
-Home
-Contact
-About
 Building a high performance - Linux Based Traffic generator with DPDK
 Andree Toonk
 18 Mar 2020
@@ -125,65 +122,3 @@ On the receiving side of this test traffic, we had another Linux machine (no DPD
 Also note that throughout this blog, I spoke mostly of packets per second and not much in terms of bits per second. The reason for this is that every new packet on the Linux receiver (DUT) creates an interrupt. As a result, the number of interrupts the system can handle is the most critical indicator of how many bits per second the Linux system can handle.
 
 All in all, pktgen and dpdk require a bit of work to set up, and there is undoubtedly a bit of a learning curve. I hope the scripts and examples in the GitHub repo will help with your testing and remember: with great power comes great responsibility.
-
-networking
-Previous article
-TCP BBR - Exploring TCP congestion control
-
-One of the oldest protocols and possibly the most used protocol on the Internet today is TCP. You likely send and receive hundreds of thousands
-
-Next article
-Linux Kernel and Measuring network throughput.
-
-can Linux route at line-rate between two network interfaces? That’s the question we will try to answer in the next few minutes.
-
-Related Articles
-Line-rate packet processing in Go with AF_XDP
-7 Jul 2026
-•
-7 min read
-Navigating Infrastructure Outages: Battle Scars and Lessons Learned
-8 Jul 2024
-•
-8 min read
-High-Speed Packet Transmission in Go: From net.Dial to AF_XDP
-11 Mar 2024
-•
-10 min read
-AWS IPv4 Estate Now Worth $4.5 Billion
-17 Sep 2023
-•
-5 min read
-The Risks and Dangers of Amplified Routing Loops.
-13 Apr 2021
-•
-7 min read
-Introducing SSH zero trust, Identity aware TCP sockets
-16 Feb 2021
-•
-9 min read
-Share this article:  Share  Tweet
-Toonk.io
-
-Thoughts, stories and wild ideas from the world of Infrastructure Engineering.
-
-Tags
-Networking Terraform Aws Mysocket Anycast Ddos Ipv4 Ai Go Xdp
-Author
-© 2026 Andree's Musings.
-
-IMAGES
-https://toonk.io/content/images/size/w600/2024/03/toonk-io-icon-1.png
-https://toonk.io/content/images/size/w100/2020/09/andreetoonk.png
-https://images.unsplash.com/photo-1489976908522-aabacf277f49?ixlib=rb-1.2.1&q=80&fm=jpg&crop=entropy&cs=tinysrgb&w=2000&fit=max&ixid=eyJhcHBfaWQiOjExNzczfQ
-https://cdn-images-1.medium.com/max/1200/1*L3shetNxtIGOhKt-_0xv5A.png
-https://cdn-images-1.medium.com/max/1600/1*4dnNk4hTHqehbtjSq7c5kQ.png
-https://cdn-images-1.medium.com/max/1600/1*H4YbY1b8viqfjoHNi6NPjA.png
-https://cdn-images-1.medium.com/max/1600/1*xxb0aQmNeSvhvFfOwTI4nw.png
-https://cdn-images-1.medium.com/max/1600/1*60-YU-v_jMuccCaCqqDw6A.jpeg
-https://images.unsplash.com/photo-1647655806923-e8202f4f2b8c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3wxMTc3M3wwfDF8c2VhcmNofDJ8fHZhbmNvdXZlcnxlbnwwfHx8fDE3ODMzOTA2NDJ8MA&ixlib=rb-4.1.0&q=80&w=2000
-https://images.unsplash.com/photo-1509390726584-faaa21c8ac95?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3wxMTc3M3wwfDF8c2VhcmNofDE0fHxvdXRhZ2V8ZW58MHx8fHwxNzIwNDEwODM2fDA&ixlib=rb-4.0.3&q=80&w=2000
-https://images.unsplash.com/photo-1559510980-7246660a93d3?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3wxMTc3M3wwfDF8c2VhcmNofDI3fHx2YW5jb3V2ZXJ8ZW58MHx8fHwxNzEwMTMzMDkyfDA&ixlib=rb-4.0.3&q=80&w=2000
-https://images.unsplash.com/photo-1613297595539-0d36a37702c6?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3wxMTc3M3wwfDF8c2VhcmNofDJ8fEJyaXRpc2glMjBDb2x1bWJpYXxlbnwwfHx8fDE2OTQ5ODYzNzJ8MA&ixlib=rb-4.0.3&q=80&w=2000
-https://images.unsplash.com/photo-1612908088475-da9ef8be72f6?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=MnwxMTc3M3wwfDF8c2VhcmNofDV8fGNhbmFkYSUyMHBsYWNlfGVufDB8fHx8MTYxODM2OTIzMQ&ixlib=rb-1.2.1&q=80&w=2000
-https://images.unsplash.com/photo-1578223003535-35db3073ada7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=MXwxMTc3M3wwfDF8c2VhcmNofDg4fHx2YW5jb3V2ZXIlMjBwZW9wbGV8ZW58MHx8fA&ixlib=rb-1.2.1&q=80&w=2000

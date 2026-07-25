@@ -1,0 +1,462 @@
+  23 Conclusion
+  19 IMAGES
+  13 return 0;
+  11 Introduction
+  10 Log in
+   9 Summary
+   9 Table of Contents
+   9 Loading...
+   9 Leave a comment
+   9 Blog at WordPress.com.
+   9 Subscribe
+   9 Archives
+   8 RECENT POSTS
+   8 Programming
+   8 Related
+   8 Uncategorized
+   8 Entries feed
+   8 Comments feed
+   8 Comment
+   7 Share this:
+   7 This site uses Akismet to reduce spam. Learn how your comment data is processed.
+   7 Create account
+   7 WordPress.com
+   7 Reblog
+   6 January 2012
+   6 References
+   6 Results
+   6 X Facebook
+   6 Search for:
+   6 ARCHIVES
+   6 May 2026
+   6 May 2025
+   6 October 2024
+   6 October 2023
+   6 December 2022
+   6 September 2022
+   6 October 2021
+   6 July 2021
+   6 April 2019
+   6 January 2018
+   6 December 2017
+   6 November 2017
+   6 September 2017
+   6 August 2017
+   6 April 2016
+   6 March 2016
+   6 February 2016
+   6 December 2015
+   6 September 2015
+   6 July 2015
+   6 May 2015
+   6 February 2015
+   6 December 2014
+   6 October 2014
+   6 August 2014
+   6 June 2014
+   6 May 2014
+   6 March 2014
+   6 February 2014
+   6 October 2013
+   6 September 2013
+   6 August 2013
+   6 May 2013
+   6 February 2013
+   6 January 2013
+   6 August 2012
+   6 July 2012
+   6 April 2012
+   6 March 2012
+   6 February 2012
+   6 October 2011
+   6 September 2011
+   6 August 2011
+   6 July 2011
+   6 May 2011
+   5 break;
+   5 Comments
+   5 Conclusions
+   5 return true;
+   5 Skip to content
+   5 // ...
+   5 return false;
+   5 #include <stdio.h>
+   5 PROBABLY DANCE
+   5 I can program and like games
+   5 by Malte Skarupke
+   5 In "Programming"
+   5 FILED UNDER: Programming
+   5 Malte Skarupke
+   5 « Previous Post
+   5 Next Post »
+   5 Book Review: Babel by R.F. Kuang
+   5 Apple is Holding my Pictures Hostage Until I Accept Their New Terms of Service
+   5 President Graph – FRED Data Broken Down by Party and President
+   5 I’m Getting a Whiff of Iain Banks’ Culture
+   5 Word Map – A Game About Hill Climbing and Stepping Stones
+   5 April 2026
+   5 March 2026
+   5 February 2026
+   5 January 2026
+   5 November 2025
+   5 September 2025
+   5 August 2025
+   5 June 2025
+   5 February 2025
+   5 April 2024
+   5 September 2023
+   5 April 2023
+   5 June 2022
+   5 February 2022
+   5 January 2022
+   5 April 2021
+   5 January 2021
+   5 November 2020
+   5 October 2020
+   5 August 2020
+   5 July 2020
+   5 June 2020
+   5 May 2020
+   5 April 2020
+   5 March 2020
+   5 January 2020
+   5 December 2019
+   5 September 2019
+   5 August 2019
+   5 June 2019
+   5 March 2019
+   5 June 2018
+   5 May 2018
+   5 April 2018
+   5 October 2017
+   5 February 2017
+   5 January 2017
+   5 December 2016
+   5 November 2016
+   5 June 2016
+   5 June 2015
+   5 January 2015
+   5 November 2014
+   5 September 2014
+   5 April 2014
+   5 January 2014
+   5 December 2012
+   5 November 2012
+   5 October 2012
+   5 June 2011
+   5 CATEGORIES
+   5 Apartment
+   5 Children
+   5 Politics and Economics
+   5 } else {
+   4 Debugging
+   4 Leave a Reply
+   4 Background
+   4 private:
+   4 Categories
+   4 Abstract
+   4 Download
+   4 MaskRay
+   4 Presentations
+   4 POPULAR
+   4 All about thread-loca... (44500)
+   4 .init, .ctors, and .i... (24965)
+   4 All about Global Offs... (18475)
+   4 When can glibc be bui... (18268)
+   4 Stack unwinding (14731)
+   4 All about Procedure L... (14452)
+   4 ELF interposition and... (11974)
+   4 Relative relocations ... (11156)
+   4 All about symbol vers... (10958)
+   4 -fno-semantic-interpo... (10691)
+   4 C++ exception handlin... (10488)
+   4 Weak symbol (9504)
+   4 All about LeakSanitizer (9227)
+   4 Evolution of the ELF ... (9132)
+   4 All about UndefinedBe... (8728)
+   4 LLD and GNU linker in... (8618)
+   4 GNU indirect function (8587)
+   4 ELF hash function may... (8511)
+   4 Linker notes on AArch64 (8314)
+   4 The dark side of RISC... (8103)
+   4 支持Android、iOS 9内置IPSe... (7924)
+   4 Control-flow integrity (7908)
+   4 Relocatable linking (7688)
+   4 2019年总结——工具链的一年 (7335)
+   4 glibc and DT_GNU_HASH (6590)
+   4 Linker garbage collec... (6526)
+   4 Compiling C++ with th... (6520)
+   4 Why isn't ld.lld faster? (6323)
+   4 Explain GNU style lin... (5825)
+   4 ODR violation detection (5824)
+   4 All about sanitizer i... (5819)
+   4 指定dynamic linker以使用高版... (5294)
+   4 Relocation overflow a... (5276)
+   4 Assemblers (5192)
+   4 C++ language server c... (5109)
+   4 Compressed debug sect... (5098)
+   4 gcov与LLVM中的实现 (4987)
+   4 约瑟夫问题的两个O(log n)解法 (4688)
+   4 2022年总结 (4614)
+   4 Integrated assembler ... (4501)
+   4 DEFCON 26 CTF参赛记 (4493)
+   4 -march=, -mcpu=, and ... (4470)
+   4 Skipping boring funct... (4411)
+   4 Copy relocations, can... (4384)
+   4 RISC-V linker relaxat... (4370)
+   4 Symbol processing (4304)
+   4 zstd compressed debug... (4273)
+   4 Precompiled headers (3941)
+   4 Compiler driver and c... (3879)
+   4 C standard library he... (3872)
+   4 Exploring GNU extensi... (3811)
+   4 Build glibc with LLD 13 (3713)
+   4 Android微信数据导出 (3618)
+   4 COMDAT and section group (3534)
+   4 Unwinding through a s... (3500)
+   4 Force-directed算法(1)——... (3480)
+   4 Command line processi... (3432)
+   4 Everything I know abo... (3354)
+   4 All about COMMON symbols (3153)
+   4 Layering check with C... (3134)
+   4 近况 (3020)
+   4 Exploring object file... (2964)
+   4 完美迷宫生成算法 (2912)
+   4 Removing global state... (2902)
+   4 Clang's -O0 output: b... (2833)
+   4 _FORTIFY_SOURCE (2733)
+   4 -fpatchable-function-... (2699)
+   4 2021年总结 (2692)
+   4 《Debug Hacks》和调试技巧 (2472)
+   4 C++ standard library ... (2413)
+   4 Modified condition/de... (2388)
+   4 A compact relocation ... (2298)
+   4 Dependency related li... (2250)
+   4 Segment tree (2216)
+   4 皈依Emacs (2194)
+   4 WeeChat操作各种聊天软件 (2147)
+   4 lld 15 ELF changes (2125)
+   4 DEFCON 24 CTF参赛记 (2106)
+   4 Archives and --start-lib (2083)
+   4 一次服务器BMC固件逆向经历 (2066)
+   4 Distribution of debug... (2059)
+   4 C++ exit-time destruc... (1970)
+   4 DEFCON 25 CTF参赛记 (1943)
+   4 Light ELF: exploring ... (1935)
+   4 SECTIONS and OVERWRIT... (1911)
+   4 Analysis and introspe... (1843)
+   4 Everything I know abo... (1829)
+   4 Metadata sections, CO... (1822)
+   4 我是这样使用微信的——wechatircd... (1807)
+   4 使用Suricata进行IDS/IPS (1797)
+   4 Mapping symbols: reth... (1792)
+   4 2020年总结 (1777)
+   4 Clang -Wunused-comman... (1751)
+   4 Understanding orphan ... (1724)
+   4 2014年总结——竞赛的一年 (1683)
+   4 调试技巧2 (1675)
+   4 从ASC'14到ISC'15——我的超算竞... (1660)
+   4 Competitive programmi... (1634)
+   4 Relocation generation... (1600)
+   4 Toolchain testing (1583)
+   4 Exploring the section... (1557)
+   4 lld 14 ELF changes (1543)
+   4 LeetCode solutions (1531)
+   4 PI_STATIC_AND_HIDDEN/... (1476)
+   4 ccls 0.20181225 release (1459)
+   4 2024年总结 (1424)
+   4 A deep dive into Clan... (1404)
+   4 Nginx根据Accept-Languag... (1375)
+   4 Function multi-versio... (1347)
+   4 模块内函数调用和libc符号重命名 (1345)
+   4 Port LLVM XRay to App... (1325)
+   4 Linker notes on Power... (1313)
+   4 Tinkering with Neovim (1302)
+   4 FreeBSD src browsing ... (1297)
+   4 wechatircd——用IRC客户端控制... (1231)
+   4 Understanding and imp... (1224)
+   4 Understanding alignme... (1150)
+   4 Dominator tree (1147)
+   4 Compiler output files (1142)
+   4 OverTheWire - Natas W... (1109)
+   4 DWARF in reproducible... (1078)
+   4 脱离chroot的枷锁 (1077)
+   4 RedTigers Hackit Warg... (1069)
+   4 建立清华大学Node Packaged M... (1061)
+   4 Linker notes on x86 (1017)
+   4 MMU-less systems and ... (1008)
+   4 Evil--在Emacs中模拟Vim (963)
+   4 Linker compatibility ... (958)
+   4 ccls and LSP Semantic... (922)
+   4 8门编程语言的设计思考 (921)
+   4 lld linked musl on Po... (911)
+   4 AddressSanitizer: glo... (906)
+   4 自动获取SSH密码并登录 (870)
+   4 J语言初探 (851)
+   4 kth element in a suba... (838)
+   4 DEFCON 23 CTF参赛记 (836)
+   4 ELF Hacks (836)
+   4 我的xmonad配置 (812)
+   4 用udev自动挂载usb设备 (796)
+   4 Cyber Grand Challenge... (796)
+   4 无需每日扫码的IRC版微信和QQ：wech... (795)
+   4 终端模拟器下使用双倍宽度多色Emoji字体 (791)
+   4 C minifier with Clang (784)
+   4 LLVM integrated assem... (782)
+   4 lld 16 ELF changes (752)
+   4 DEFCON 21——我的奋斗 (746)
+   4 DEFCON 21 CTF参赛记 (737)
+   4 Simplifying disassemb... (725)
+   4 My involvement with L... (690)
+   4 Toolchain notes on z/... (669)
+   4 江苏信安竞赛初赛工作组记事 (658)
+   4 使用Burkhard-Keller tre... (651)
+   4 偃师——finite automaton生成工具 (642)
+   4 Real World CTF 2018 r... (637)
+   4 D-Link路由器后门注记 (636)
+   4 Python is ugly (628)
+   4 DEFCON 22 CTF参赛记 (617)
+   4 Gmail的OfflineIMAP XOA... (608)
+   4 80分钟8语言 (599)
+   4 gcc中sqrt实现 (598)
+   4 BCTF工作组记事 (591)
+   4 算法、FP、前端、安全、系统管理——201... (590)
+   4 Toolchain notes on MIPS (588)
+   4 LeetCode Best Time to... (579)
+   4 2018-09-09 ccls最近更新 (547)
+   4 异于Make的另一种构建系统 (545)
+   4 telegramircd——用IRC客户端... (540)
+   4 Compressed arbitrary ... (527)
+   4 二叉树遍历算法总结 (514)
+   4 NOIP 2004 数字游戏（虫食算） (502)
+   4 并行N-body模拟 (492)
+   4 基于 mutt+offlineimap+n... (479)
+   4 在Makefile中自动生成依赖 (474)
+   4 Real World CTF 2018 c... (471)
+   4 webqqircd——用IRC客户端控制W... (455)
+   4 ML编译器Caml Featherweig... (453)
+   4 Linker notes on PE/COFF (453)
+   4 clang-format and sing... (449)
+   4 Haskell学习笔记 (434)
+   4 When QOI meets XZ (433)
+   4 $ccls/navigate和index.... (432)
+   4 LLVM integrated assem... (432)
+   4 第二届青少年开发者大会 (425)
+   4 HDU OJ一些题目 (415)
+   4 自然语言处理之词语抽取 (411)
+   4 Buffalo WZR-600DHP Op... (408)
+   4 jq实现原理——字节码 (403)
+   4 2023年总结 (402)
+   4 lld 19 ELF changes (383)
+   4 称球问题扩展——根据当前已知信息选择最优称量方案 (382)
+   4 Reflections on LLVM's... (377)
+   4 Makefile介绍 (375)
+   4 .emacs (369)
+   4 整系数Discrete Fourier t... (369)
+   4 用Makefile搭建博客 (367)
+   4 Extract an archive me... (353)
+   4 用Perl的正则表达式分析csv文件 (340)
+   4 三柱汉诺塔相关扩展问题 (329)
+   4 终端模拟器下宽字符退格 (328)
+   4 lld 20 ELF changes (328)
+   4 ML编译器Caml Featherweig... (327)
+   4 常数空间Invert Binary Tre... (324)
+   4 Ko-Aluru suffix array... (323)
+   4 LeetCode Expression A... (321)
+   4 My involvement with L... (320)
+   4 Natural loops (313)
+   4 用Makefile搭建博客-2 (310)
+   4 SVT13117ECS上Gentoo安装记... (300)
+   4 Keeping pace with LLV... (300)
+   4 PyGTK迷宫生成器mazer (290)
+   4 GTK+ tic-tac-toe（井字棋） (288)
+   4 Trend Micro Codinsani... (288)
+   4 Linker notes on AArch32 (288)
+   4 Raw symbol names in i... (282)
+   4 使用cquery：C++ language... (276)
+   4 BCTF 2015 CamlMaze命题报... (274)
+   4 ISC'14 Student Cluste... (270)
+   4 RuCTFE 2012参赛记 (269)
+   4 Haskell实现的Splay树 (269)
+   4 BCTF 2016 hsab及BetaFo... (261)
+   4 “1001夜”学生节线上解谜活动1001/... (259)
+   4 A compact section hea... (258)
+   4 使用Double-array trie优化... (257)
+   4 RISC-V TLSDESC works! (257)
+   4 LLVM integrated assem... (257)
+   4 GTK+黑白棋reversi (256)
+   4 智能体大赛与平台开发 (255)
+   4 Benchmarking compress... (252)
+   4 TUNA技术沙龙及A Pretty Pri... (250)
+   4 八数码 (248)
+   4 计算所有后缀的排名 (243)
+   4 用Google Analytics API... (241)
+   4 域名迁移至maskray.me (239)
+   4 cquery最近改动与libclang.s... (235)
+   4 用Pike's VM实现的非回溯正则表达式引擎 (226)
+   4 根据计划求解Rush (222)
+   4 GCC 13.3.0 miscompile... (220)
+   4 用DocPad构建静态网站 (213)
+   4 Dancing Links+Algorit... (212)
+   4 用rss2email阅读feeds (210)
+   4 lld 18 ELF changes (206)
+   4 Tiling window manager... (203)
+   4 用Expect连接无线网络 (203)
+   4 USACO JAN10 Gold (201)
+   4 genkernel (197)
+   4 ZJU 1638. Greedy Island (191)
+   4 DSO undef and non-exp... (190)
+   4 cquery USR优化和分层diff (189)
+   4 给xbindkeys添加key seque... (183)
+   4 Ouroborus Program - q... (179)
+   4 String index structur... (178)
+   4 LLVM integrated assem... (170)
+   4 My involvement with L... (169)
+   4 网络学堂feeds2mail (166)
+   4 SECUINSIDE CTF Quals ... (145)
+   4 reviews.llvm.org beca... (140)
+   4 Js_of_ocaml和Emscripten (136)
+   4 ccls: a fork of the C... (129)
+   4 r2con 2017 r2cLEMENCy (119)
+   4 Awesome 3 debian menu (115)
+   4 XV Olimpiada Informat... (111)
+   4 checker (110)
+   4 Migrating comments to... (102)
+   4 lld 17 ELF changes (91)
+   4 Exporting Tweets (68)
+   4 Emacs helm-kythe与Hask... (52)
+   4 ML编译器Caml Featherweig... (19)
+   4 E-mail文化拾趣 (11)
+   4 ML编译器Caml Featherweig... (11)
+   4 ML编译器Caml Featherweig... (10)
+   4 ML编译器Caml Featherweig... (8)
+   4 TAG CLOUD
+   4 adc ai9 algorithm arm asc assembler automaton awesome bctf binary binutils bmc build system c c++ ccls cgc chroot clang clang-format codegen codinsanity coffee script compiler compression computer security contest csv ctf data structure data-structures debug defcon desktop docker elf emacs email emoji emscripten event expect ext4 fdpic feeds firmware floating point forensics fp freebsd game gcc gdb gentoo git github glibc graph graph drawing gtk hacker culture hackerrank hanoi haskell hpc image inotify ipsec irc isc j javascript josephus problem jq kernel kythe ld leetcode libunwind linker linux lld lldb llvm lsp m68k makefile math maze mirror ml musl mutt n-body neovim network nginx nim nlp node.js noip notmuch npm ocaml offlineimap oi oj openwrt parallel parser generator performance perl powerpc presentation puzzle python qq radare2 regex regular expression release reverse engineering review riscv router rtld ruby ructfe s390x sanitizer scheme search security sframe shell ssh stringology student festival puzzle suffix array suffix automaton summary suricata telegram telegramircd terminal tls travel traversal tree trendmicro udev unicode unix usb vim vpn vte wargame web analytics webqqircd website wechat wechatircd window manager windows x86 xbindkeys xmonad xz yanshi
+   4 BLOGROLL
+   4 BYVoid
+   4 fqj1994
+   4 ppwwyyxx
+   4 © 2026 MaskRay
+   4 Powered by Hexo
+   4 Home Archives Feeds TIL Presentations
+   4 #endif
+   3 [Bibtex]
+   3 MEASURING STUFF    CPU, MICROARCHITECTURE
+   3 Save my name, email, and website in this browser for the next time I comment.
+   3 The Microarchitecture Behind Meltdown
+   3 struct {
+   3 Source Code
+   3 __syncthreads();
+   3 int main()
+   3 for (;;) {
+   3 typedef struct {
+   3 public:
+   3 #include <assert.h>
+   3 int main() {
+   3 int main(void) {
+   3 1. Introduction
+   3 Contents
+   3 Recent Posts
+   3 Keith Packard
+   3 Erik Rigtorp
+   3 Screenshots

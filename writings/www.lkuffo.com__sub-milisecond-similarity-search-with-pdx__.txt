@@ -1,11 +1,3 @@
-lkuffo
-📝 Posts
-📙 My Research
-Tags
-CV
-Home
- » 
-Posts
 Sub-millisecond similarity search on IVF indexes with PDX
 July 24, 2025
  · 7 min · 1316 words · Leonardo Kuffo
@@ -103,23 +95,3 @@ For now, improving the random rotation algorithm is key to further reducing quer
 We will soon add PDX to the VIBE benchmark. So, stay tuned!
 
 Ps. At CWI, we are currently looking for MSc. students to help us develop PDX! If you are interested in PDX and are looking for thesis projects, reach out at lxkr@cwi.nl
-
-Pdx
-Vss
-Similarity-Search
-« PREV
-Indexing 10M vector embeddings in 1 minute on a single CPU
-NEXT »
-AWS Graviton 3 > Graviton 4 for Vector Similarity Search
-© 2026 Leonardo Kuffo · Powered by Hugo & PaperMod
-
-IMAGES
-https://www.lkuffo.com/circular.png
-https://www.lkuffo.com/sub-ms-pdx/pdx-logo.png
-https://www.lkuffo.com/sub-ms-pdx/layout-f32.png#center
-https://www.lkuffo.com/sub-ms-pdx/layout-u8.png#center
-https://www.lkuffo.com/sub-ms-pdx/ivf2-intel.png#center
-https://www.lkuffo.com/sub-ms-pdx/ivf2-arm.png#center
-https://www.lkuffo.com/sub-ms-pdx/ivf-intel.png#center
-https://www.lkuffo.com/sub-ms-pdx/ivf-intel-k10.png#center
-https://www.lkuffo.com/sub-ms-pdx/ivf-exhaustive-intel.png#center

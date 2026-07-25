@@ -1,8 +1,3 @@
-Database Architects
-
-A blog by and for database architects.
-
-Monday, April 20, 2015
 Using HyPer with PostgreSQL drivers
 using a database from within an application requires language bindings, database drivers, etc., Support  a large range of languages is requires a lot of effort, therefore we have decided to emulate the PostgreSQL wire protocol in HyPer. The immediate benefit is that it is now possible to use HyPer with many existing tools, including psql and the PostgreSQL JDBC driver.
 
@@ -23,47 +18,3 @@ The PostgreSQL wire protocol emulation is still relatively new, but it should be
 A more detailed description of how to use that setup together with the DBT-3 setup can be found here. We had to fix some bugs in the original DBT-3 release to get it running, but now we can run nearly exactly the same benchmark script in PostgrSQL and HyPer (we are working on fixing the remaining issues).
 
 Of course while we want to emulate the PostgreSQL interface for compatibility reasons, the actual implementation is completely different. We have some performance numbers for SF-10 on PostgreSQL and on HyPer online, and the composite score of HyPer is roughly a factor 45 better than the score of PostgreSQL.
-
-Posted by Thomas Neumann at 1:36 PM 6 comments: 
-Email This
-BlogThis!
-Share to X
-Share to Facebook
-Share to Pinterest
-Newer Posts
-Older Posts
-Home
-Subscribe to: Posts (Atom)
-Contributors
-Altan Birler
-Peter Boncz
-Thomas Neumann
-Viktor Leis
-Blog Archive
-►  2026 (1)
-►  2025 (2)
-►  2024 (5)
-►  2023 (3)
-►  2022 (7)
-►  2021 (2)
-►  2020 (4)
-►  2019 (3)
-►  2018 (2)
-►  2017 (2)
-►  2016 (2)
-▼  2015 (7)
-►  December (1)
-►  September (1)
-►  July (1)
-►  June (1)
-▼  April (1)
-Using HyPer with PostgreSQL drivers
-►  February (1)
-►  January (1)
-►  2014 (11)
-	
-	
-Simple theme. Powered by Blogger.
-
-IMAGES
-https://resources.blogblog.com/img/icon18_edit_allbkg.gif

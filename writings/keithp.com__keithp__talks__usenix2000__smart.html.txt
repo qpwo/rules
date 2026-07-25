@@ -316,9 +316,9 @@ File translated from TEX by TTH, version 2.67.
 On 19 Apr 2000, 22:40.
 
 IMAGES
-https://keithp.com/~keithp/talks/usenix2000/Pic1.gif
-https://keithp.com/~keithp/talks/usenix2000/Pic2.gif
-https://keithp.com/~keithp/talks/usenix2000/Pic3.gif
-https://keithp.com/~keithp/talks/usenix2000/Pic4.gif
-https://keithp.com/~keithp/talks/usenix2000/Pic5.gif
-https://keithp.com/~keithp/talks/usenix2000/Pic6.gif
+
+
+
+
+
+

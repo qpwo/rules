@@ -1,5 +1,3 @@
-Nicolas Seriot
-Security > Parsing JSON is a Minefield
 Parsing JSON is a Minefield 💣
 
 [2016-10-26] First version of the article
@@ -640,16 +638,3 @@ Parsing Results http://seriot.ch/json/parsing.html, generated automatically for 
 Transform Results http://seriot.ch/json/transform.html, created manually for section 6
 JSONTestSuite https://github.com/nst/JSONTestSuite, contains all tests and code
 STJSON https://github.com/nst/STJSON, contains my Swift 3 JSON parser
-Acknowledgments
-
-Many thanks to @Reversity, @GEndignoux, @ccorsano, @BalestraPatrick and @iPlop.
-
-IMAGES
-https://seriot.ch/json/json_business_card.png
-https://seriot.ch/json/run_tests.svg
-https://seriot.ch/json/similar_results.png
-http://seriot.ch/json/pruned_results.png
-https://seriot.ch/json/freddy_results.png
-https://seriot.ch/json/other_parsers.png
-https://seriot.ch/json/json_grammar_number.png
-https://seriot.ch/json/json_checker_state_transition_table.jpg

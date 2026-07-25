@@ -1,8 +1,3 @@
-Horace He
-Research
-Writing
-Code
-Competition
 Making Deep Learning Go Brrrr From First Principles
 
 So, you want to improve the performance of your deep learning model. How might you approach such a task? Often, folk fall back to a grab-bag of tricks that might've worked before or saw on a tweet. "Use in-place operations! Set gradients to None! Install PyTorch 1.10.0 but not 1.10.1!"
@@ -195,37 +190,3 @@ Of course, arguably, users needing to think about this stuff at all reflects a f
 
 Regardless, I find understanding of basic principles of systems to nearly always be useful - hopefully this was useful to you as well.
 
-PS: If you like this article, I will be putting much of my future writing at thonking.ai
-
-Acknowledgements
-
-Thanks to Emily Shen, Qian Huang, and folks on EleutherAI for reading earlier drafts of this blog post and providing feedback.
-
-BibTeX Citation
-@article{he2022brrrrfromfirstprinciples,
-  author={Horace He},
-  title={Making Deep Learning Go Brrrr From First Principles},
-  year={2022},
-  url={https://horace.io/brrr_intro.html},
-}
-
-This might not be what you see on the spec sheet, where it says 19.5 teraflops. The reason for this is that GPUs have even more specialized hardware for fused multiply and add (FMA) instructions. So, for fully general purpose computation, an A100 actually only achieves 9.75 teraflops. ↩︎
-
-There are a lot of way to count FLOPS, but this is actually fairly trivial to do in a nice way in PyTorch now - see https://dev-discuss.pytorch.org/t/the-ideal-pytorch-flop-counter-with-torch-dispatch/505 ↩︎
-
-This isn't strictly the only reason why increasing batch size might not increase computational time accordingly - in certain regimes it also increases computational intensity. For example, in a MLP you're typically doing [B, D] x [D, D] matmuls. If B is less than D (say, your batch size is 1 while your hidden dim is 128), then you might negligibly increase your total memory bandwidth, while doubling your compute. I couldn't figure out a way to explain this nuance easily though. ↩︎
-
-IMAGES
-https://horace.io/img/perf_intro/gpus_go_brrr.webp
-https://horace.io/img/perf_intro/bw_moores_law.png
-https://horace.io/img/perf_intro/factory.png
-https://horace.io/img/perf_intro/factory_doubled.png
-https://horace.io/img/perf_intro/a100_specs.png
-https://horace.io/img/perf_intro/bert_flops.png
-https://horace.io/img/perf_intro/factory_bandwidth.png
-https://horace.io/img/perf_intro/multi_operators.png
-https://horace.io/img/perf_intro/operator_fusion.png
-https://horace.io/img/perf_intro/microbench.png
-https://horace.io/img/perf_intro/flamegraph.png
-https://horace.io/img/perf_intro/overhead_tracer.png
-https://horace.io/img/perf_intro/no_overhead.png

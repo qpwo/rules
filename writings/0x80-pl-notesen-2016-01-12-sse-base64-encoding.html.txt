@@ -1,4 +1,3 @@
-🌓︎
 Base64 encoding with SIMD instructions
 Author:	Wojciech Muła
 Added on:	2016-01-12

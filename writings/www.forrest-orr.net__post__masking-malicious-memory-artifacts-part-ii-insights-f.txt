@@ -1,15 +1,3 @@
-Forrest-orr.net
-
-Exploits
-
-Tools
-
-Shellcodes
-
-Blog
-
-Contact
-
 Masking Malicious Memory Artifacts – Part II: Blending in with False Positives
 Forrest Orr
 Jul 16, 2020
@@ -405,60 +393,3 @@ Moneta provides a useful way for attackers to identify such abnormalities and cu
 
 The remaining content in this series will be aimed at increasing the skill of the reader in the domain of bypassing existing memory scanners by understanding their detection strategies and exploring new stealth tradecraft still undiscussed in this series.
 
- 
- 
- 
-Recent Posts
-See All
-A Modern Exploration of Windows Memory Corruption Exploits - Part I: Stack Overflows
- 
- 
- 
-Masking Malicious Memory Artifacts – Part III: Bypassing Defensive Scanners
- 
- 
- 
-Masking Malicious Memory Artifacts – Part I: Phantom DLL Hollowing
- 
- 
- 
-
-forrest.orr@protonmail.com
-
-IMAGES
-https://static.wixstatic.com/media/c1d8f6_3854e17c61c14891803ab7ff4bde251a%7Emv2.jpg/v1/fill/w_32,h_32,al_c,q_80,enc_avif,quality_auto/c1d8f6_3854e17c61c14891803ab7ff4bde251a%7Emv2.jpg
-https://static.wixstatic.com/media/c1d8f6_5c281d0c774e4f0eb5aaf882bc8c2568~mv2.jpg/v1/fill/w_362,h_519,al_c,q_80,usm_0.66_1.00_0.01,enc_avif,quality_auto/c1d8f6_5c281d0c774e4f0eb5aaf882bc8c2568~mv2.jpg
-https://static.wixstatic.com/media/a27d24_540aa5096ceb4b31aa7fd996364a79fe~mv2.png/v1/fill/w_740,h_175,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/a27d24_540aa5096ceb4b31aa7fd996364a79fe~mv2.png
-https://static.wixstatic.com/media/c1d8f6_58f7cc93b6eb45ac8d2fa9add5ccdd2e~mv2.png/v1/fill/w_740,h_387,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/c1d8f6_58f7cc93b6eb45ac8d2fa9add5ccdd2e~mv2.png
-https://static.wixstatic.com/media/a27d24_fbb501ef46c34b899d90134654f66689~mv2.png/v1/fill/w_49,h_15,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/a27d24_fbb501ef46c34b899d90134654f66689~mv2.png
-https://static.wixstatic.com/media/c1d8f6_32b9e7fdfa574facb6787fb1bc39ed0e~mv2.png/v1/fill/w_49,h_26,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/c1d8f6_32b9e7fdfa574facb6787fb1bc39ed0e~mv2.png
-https://static.wixstatic.com/media/c1d8f6_351b2996e5a940dd90f4a3c6de8dd33a~mv2.png/v1/fill/w_49,h_26,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/c1d8f6_351b2996e5a940dd90f4a3c6de8dd33a~mv2.png
-https://static.wixstatic.com/media/c1d8f6_9720675a579f4be4858cce893be81569~mv2.png/v1/fill/w_49,h_26,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/c1d8f6_9720675a579f4be4858cce893be81569~mv2.png
-https://static.wixstatic.com/media/a27d24_0ad03da043954ebc816a5b063f05a74b~mv2.png/v1/fill/w_49,h_20,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/a27d24_0ad03da043954ebc816a5b063f05a74b~mv2.png
-https://static.wixstatic.com/media/c1d8f6_1021e0c42199424880a874d214959678~mv2.png/v1/fill/w_77,h_28,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/c1d8f6_1021e0c42199424880a874d214959678~mv2.png
-https://static.wixstatic.com/media/c1d8f6_39d764e7545c41afba8f9aab52f9dc63~mv2.png/v1/fill/w_49,h_26,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/c1d8f6_39d764e7545c41afba8f9aab52f9dc63~mv2.png
-https://static.wixstatic.com/media/a27d24_65a159271b5c4b42aa3b9d27879cdae2~mv2.png/v1/fill/w_49,h_24,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/a27d24_65a159271b5c4b42aa3b9d27879cdae2~mv2.png
-https://static.wixstatic.com/media/c1d8f6_0333fd4c594549e49340381adae07a82~mv2.png/v1/fill/w_49,h_26,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/c1d8f6_0333fd4c594549e49340381adae07a82~mv2.png
-https://static.wixstatic.com/media/c1d8f6_f148bfe1758849bc8efa5e19e93945ba~mv2.png/v1/fill/w_48,h_31,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/c1d8f6_f148bfe1758849bc8efa5e19e93945ba~mv2.png
-https://static.wixstatic.com/media/c1d8f6_08dda781cae0414fb70f5210075b09ab~mv2.png/v1/fill/w_49,h_26,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/c1d8f6_08dda781cae0414fb70f5210075b09ab~mv2.png
-https://static.wixstatic.com/media/c1d8f6_29153dd9b64a409f977617b8e55bf2cd~mv2.png/v1/fill/w_49,h_26,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/c1d8f6_29153dd9b64a409f977617b8e55bf2cd~mv2.png
-https://static.wixstatic.com/media/c1d8f6_645073149e484efca58e710656eefdba~mv2.png/v1/fill/w_46,h_16,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/c1d8f6_645073149e484efca58e710656eefdba~mv2.png
-https://static.wixstatic.com/media/c1d8f6_d63e010ddb7a49a1b7c4fdf9afa224ac~mv2.png/v1/fill/w_84,h_51,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/c1d8f6_d63e010ddb7a49a1b7c4fdf9afa224ac~mv2.png
-https://static.wixstatic.com/media/a27d24_b0987ef6be764d2a9b9295a1d4d58f28~mv2.png/v1/fill/w_56,h_17,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/a27d24_b0987ef6be764d2a9b9295a1d4d58f28~mv2.png
-https://static.wixstatic.com/media/a27d24_c86389244b0548e2b155386b190ef9c1~mv2.png/v1/fill/w_56,h_16,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/a27d24_c86389244b0548e2b155386b190ef9c1~mv2.png
-https://static.wixstatic.com/media/c1d8f6_66e6114bb2bf437d8fb32734c1d3c111~mv2.png/v1/fill/w_46,h_14,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/c1d8f6_66e6114bb2bf437d8fb32734c1d3c111~mv2.png
-https://static.wixstatic.com/media/c1d8f6_4447664a1aa14c1f9293c88ccf796358~mv2.png/v1/fill/w_63,h_37,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/c1d8f6_4447664a1aa14c1f9293c88ccf796358~mv2.png
-https://static.wixstatic.com/media/a27d24_6dddac1b5d3445128ea06a7bfb80863c~mv2.png/v1/fill/w_58,h_16,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/a27d24_6dddac1b5d3445128ea06a7bfb80863c~mv2.png
-https://static.wixstatic.com/media/c1d8f6_3fbccb67feb643abbbfbb7f3f0917cef~mv2.png/v1/fill/w_49,h_26,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/c1d8f6_3fbccb67feb643abbbfbb7f3f0917cef~mv2.png
-https://static.wixstatic.com/media/a27d24_b9d9714452c948fdba9cb57c704bbfed~mv2.png/v1/fill/w_57,h_9,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/a27d24_b9d9714452c948fdba9cb57c704bbfed~mv2.png
-https://static.wixstatic.com/media/a27d24_54f61be45630473f9e9c2a69476dade1~mv2.png/v1/fill/w_49,h_27,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/a27d24_54f61be45630473f9e9c2a69476dade1~mv2.png
-https://static.wixstatic.com/media/c1d8f6_1b22de59b54b443c8141b059523211b8~mv2.png/v1/fill/w_49,h_29,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/c1d8f6_1b22de59b54b443c8141b059523211b8~mv2.png
-https://static.wixstatic.com/media/c1d8f6_25ead8b5cb8442e481c02285f00e578d~mv2.png/v1/fill/w_49,h_31,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/c1d8f6_25ead8b5cb8442e481c02285f00e578d~mv2.png
-https://static.wixstatic.com/media/c1d8f6_63c44de3c9bb4cf58e92a4a5efd6d8e5~mv2.png/v1/fill/w_49,h_26,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/c1d8f6_63c44de3c9bb4cf58e92a4a5efd6d8e5~mv2.png
-https://static.wixstatic.com/media/a27d24_5d93ccb453e949468cc2fbc4339f816d~mv2.png/v1/fill/w_49,h_19,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/a27d24_5d93ccb453e949468cc2fbc4339f816d~mv2.png
-https://static.wixstatic.com/media/a27d24_9174abae2cfe458584ba073bdb3244dc~mv2.png/v1/fill/w_45,h_13,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/a27d24_9174abae2cfe458584ba073bdb3244dc~mv2.png
-https://static.wixstatic.com/media/a27d24_7f93e39738624dfea9f024f63a557ae4~mv2.png/v1/fill/w_47,h_23,al_c,q_85,usm_0.66_1.00_0.01,blur_2,enc_avif,quality_auto/a27d24_7f93e39738624dfea9f024f63a557ae4~mv2.png
-https://static.wixstatic.com/media/7177d158c36d432b93f51e54f80e2f3c.png/v1/fill/w_26,h_26,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/7177d158c36d432b93f51e54f80e2f3c.png
-https://static.wixstatic.com/media/22fa9ffe67ef4289a150e75a66ee4933.png/v1/fill/w_26,h_26,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/22fa9ffe67ef4289a150e75a66ee4933.png
-https://static.wixstatic.com/media/84770f_694c9802edfc4bbaa9dd024a14bb5c39.png/v1/fill/w_23,h_15,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/84770f_694c9802edfc4bbaa9dd024a14bb5c39.png
-https://static.wixstatic.com/media/84770f_3009cf150c0a4e849e376a6edbb5c7e4.png/v1/fill/w_23,h_15,al_c,q_85,usm_0.66_1.00_0.01,enc_avif,quality_auto/84770f_3009cf150c0a4e849e376a6edbb5c7e4.png

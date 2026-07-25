@@ -47,8 +47,3 @@ Since TinyGL may be useful for some people, especially in the world of embedded 
 * OpenGL(R) is a registered trademark of Silicon Graphics, Inc. 
 Fabrice Bellard - https://bellard.org/
 last update: Mar 5, 2022
-
-IMAGES
-https://bellard.org/logos/anybrowser3.gif
-https://bellard.org/logos/linux.gif
-https://bellard.org/logos/opengl.jpg

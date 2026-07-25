@@ -102,7 +102,3 @@ Source Code
 I am sorry to announce that the source code won't be available any time soon.
 Copyright (c) 2005 Fabrice Bellard.
 Fabrice Bellard - https://bellard.org/
-
-IMAGES
-https://bellard.org/dvbt/lena.jpg
-https://bellard.org/dvbt/balears.jpg

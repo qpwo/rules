@@ -43,5 +43,3 @@ So the question is whether these boundaries are adequate, or if it makes sense t
 
 Tony Finch <dot@dotat.at>
 
-IMAGES
-https://dotat.at/graphics/dotat-64.png

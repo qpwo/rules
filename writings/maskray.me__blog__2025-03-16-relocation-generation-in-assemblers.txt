@@ -1074,6 +1074,3 @@ ppwwyyxx
 Powered by Hexo
 Home Archives Feeds TIL Presentations
 
-IMAGES
-https://maskray.me/icon/github.svg
-https://maskray.me/icon/twitter.svg

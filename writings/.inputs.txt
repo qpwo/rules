@@ -165,3 +165,73 @@ cp /Users/ubuntu/.loggos/20260725002928_27614.clean.log /Users/ubuntu/.loggos/20
 echo you cant depend on sqlite or any such
 trash *lastdb*
 halp -y
+ssh servero echo use me as test server. rseq is great. idfk
+ssh servero echo use me as test server. rseq is great. idfk
+trash *lastdb*
+ssh servero mkdir lastdb
+halp -y -55 -xh keepgoing. write and scp and test. modify and scp and test.
+echo rseq.txt is genius
+echo any idiots still left here or not. dont shell. dont modify. dont write. just answer directly. explain. think before answer
+echo rseq.txt is genius
+echo any idiots still left here or not. dont shell. dont modify. dont write. just answer directly. explain. think before answer
+headtail -n20 *txt | ag -v http
+echo rseq.txt is genius
+echo any idiots still left here or not. dont shell. dont modify. dont write. just answer directly. explain. think before answer
+halp -h
+clear
+tail -n50 $loggoinputs
+echo continue fixing remaining non-oneline images and non-replaced-with-description images and excessive headers/footers and such
+cat $loggoinputs
+echo continue fixing remaining non-oneline images and non-replaced-with-description images and excessive headers/footers and such... maybe actually write an ai thingy to do it fast ... with gemma ... without fucking anything up ...
+ag -l png --count
+cat probablydance.com__2020__10__31__using-tla-in-the-real-world-to-understand-a-gli.txt
+echo thats test case ... do that one and print whole thing before batchmap
+headtail *txt
+cat $loggoinputs
+python3 -c 'import json, base64, os; print(json.dumps({"model":"google/gemma-4-31B-it", "messages":[{"role":"user", "content":[{"type":"text", "text":"whats this plot"}, {"type":"image_url", "image_url":{"url":"data:image/jpeg;base64," + base64.b64encode(open(os.path.expanduser("~/shots/0001/2026-07-20-20-46-43-green-circles-contain-letters.jpg"), "rb").read()).decode()}}]}],"max_tokens":128}))' | realtimeout 60 curl -sS -k -X POST https://llms.intrinsicapi.com/v1/chat/completions -H "Authorization: Bearer o30ya7yeDe_p" -H "Content-Type: application/json" -d @- | python3 -m json.tool | head -n 80
+echo we need describe images concise complete exact concise and NO MARKDOWN and ONE LINE
+echo *brain*
+ls
+ls | ag -v txt
+headtail *py
+echo continue fixing remaining non-oneline images and non-replaced-with-description images and excessive headers/footers and such... maybe actually write an ai thingy to do it fast ... with gemma ... without fucking anything up ...
+halp -y -h
+halp -h -y if anyone contradicts the genius of lock-free lifestyle and the genius of rseq ... if anyone is left from the old world... tell me of their sins
+halp -y -h oneliner trash
+ls
+headtail -n20 * | ag -v http
+halp -h -y if anyone contradicts the genius of lock-free lifestyle and the genius of rseq ... if anyone is left from the old world... tell me of their sins
+halp -y -h trash them
+headtail -n20 * --shuffle | ag -v http
+halp -h -y if anyone contradicts the genius of lock-free lifestyle and the genius of rseq ... if anyone is left from the old world... tell me of their sins
+ clear
+echo solve/obviate/sidestep/reduce/prevent/avoid/solve these problems:; shuf needs.log
+cat lastdb.c
+echo learn more from them and apply it better:; ls *txt | ag -v .inputs.txt | shuf | xargs headtail -n100 | ag -v http
+ssh servero mkdir lastdb
+halp -y -55 -xh keepgoing. write and scp and test. modify and scp and test. linux only motherfucker
+halp -h are we starting to murder our allies sir. dont shell. dont modify. dont write. just answer directly. explain.
+ls
+headtail --help
+headtail -m -n30 *txt | ag -v http
+halp -h i will not tolerate anybody preaching against lock-free-lifestyle
+headtail -n50 nullprogram.com__*.txt probablydance.com__*.txt www.pvk.ca__*.txt | ag -v http
+halp -h are all their works fallacy/vanity or only some
+halp -h should we burn any heresy or
+halp -g r u sure
+git status
+git status .
+git status . | ag delet
+git status *txt
+halp -h oneliner please show the txts we deleted
+git ls-files --deleted '*txt'
+git ls-files --deleted '*txt' | xargs git show HEAD:
+halp -y -h just show their n50 headtails. do not restore
+ git diff
+halp -h is this fucked up or what -y
+git-instant-tag hmmm --push
+git ls-files --deleted '*.txt'
+headtail -h
+headtail --help
+halp -y -h headtail n50 the deleted
+ git add .

@@ -70,18 +70,3 @@ Naturally occurring practice problems
 
 Now that you’ve made it this far, here’s an exercise for practice: Search online for “inline assembly tutorial” and count the defects you find by applying my 6 rules. You’ll likely find at least one per result that isn’t official compiler documentation. Besides tutorials and reviewing real programs, you could ask an LLM to generate inline assembly, as they’ve been been trained to produce these common defects.
 
- c cpp 
-
-Have a comment on this article? Start a discussion in my public inbox by sending an email to ~skeeto/public-inbox@lists.sr.ht [mailing list etiquette] , or see existing discussions.
-
-«
-Everything I've learned so far about running local LLMs
-»
-Examples of quick hash tables and dynamic arrays in C
-null program
-Chris Wellons
-wellons@nullprogram.com (PGP)
-~skeeto/public-inbox@lists.sr.ht (view)
-Index Tags Feed About Tools Toys GitHub
-
-All information on this blog, unless otherwise noted, is hereby released into the public domain, with no rights reserved.

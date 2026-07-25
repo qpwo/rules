@@ -1,7 +1,3 @@
-Skip to content
-
-Airs – Ian Lance Taylor
-
 Linker relro
 
 gcc, the GNU linker, and the glibc dynamic linker cooperate to implement an idea called read-only relocations, or relro. This permits the linker to designate a part of an executable or (more commonly) a shared library as being read-only after dynamic relocations have been applied.
@@ -21,40 +17,3 @@ When the dynamic linker sees a PT_GNU_RELRO segment, it uses mprotect to mark th
 Note that the current dynamic linker code will only work correctly if the PT_GNU_RELRO segment starts on a page boundary. This is because the dynamic linker rounds the p_vaddr field down to the previous page boundary. If there is anything on the page which should not be read-only, the program is likely to fail at runtime. So in effect the linker must only emit a PT_GNU_RELRO segment if it ensures that it starts on a page boundary.
 
 I see this as a relatively minor security benefit. It is not an optimization as far as I can see. I am documenting it here as part of my general documentation of obscure linker features. The current description of this feature in the GNU linker manual is rather obscure.
-
-Posted
-
-May 9, 2008
-
-in
-
-Programming
-
-by
-
-Ian Lance Taylor
-
-Tags:
-
-Comments
-2 responses to “Linker relro”
-drow
-May 11, 2008
-
-That description (minor security feature, not an optimization, wastes most of a page) matches the description Jakub gave me when I asked him about relro support.
-
-Static Linking for C++ Shared Objects « sunglint
-September 10, 2012
-
-[…] -r foo.o Ian Taylor has a nice description of relocations. Like this:LikeBe the first to like […]
-
-Leave a Reply
-
-You must be logged in to post a comment.
-
-Airs – Ian Lance Taylor
-
-Proudly powered by WordPress
-
-IMAGES
-https://secure.gravatar.com/avatar/b96de48ceb5d124a4e59dfc8a1bf04f32befe8dfca388478793e318f4617f365?s=40&d=mm&r=g

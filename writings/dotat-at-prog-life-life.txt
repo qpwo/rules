@@ -1,5 +1,3 @@
-
-	
 An implementation of Conway's Game of Life
 This page is about Tony Finch's implementation of Conway's Game of Life. If you're looking for background information or interesting patterns then see elsewhere. The description below includes a number of links into a cvsweb view of the code's history.
 
@@ -68,4 +66,3 @@ Alan Hensel's Life Applet uses a similar strategy to XLife, though it has clever
 If you want a really efficient implementation of life that avoids recomputation to the maximum extent possible, you want Bill Gosper's brilliant Hash Life. See Tomas Rokicki's hlife for a readable implementation of this algorithm, or David Bell's page for a purer implementation of the idea.
 
 Tony Finch is <dot@dotat.at>
-$dotat: life/life.html,v 1.20 2003/12/17 21:19:25 fanf2 Exp $

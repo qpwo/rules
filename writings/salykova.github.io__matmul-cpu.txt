@@ -1,4 +1,3 @@
-salykova
 Advanced Matrix Multiplication Optimization on Modern Multi-Core Processors
 
 Jan 12, 2025 • Amanzhol Salykov
@@ -575,33 +574,3 @@ mc=mR×number of threads×5
 nc=nR×number of threads×50
 
 provide the best performance on my machine, leading to the final optimized multi-threaded implementation matmul_parallel.h
-
-Built by Jekyll
-Icons by Game-icons.net
-amsalykov@gmail.com
- salykova
- salykovaa
- salykova_
-
-making AI inference run really fast.
-
-IMAGES
-https://salykova.github.io/assets/logo.svg
-https://salykova.github.io/assets/matmul_cpu/intel_core_perf.png
-https://salykova.github.io/assets/matmul_cpu/amd_ryzen_perf.png
-https://salykova.github.io/assets/matmul_cpu/matmul_naive.png
-https://salykova.github.io/assets/matmul_cpu/mem_system_nc.png
-https://salykova.github.io/assets/matmul_cpu/fmadd.png
-https://salykova.github.io/assets/matmul_cpu/fmadd_uops.png
-https://salykova.github.io/assets/matmul_cpu/mem_layout.png
-https://salykova.github.io/assets/matmul_cpu/matmul_kernel.png
-https://salykova.github.io/assets/matmul_cpu/kernel.png
-https://salykova.github.io/assets/matmul_cpu/kernel_rank.png
-https://salykova.github.io/assets/matmul_cpu/outer_product.png
-https://salykova.github.io/assets/matmul_cpu/kernel_registers.png
-https://salykova.github.io/assets/matmul_cpu/mm256_loadu.png
-https://salykova.github.io/assets/matmul_cpu/kernel_mask.png
-https://salykova.github.io/assets/matmul_cpu/mem_system.png
-https://salykova.github.io/assets/matmul_cpu/cpu_arch.png
-https://salykova.github.io/assets/matmul_cpu/core_arch.png
-https://salykova.github.io/assets/matmul_cpu/blis_design.png

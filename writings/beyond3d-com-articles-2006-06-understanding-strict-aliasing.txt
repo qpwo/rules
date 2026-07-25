@@ -1,5 +1,3 @@
-CellPerformance
-Sharing tips and experience with the cell processor, performance, data design and game programming.
 Understanding Strict Aliasing
 By Mike Acton on June 1, 2006 11:53 PM
 UPDATED! (08 Aug 06) More Clarifications! Special thanks to Nicolas Riesch, André de Leiradella and pinskia for their comments and suggestions.
@@ -566,7 +564,6 @@ The platform, version number and build data (i.e. the output of gcc --version) i
 C99 Standard
 This article has been pretty relaxed with the use of terminology and there is always room for some interpretation when reading a standard. There are many additional cases not covered above and compiler specific issues to consider. But for those interested in up-to-date definitive information on the C standard refer to ISO/IEC 9899:TC2 [open-std.org]. Here is the most relevant text from section "6.5 Expressions":
 
-
 An object shall have its stored value accessed only by an lvalue expression that has one of the following types:
 a type compatible with the effective type of the object,
 a qualified version of a type compatible with the effective type of the object,
@@ -579,42 +576,3 @@ Summary
 Strict aliasing means that two objects of different types cannot refer to the same location in memory. Enable this option in GCC with the -fstrict-aliasing flag. Be sure that all code can safely run with this rule enabled. Enable strict aliasing related warnings with -Wstrict-aliasing, but do not expect to be warned in all cases.
 In order to discover aliasing problems as quickly as possible, -fstrict-aliasing should always be included in the compilation flags for GCC. Otherwise problems may only be visible at the highest optimization levels where it is the most difficult to debug.
 Be wary of code that requires the use of -fno-strict-aliasing (turns off strict aliasing at any level) in order to work. This is a very good indication that the code relies on aliased memory access and is likely to be dominated by poor memory access patterns. At the very least only the minimum amount of files should have it disabled, and only because time has not permitted their repair yet. Although it may seem complex to properly alias memory, the tests where it is really necessary for performance are actually quite few and should already be tested rigorously. It is unlikely that code that does not enable strict aliasing would be able to take advantage of the restrict keyword. Using the restrict keyword allows a significant class of memory access optimizations critical to high performance code. For more information on the restrict keyword see: Demystifying The Restrict Keyword
-About CellPerformance
-Hosting for CellPerformance graciously provided by... Beyond3D
-
-Also check out the forums...
-CellPerformance@B3D
-
-Get this widget!
-Something Funny
-About Mike Acton
- Linkedin Mike Acton
-Twitter @mike_acton
- Facebook Mike Acton
- Mike Acton's shared items in Google Reader
-Mike Acton's Resume
-Articles
-Roundup: Recent sketches on concurrency, data design and performance.
-Three Big Lies
-Utility: match
-Handy PS3 Linux Framebuffer Utilities
-HowTo: Huge TLB pages on PS3 Linux
-Cross-compiling for PS3 Linux
-atan2 on SPU
-Open Source and Console Games
-Branch-free implementation of half-precision (16 bit) floating point
-Increment And Decrement Wrapping Values
-Box Overlap
-A 4x4 Matrix Inverse
-Understanding Strict Aliasing
-Demystifying The Restrict Keyword
-Avoiding Microcoded Instructions On The PPU
-Choosing to Avoid Branches: A Small Altivec Example
-Reducing The Costs Of Comparisons and Branches
-Using masks to accelerate integer code
-A Practical GCC Trick To Use During Optimization
-More Techniques for Eliminating Branches
-Branch Patterns, Using GCC
-Benefits to Branch Elimination
-Background on Branching
-Performance and Good Data Design

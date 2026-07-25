@@ -188,9 +188,7 @@ Even though it's not nearly as impressive as the 45-byte executable possible yea
 Obviously, plenty of what we did went far beyond eliminating "bloat", but the message remains valuable: it may be possible to remove more software bloat than you think! Whether that justifies the effort involved is another debate.
 
 IMAGES
-https://nathanotterness.com/2021/10/annotated_elf_1.png
-https://nathanotterness.com/2021/10/annotated_elf_2.png
-https://nathanotterness.com/2021/10/annotated_elf_3.png
-https://nathanotterness.com/2021/10/spreadsheet.png
-https://nathanotterness.com/2021/10/annotated_elf_4.png
-https://nathanotterness.com/2021/10/annotated_elf_5.png
+[IMAGE DESCRIPTION: To recreate this image exactly, you need to treat it as a technical diagram combining a hex dump with annotative overlays. 1. Canvas & Background Background Color: Deep midnight purple/black (1a0033 or similar). Font: A monospaced font (like Courier New, Consolas, or Lucida Console). Layout: The image is divided into three main horizontal zones: 1. The Command Line: A single line of text at the top. 2. The Hex Dump: A grid of addresses, hex values, and ASCII representation. 3. The Annotations: Colored boxes and labels on the right. 2. The Text Content (The Data)...]
+
+[IMAGE DESCRIPTION: This is a screenshot of a spreadsheet (likely LibreOffice Calc or Microsoft Excel) displaying a byte-by-byte breakdown of an ELF (Executable and Linkable Format) file header. To recreate this exactly, you would set up a grid with columns A, B, C, D, and E, and rows 1 through roughly 70. Visual Layout & Formatting Grid: Standard spreadsheet grid lines are visible. Color Coding: The rows are color-coded in alternating blocks of Pink (Salmon) and Light Green. Pink Rows: Indicate critical structural fields (Magic number, type, entry point, offsets, sizes). Green Rows: Ind...]
+
