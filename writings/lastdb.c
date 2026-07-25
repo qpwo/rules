@@ -45,10 +45,24 @@ typedef struct __attribute__((packed)) {
     uint16_t k_len;
     uint32_t v_len;
     uint8_t op;
-    uint8_t pad[7];
+    uint64_t bf;
     uint64_t key_hash;
     uint64_t check;
 } Record;
+
+static uint64_t compute_bf(const char *data, size_t len) {
+    uint64_t bf = 0;
+    for (size_t i = 0; i + 3 < len; i++) {
+        uint32_t gram;
+        memcpy(&gram, data + i, 4);
+        gram = (gram ^ (gram >> 16)) * 0x85ebca6b;
+        gram ^= gram >> 13;
+        gram *= 0xc2b2ae35;
+        gram ^= gram >> 16;
+        bf |= 1ULL << (gram & 63);
+    }
+    return bf;
+}
 
 typedef struct {
     uint64_t hash;
@@ -154,6 +168,7 @@ static uint64_t rec_check(const Record *r, const char *t, const char *k, const c
     h = fnv_u64(h, r->k_len);
     h = fnv_u64(h, r->v_len);
     h = fnv_u64(h, r->op);
+    h = fnv_u64(h, r->bf);
     h = fnv_u64(h, r->key_hash);
     h = fnv_bytes(h, t, r->t_len);
     h = fnv_bytes(h, k, r->k_len);
@@ -400,6 +415,7 @@ static void append_raw(int fd, const char *t, size_t tl, const char *k, size_t k
     r.k_len = (uint16_t)kl;
     r.v_len = (uint32_t)vl;
     r.op = op;
+    r.bf = compute_bf(k, kl) | compute_bf(v, vl);
     r.key_hash = key_hash(t, r.t_len, k, r.k_len);
     r.check = rec_check(&r, t, k, v);
 
@@ -939,9 +955,12 @@ static const void *memmem_pivot(const void *haystack, size_t hay_len, const void
     return NULL;
 }
 
-static int rec_has_terms(Record *r, int argc, char **argv, size_t *lens)
+static int rec_has_terms(Record *r, int argc, char **argv, size_t *lens, uint64_t *term_bfs)
 {
     for (int j = 4; j < argc; j++) {
+        if ((r->bf & term_bfs[j]) != term_bfs[j]) {
+            return 0;
+        }
         if (!memmem_pivot(rec_v(r), r->v_len, argv[j], lens[j]) &&
             !memmem_pivot(rec_k(r), r->k_len, argv[j], lens[j])) {
             return 0;
@@ -965,6 +984,9 @@ static int do_search(const char *t, int argc, char **argv)
         }
     }
 
+    uint64_t term_bfs[argc];
+    for (int i = 4; i < argc; i++) term_bfs[i] = compute_bf(argv[i], lens[i]);
+
     uint64_t start_idx, end_idx;
     ht_tenant_range(t, tl, &start_idx, &end_idx);
     #pragma omp parallel for schedule(dynamic, 1024) num_threads(worker_threads())
@@ -976,7 +998,7 @@ static int do_search(const char *t, int argc, char **argv)
         if (memcmp(rec_t(r), t, tl)) {
             continue;
         }
-        if (!rec_has_terms(r, argc, argv, lens)) {
+        if (!rec_has_terms(r, argc, argv, lens, term_bfs)) {
             continue;
         }
 
@@ -1259,6 +1281,7 @@ static void batch_put(int fd, char *buf, size_t *used, const char *t, const char
     r.k_len = (uint16_t)kl;
     r.v_len = (uint32_t)vl;
     r.op = OP_PUT;
+    r.bf = compute_bf(k, kl) | compute_bf(v, vl);
     r.key_hash = key_hash(t, r.t_len, k, r.k_len);
     r.check = rec_check(&r, t, k, v);
 
@@ -1539,34 +1562,47 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     } else send_response(fd, cipherkey, 2, "not found", 9);
                                 }
                             }
-                            else if (op == 4 || op == 5) {
-                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
-                                uint8_t *out = NULL; size_t out_len = 0, out_cap = 0;
-                                #define APP(ptr, lll) do { size_t app_n = (lll); if (out_len < 60u * 1024u * 1024u) { if (app_n > 60u * 1024u * 1024u - out_len) app_n = 60u * 1024u * 1024u - out_len; while (out_len + app_n > out_cap) { size_t next_cap = out_cap ? out_cap * 2 : 4096; out_cap = next_cap > 60u * 1024u * 1024u ? 60u * 1024u * 1024u : next_cap; void *next_out = realloc(out, out_cap); if (!next_out) die("realloc response"); out = next_out; } memcpy(out + out_len, ptr, app_n); out_len += app_n; } } while(0)
-                                #pragma omp critical (db)
-                                {
-                                    load_db(db_path);
-                                uint64_t start_idx, end_idx;
-                                ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
-                                #pragma omp parallel for schedule(dynamic, 1024) num_threads(worker_threads())
-                                for (uint64_t i = start_idx; i < end_idx; i++) {
-                                    Record *r = rec_at(ht[i].off1 - 1);
-                                    if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
-                                        int match = 0;
-                                        if (op == 4) {
-                                            match = (kl == 0 || (r->k_len >= kl && !memcmp(rec_k(r), k, kl)));
-                                        } else {
-                                            match = 1;
-                                            char *w = v; char *end = v + vl;
-                                            while (w < end) {
-                                                char *tab = memchr(w, '\t', end - w);
-                                                size_t wl = tab ? tab - w : end - w;
-                                                if (wl > 0) {
-                                                    if (!memmem_pivot(rec_v(r), r->v_len, w, wl) && !memmem_pivot(rec_k(r), r->k_len, w, wl)) { match = 0; break; }
-                                                }
-                                                w += wl + 1;
+                        else if (op == 4 || op == 5) {
+                            if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
+                            uint8_t *out = NULL; size_t out_len = 0, out_cap = 0;
+                            uint64_t query_bfs[64] = {0};
+                            if (op == 5) {
+                                int num_words = 0; char *w = v; char *end = v + vl;
+                                while (w < end && num_words < 64) {
+                                    char *tab = memchr(w, '\t', end - w);
+                                    size_t wl = tab ? tab - w : end - w;
+                                    if (wl > 0) query_bfs[num_words++] = compute_bf(w, wl);
+                                    w += wl + 1;
+                                }
+                            }
+                            #define APP(ptr, lll) do { size_t app_n = (lll); if (out_len < 60u * 1024u * 1024u) { if (app_n > 60u * 1024u * 1024u - out_len) app_n = 60u * 1024u * 1024u - out_len; while (out_len + app_n > out_cap) { size_t next_cap = out_cap ? out_cap * 2 : 4096; out_cap = next_cap > 60u * 1024u * 1024u ? 60u * 1024u * 1024u : next_cap; void *next_out = realloc(out, out_cap); if (!next_out) die("realloc response"); out = next_out; } memcpy(out + out_len, ptr, app_n); out_len += app_n; } } while(0)
+                            #pragma omp critical (db)
+                            {
+                                load_db(db_path);
+                            uint64_t start_idx, end_idx;
+                            ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
+                            #pragma omp parallel for schedule(dynamic, 1024) num_threads(worker_threads())
+                            for (uint64_t i = start_idx; i < end_idx; i++) {
+                                Record *r = rec_at(ht[i].off1 - 1);
+                                if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
+                                    int match = 0;
+                                    if (op == 4) {
+                                        match = (kl == 0 || (r->k_len >= kl && !memcmp(rec_k(r), k, kl)));
+                                    } else {
+                                        match = 1;
+                                        char *w = v; char *end = v + vl;
+                                        int word_idx = 0;
+                                        while (w < end) {
+                                            char *tab = memchr(w, '\t', end - w);
+                                            size_t wl = tab ? tab - w : end - w;
+                                            if (wl > 0) {
+                                                if (word_idx < 64 && (r->bf & query_bfs[word_idx]) != query_bfs[word_idx]) { match = 0; break; }
+                                                if (!memmem_pivot(rec_v(r), r->v_len, w, wl) && !memmem_pivot(rec_k(r), r->k_len, w, wl)) { match = 0; break; }
+                                                word_idx++;
                                             }
+                                            w += wl + 1;
                                         }
+                                    }
                                         if (match) {
                                             #pragma omp critical (app)
                                             {
