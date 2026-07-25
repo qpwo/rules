@@ -96,8 +96,10 @@ export async function count(client, color, tenant, prefix = '', threshold = 1.0)
     return request(client, 'count', color, tenant, prefix, String(threshold));
 }
 
-export async function sum(client, color, tenant, prefix = '', threshold = 1.0) {
-    return request(client, 'sum', color, tenant, prefix, String(threshold));
+export async function sum(client, color, tenant, prefix = '', threshold = 1.0, now = null) {
+    var val = String(threshold);
+    if (now !== null) val += '\t' + String(now);
+    return request(client, 'sum', color, tenant, prefix, val);
 }
 
 export async function incr(client, color, tenant, key, delta) {
@@ -271,8 +273,8 @@ async function cli(client, a) {
     if (a[0] === 'count' && (a.length >= 3 && a.length <= 5)) {
         return count(client, parseI32(a[1]), a[2], a[3] ?? '', a[4] ? Number(a[4]) : 1.0);
     }
-    if (a[0] === 'sum' && (a.length >= 3 && a.length <= 5)) {
-        return sum(client, parseI32(a[1]), a[2], a[3] ?? '', a[4] ? Number(a[4]) : 1.0);
+    if (a[0] === 'sum' && (a.length >= 3 && a.length <= 6)) {
+        return sum(client, parseI32(a[1]), a[2], a[3] ?? '', a[4] ? Number(a[4]) : 1.0, a[5] ? Number(a[5]) : null);
     }
     if (a[0] === 'incr' && a.length === 5) {
         return incr(client, parseI32(a[1]), a[2], a[3], a[4]);
@@ -367,7 +369,7 @@ function usage() {
         '  tail COLOR [OFFSET]',
         '  closest COLOR TENANT KEY TYPE',
         '  count COLOR TENANT [PREFIX] [THRESHOLD]',
-        '  sum COLOR TENANT [PREFIX] [THRESHOLD]',
+        '  sum COLOR TENANT [PREFIX] [THRESHOLD] [NOW]',
         '  incr COLOR TENANT KEY DELTA',
         '  take COLOR TENANT KEY',
         '  putnx COLOR TENANT KEY VALUE',

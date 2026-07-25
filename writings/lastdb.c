@@ -1661,6 +1661,9 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                     }
                     active_conn++;
                     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
+                    struct timeval tv = {30, 0};
+                    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+                    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
                     #pragma omp task
                     {
                         while (1) {
@@ -1906,8 +1909,13 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 else send_response(fd, cipherkey, 2, "not found", 9);
                             } else if (op == 8 || op == 9) {
                                 if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
-                                double count_est = 0; uint64_t raw_count = 0; double sum = 0; double threshold = 1.0;
-                                if (vl > 0 && vl < 64) { char th_buf[64] = {0}; memcpy(th_buf, v, vl); threshold = strtod(th_buf, NULL); if (threshold <= 0 || threshold > 1.0) threshold = 1.0; }
+                                double count_est = 0; uint64_t raw_count = 0; double sum = 0; double threshold = 1.0; double sum_now = 0; int has_now = 0;
+                                if (vl > 0 && vl < 128) {
+                                    char th_buf[128] = {0}; memcpy(th_buf, v, vl);
+                                    char *tab = strchr(th_buf, '\t');
+                                    if (tab) { *tab = 0; sum_now = strtod(tab + 1, NULL); has_now = 1; }
+                                    threshold = strtod(th_buf, NULL); if (threshold <= 0 || threshold > 1.0) threshold = 1.0;
+                                }
                                 #pragma omp critical (db)
                                 {
                                     load_db(db_path);
@@ -1924,12 +1932,24 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 double w = db_w > qw ? db_w : qw;
                                 count_est += w;
                                         raw_count++;
-                                        if (op == 9 && r->v_len > 0 && r->v_len < 64) {
-                                    char buf2[64] = {0}; memcpy(buf2, rec_v(r), r->v_len);
+                                        if (op == 9 && r->v_len > 0 && r->v_len < 192) {
+                                    char buf2[192] = {0}; memcpy(buf2, rec_v(r), r->v_len);
                                     char *t1 = strchr(buf2, '\t'); char *t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
-                                    char *p_str = t2 ? t2 + 1 : buf2;
-                                    while (*p_str && *p_str != '-' && *p_str != '.' && (*p_str < '0' || *p_str > '9')) p_str++;
-                                    sum += strtod(p_str, NULL) * w;
+                                    if (t1 && t2) {
+                                        if (has_now) {
+                                            *t1 = 0; *t2 = 0;
+                                            double hl = strtod(buf2, NULL);
+                                            double last = strtod(t1 + 1, NULL);
+                                            double val = strtod(t2 + 1, NULL);
+                                            sum += (sum_now >= last ? val * __builtin_exp2((last - sum_now) / hl) : val) * w;
+                                        } else {
+                                            sum += strtod(t2 + 1, NULL) * w;
+                                        }
+                                    } else {
+                                        char *p_str = buf2;
+                                        while (*p_str && *p_str != '-' && *p_str != '.' && (*p_str < '0' || *p_str > '9')) p_str++;
+                                        sum += strtod(p_str, NULL) * w;
+                                    }
                                         }
                                     }
                                 }
@@ -2231,6 +2251,8 @@ int main(int argc, char **argv)
                 size_t tl = strlen(args[1]);
                 size_t pl = n >= 3 ? strlen(args[2]) : 0;
                 double threshold = n >= 4 ? strtod(args[3], NULL) : 1.0;
+                double sum_now = n >= 5 ? strtod(args[4], NULL) : 0;
+                int has_now = n >= 5;
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
             #pragma omp parallel for reduction(+:s,raw_s) schedule(static, 4096) num_threads(worker_threads())
             for (uint64_t i = start_idx; i < end_idx; i++) {
@@ -2242,13 +2264,25 @@ int main(int argc, char **argv)
             double qw = 1.0 / threshold;
             double w = db_w > qw ? db_w : qw;
             raw_s++;
-                    if (r->v_len > 0 && r->v_len < 64) {
-                char buf[64] = {0};
+                    if (r->v_len > 0 && r->v_len < 192) {
+                char buf[192] = {0};
                 memcpy(buf, rec_v(r), r->v_len);
                 char *t1 = strchr(buf, '\t'); char *t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
-                char *p_str = t2 ? t2 + 1 : buf;
-                while (*p_str && *p_str != '-' && *p_str != '.' && (*p_str < '0' || *p_str > '9')) p_str++;
-                s += strtod(p_str, NULL) * w;
+                if (t1 && t2) {
+                    if (has_now) {
+                        *t1 = 0; *t2 = 0;
+                        double hl = strtod(buf, NULL);
+                        double last = strtod(t1 + 1, NULL);
+                        double val = strtod(t2 + 1, NULL);
+                        s += (sum_now >= last ? val * __builtin_exp2((last - sum_now) / hl) : val) * w;
+                    } else {
+                        s += strtod(t2 + 1, NULL) * w;
+                    }
+                } else {
+                    char *p_str = buf;
+                    while (*p_str && *p_str != '-' && *p_str != '.' && (*p_str < '0' || *p_str > '9')) p_str++;
+                    s += strtod(p_str, NULL) * w;
+                }
                     }
                 }
                 printf("%.17g\t%llu\n", s, (unsigned long long)raw_s);
