@@ -437,7 +437,12 @@ static int append_raw(int fd, const char *t, size_t tl, const char *k, size_t kl
             return 0;
         }
         if (avail < 0.2) {
-            if (gate > keep) return 0;
+            int exists = (op == OP_DEL);
+            if (!exists && ht_cap) {
+                Node *n = ht_get(t, (uint16_t)tl, k, (uint16_t)kl);
+                if (n && rec_at(n->off1 - 1)->op != OP_DEL) exists = 1;
+            }
+            if (!exists && gate > keep) return 0;
             int wl = (int)(-50.0 * (avail - 0.2));
             r.weight_log = wl > 31 ? 31 : wl;
         }
@@ -1443,9 +1448,14 @@ static int batch_put(int fd, char *buf, size_t *used, const char *t, const char 
         return 0;
     }
     if (keep < 1.0) {
-        double gate = (double)(key_hash(t, r.t_len, k, r.k_len) >> 32) * 0x1.0p-32;
-        if (gate > keep) {
-            return 1;
+        int exists = 0;
+        if (ht_cap) {
+            Node *n = ht_get(t, r.t_len, k, r.k_len);
+            if (n && rec_at(n->off1 - 1)->op != OP_DEL) exists = 1;
+        }
+        if (!exists) {
+            double gate = (double)(key_hash(t, r.t_len, k, r.k_len) >> 32) * 0x1.0p-32;
+            if (gate > keep) return 1;
         }
         r.weight_log = weight_log;
     }

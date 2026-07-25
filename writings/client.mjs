@@ -61,11 +61,23 @@ export async function drop(client, color, tenant, key) {
 }
 
 export async function scan(client, color, tenant, prefix = '') {
-    return request(client, 'scan', color, tenant, prefix, '');
+    return parseWeighted(await request(client, 'scan', color, tenant, prefix, ''));
 }
 
 export async function search(client, color, tenant, words) {
-    return request(client, 'search', color, tenant, '', Array.isArray(words) ? words.join('\t') : words);
+    return parseWeighted(await request(client, 'search', color, tenant, '', Array.isArray(words) ? words.join('\t') : words));
+}
+
+function parseWeighted(res) {
+    var str = res.toString(), out = [];
+    if (!str) return out;
+    var lines = str.split('\n');
+    for (var i = 0; i < lines.length - 1; i++) {
+        var t1 = lines[i].indexOf('\t');
+        var t2 = lines[i].indexOf('\t', t1 + 1);
+        if (t1 > 0 && t2 > t1) out.push({weight: Number(lines[i].slice(0, t1)), key: lines[i].slice(t1 + 1, t2), value: lines[i].slice(t2 + 1)});
+    }
+    return out;
 }
 
 export async function tail(client, color, offset = 0) {
@@ -93,13 +105,17 @@ export async function closest(client, color, tenant, keyOrType, typeOrVector) {
 }
 
 export async function count(client, color, tenant, prefix = '', threshold = 1.0) {
-    return request(client, 'count', color, tenant, prefix, String(threshold));
+    var res = await request(client, 'count', color, tenant, prefix, String(threshold));
+    var p = res.toString().split('\t');
+    return { estimated: Number(p[0]), raw: Number(p[1]) };
 }
 
 export async function sum(client, color, tenant, prefix = '', threshold = 1.0, now = null) {
     var val = String(threshold);
     if (now !== null) val += '\t' + String(now);
-    return request(client, 'sum', color, tenant, prefix, val);
+    var res = await request(client, 'sum', color, tenant, prefix, val);
+    var p = res.toString().split('\t');
+    return { estimated: Number(p[0]), raw: Number(p[1]) };
 }
 
 export async function incr(client, color, tenant, key, delta) {
@@ -236,7 +252,12 @@ async function main() {
 
     var client = await open(a[0], parseI32(a[1]), parseI32(a[2]), parseI32(a[3]));
     try {
-        process.stdout.write(await cli(client, a.slice(4)));
+        var out = await cli(client, a.slice(4));
+        if (typeof out === 'object' && !Buffer.isBuffer(out) && out !== null) {
+            process.stdout.write(JSON.stringify(out, null, 2) + '\n');
+        } else {
+            process.stdout.write(out);
+        }
     } finally {
         client.socket.end();
     }
