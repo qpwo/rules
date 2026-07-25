@@ -1335,7 +1335,7 @@ static size_t build_weighted(Record *r, double now, char *out, size_t cap)
         v = dbuf;
         vl = (size_t)n;
     }
-    double print_w = (double)(1U << (r->weight_log > 13 ? 13 : r->weight_log));
+    double print_w = (double)(1U << (r->weight_log > 26 ? 26 : r->weight_log));
     if (cur) print_w *= __builtin_fabs(cur);
     if (print_w < 0.5) return 0;
     char wbuf[32];
@@ -1521,7 +1521,7 @@ static int do_compact(const char *path)
                 if (ewl > 13) ewl = 13;
                 uint8_t twl = r->weight_log > ewl ? r->weight_log : ewl;
                 double gate = (double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32;
-                if (gate > 1.0 / (1U << twl)) keep = 0;
+                if (gate > 1.0 / (1U << (twl - r->weight_log))) keep = 0;
                 new_wl = twl;
             }
             if (keep) {
@@ -2527,7 +2527,7 @@ if (match) {
                                     if ((op == 8 || op == 9) && sample_rate < 1.0 && r->weight_log == 0) {
                                         if ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > sample_rate) continue;
                                     }
-                                    double db_w = (double)(1U << (r->weight_log > 13 ? 13 : r->weight_log));
+                                    double db_w = (double)(1U << (r->weight_log > 26 ? 26 : r->weight_log));
                                     if ((op == 8 || op == 9) && sample_rate < 1.0 && r->weight_log == 0) db_w /= sample_rate;
                                     double w_weight = db_w;
 
@@ -2574,7 +2574,6 @@ if (match) {
                                 } else {
                                     char val[128]; int vl_out = 0;
 if (max_wl < 0) max_wl = 0;
-                                if (max_wl > 0 && raw_count > 0 && raw_count < (1ULL << max_wl)) { count_est = (double)raw_count; sum = raw_sum; }
                                 if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu\t%d", count_est, (unsigned long long)raw_count, max_wl);
                                 else vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%llu\t%d", sum, raw_sum, (unsigned long long)raw_count, max_wl);
                                     send_response(fd, cipherkey, 0, val, vl_out);
@@ -3062,7 +3061,7 @@ if (threshold > 1.0) threshold = 1.0;
             if (threshold < 1.0 && r->weight_log == 0) {
                 if ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
             }
-            double db_w = (double)(1U << (r->weight_log > 13 ? 13 : r->weight_log));
+            double db_w = (double)(1U << (r->weight_log > 26 ? 26 : r->weight_log));
             if (r->weight_log > max_wl) max_wl = r->weight_log;
 
             double w = (threshold < 1.0 && r->weight_log == 0) ? db_w / threshold : db_w;
@@ -3071,7 +3070,6 @@ if (threshold > 1.0) threshold = 1.0;
 
                 }
                 if (offs) munmap(offs, count * 8);
-                if (max_wl > 0 && raw_c > 0 && raw_c < (1ULL << max_wl)) { count_est = (double)raw_c; }
                 printf("%.4g\t%llu\t%d\n", count_est, (unsigned long long)raw_c, max_wl);
             }
             else if (!strcmp(args[0], "sum") && n >= 2) {
@@ -3094,7 +3092,7 @@ if (threshold > 1.0) threshold = 1.0;
             if (threshold < 1.0 && r->weight_log == 0) {
                 if ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
             }
-            double db_w = (double)(1U << (r->weight_log > 13 ? 13 : r->weight_log));
+            double db_w = (double)(1U << (r->weight_log > 26 ? 26 : r->weight_log));
             if (r->weight_log > max_wl) max_wl = r->weight_log;
 
             double w = (threshold < 1.0 && r->weight_log == 0) ? db_w / threshold : db_w;
@@ -3119,9 +3117,7 @@ if (threshold > 1.0) threshold = 1.0;
                     }
                 }
                 if (offs) munmap(offs, count * 8);
-                if (max_wl > 0 && raw_s > 0 && raw_s < (1ULL << max_wl)) { s = raw_sum; }
                 printf("%.17g\t%.17g\t%llu\t%d\n", s, raw_sum, (unsigned long long)raw_s, max_wl);
-
             }
             else printf("ERR\n");
             fflush(stdout);
