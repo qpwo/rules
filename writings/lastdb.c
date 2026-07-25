@@ -1945,8 +1945,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         if (kl && (r->k_len < kl || memcmp(rec_k(r), k, kl))) continue;
                                         if (threshold < 1.0 && (double)(r->check >> 11) * 0x1.0p-53 > threshold) continue;
                                         double keep_prob = 1.0 / (1ULL << r->weight_log);
-                                        double p = keep_prob < threshold ? keep_prob : threshold;
-                                        double w = 1.0 / p;
+                                        double w = 1.0 / (keep_prob * threshold);
                                         count_est += w;
                                         raw_count++;
                                         if (op == 9 && r->v_len > 0 && r->v_len < 64) {
@@ -2084,8 +2083,7 @@ int main(int argc, char **argv)
                     if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
                     if (threshold < 1.0 && (double)(r->check >> 11) * 0x1.0p-53 > threshold) continue;
                     double keep_prob = 1.0 / (1ULL << r->weight_log);
-                    double p = keep_prob < threshold ? keep_prob : threshold;
-                    count_est += 1.0 / p;
+                    count_est += 1.0 / (keep_prob * threshold);
                     raw_c++;
                 }
                 printf("%.0f\t%llu\n", count_est, (unsigned long long)raw_c);
@@ -2103,8 +2101,7 @@ int main(int argc, char **argv)
                     if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
                     if (threshold < 1.0 && (double)(r->check >> 11) * 0x1.0p-53 > threshold) continue;
                     double keep_prob = 1.0 / (1ULL << r->weight_log);
-                    double p = keep_prob < threshold ? keep_prob : threshold;
-                    double w = 1.0 / p;
+                    double w = 1.0 / (keep_prob * threshold);
                     raw_s++;
                     if (r->v_len > 0 && r->v_len < 64) {
                         char buf[64] = {0};
