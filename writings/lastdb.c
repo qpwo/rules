@@ -2577,7 +2577,7 @@ if (match) {
                                                 out[my_off++] = '\n';
                                             }
                                         } else {
-                                    count_est += db_w;
+                                    count_est += disp_w;
                                     raw_count++;
                                             if (op == 9 && r->v_len > 0) {
                                                 if (is_decay) {
@@ -3096,7 +3096,7 @@ if (threshold > 1.0) threshold = 1.0;
             double cur = 0;
             int is_decay = r->v_len > 0 && r->v_len < 192 && decay_value_at(rec_v(r), r->v_len, now, &cur);
             if (is_decay && cur == 0) continue;
-            count_est += w;
+            count_est += is_decay ? w * __builtin_fabs(cur) : w;
             raw_c++;
                 }
                 if (offs) munmap(offs, count * 8);
