@@ -1508,10 +1508,12 @@ static int do_compact(const char *path)
 
     size_t used = 0;
     double compact_now = (double)time(NULL);
-    for (uint64_t off = 0; off < valid_size;) {
+    uint64_t *offs = get_sorted_offs(0, ht_len);
+    for (uint64_t i = 0; i < ht_len; i++) {
+        uint64_t off = offs ? offs[i] : (ht[i].off1 - 1);
         Record *r = rec_at(off);
-        Node *n = ht_get(rec_t(r), r->t_len, rec_k(r), r->k_len);
-        if (n && (n->off1 - 1) == off && r->op != OP_DEL) {
+        if (r->op == OP_DEL) continue;
+        {
             int keep = 1;
             uint8_t new_wl = r->weight_log;
             if (decay_factor > 0 && r->t_len > 0 && rec_t(r)[0] != '0' && !(r->v_len > 0 && r->v_len < 192 && rec_v(r)[0] == '\x1F')) {
@@ -1554,8 +1556,8 @@ static int do_compact(const char *path)
                 }
             }
         }
-        off += r->len;
     }
+    if (offs) munmap(offs, ht_len * 8);
     if (used) {
         write_all(fd, buf, used);
     }
