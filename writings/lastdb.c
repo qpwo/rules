@@ -1,6 +1,6 @@
 //bin/sh -c 'o=${0%.c}; [ "$o" -nt "$0" ] || { ${CC:-cc} -O3 -march=native -ffast-math -fopenmp -Wall -Wextra -Werror -o "$o" "$0" || exit; }; exec "$o" "$@"' "$0" "$@"; exit
 /** lastdb: one-file durable append-only tenant key/value store, no sqlite, no deps. */
-#define _POSIX_C_SOURCE 200809L
+#define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -199,10 +199,9 @@ static void ht_put(uint64_t hash, uint64_t off)
 {
     if (ht_len >= ht_cap) {
         uint64_t ncap = ht_cap ? ht_cap * 2 : 4096;
-        Node *nht = mmap(NULL, ncap * sizeof(*nht), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
-        if (nht == MAP_FAILED) die("mmap nht");
+        Node *nht = ht ? mremap(ht, ht_cap * sizeof(*nht), ncap * sizeof(*nht), MREMAP_MAYMOVE) : mmap(NULL, ncap * sizeof(*nht), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
+        if (nht == MAP_FAILED) die("mremap nht");
         madvise(nht, ncap * sizeof(*nht), MADV_HUGEPAGE);
-        if (ht) memcpy(nht, ht, ht_len * sizeof(*nht));
         ht = nht;
         ht_cap = ncap;
     }
@@ -844,40 +843,29 @@ static int do_compact(const char *path)
     return 0;
 }
 
+typedef float unaligned_f32 __attribute__((aligned(1)));
+typedef _Float16 unaligned_f16 __attribute__((aligned(1)));
+
 static float vec_dot_f32(const void *a, const void *b, size_t bytes) {
     size_t n = bytes / 4;
-    float sum = 0, va, vb;
-    const char *ca = a, *cb = b;
-    for (size_t i = 0; i < n; i++) {
-        memcpy(&va, ca + i * 4, 4);
-        memcpy(&vb, cb + i * 4, 4);
-        sum += va * vb;
-    }
+    float sum = 0;
+    const unaligned_f32 *fa = a, *fb = b;
+    for (size_t i = 0; i < n; i++) sum += fa[i] * fb[i];
     return sum;
 }
 
 static float vec_dot_f16(const void *a, const void *b, size_t bytes) {
     size_t n = bytes / 2;
     float sum = 0;
-    _Float16 va, vb;
-    const char *ca = a, *cb = b;
-    for (size_t i = 0; i < n; i++) {
-        memcpy(&va, ca + i * 2, 2);
-        memcpy(&vb, cb + i * 2, 2);
-        sum += (float)va * (float)vb;
-    }
+    const unaligned_f16 *fa = a, *fb = b;
+    for (size_t i = 0; i < n; i++) sum += (float)fa[i] * (float)fb[i];
     return sum;
 }
 
 static float vec_dot_i8(const void *a, const void *b, size_t bytes) {
     float sum = 0;
-    int8_t va, vb;
-    const char *ca = a, *cb = b;
-    for (size_t i = 0; i < bytes; i++) {
-        va = ca[i];
-        vb = cb[i];
-        sum += (float)va * (float)vb;
-    }
+    const int8_t *ca = a, *cb = b;
+    for (size_t i = 0; i < bytes; i++) sum += (float)ca[i] * (float)cb[i];
     return sum;
 }
 
