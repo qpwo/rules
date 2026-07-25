@@ -1246,28 +1246,50 @@ __attribute__((target("avx512f,avx512vl,fma")))
 static float vec_dot_f32(const void *a, const void *b, size_t bytes) {
     size_t n = bytes / 4;
     const unaligned_f32 *fa = a, *fb = b;
-    __m512 sum = _mm512_setzero_ps();
-
-    for (size_t i = 0; i < n; i += 16) {
-        __mmask16 mask = n - i >= 16 ? 0xFFFF : (__mmask16)((1u << (n - i)) - 1u);
-        sum = _mm512_fmadd_ps(_mm512_maskz_loadu_ps(mask, fa + i), _mm512_maskz_loadu_ps(mask, fb + i), sum);
+    __m512 sum0 = _mm512_setzero_ps();
+    __m512 sum1 = _mm512_setzero_ps();
+    __m512 sum2 = _mm512_setzero_ps();
+    __m512 sum3 = _mm512_setzero_ps();
+    size_t i = 0;
+    for (; i + 63 < n; i += 64) {
+        sum0 = _mm512_fmadd_ps(_mm512_loadu_ps(fa + i), _mm512_loadu_ps(fb + i), sum0);
+        sum1 = _mm512_fmadd_ps(_mm512_loadu_ps(fa + i + 16), _mm512_loadu_ps(fb + i + 16), sum1);
+        sum2 = _mm512_fmadd_ps(_mm512_loadu_ps(fa + i + 32), _mm512_loadu_ps(fb + i + 32), sum2);
+        sum3 = _mm512_fmadd_ps(_mm512_loadu_ps(fa + i + 48), _mm512_loadu_ps(fb + i + 48), sum3);
     }
-
-    return _mm512_reduce_add_ps(sum);
+    sum0 = _mm512_add_ps(sum0, sum1);
+    sum2 = _mm512_add_ps(sum2, sum3);
+    sum0 = _mm512_add_ps(sum0, sum2);
+    for (; i < n; i += 16) {
+        __mmask16 mask = n - i >= 16 ? 0xFFFF : (__mmask16)((1u << (n - i)) - 1u);
+        sum0 = _mm512_fmadd_ps(_mm512_maskz_loadu_ps(mask, fa + i), _mm512_maskz_loadu_ps(mask, fb + i), sum0);
+    }
+    return _mm512_reduce_add_ps(sum0);
 }
 
 __attribute__((target("avx512f,avx512bw,avx512vl,f16c,fma")))
 static float vec_dot_f16(const void *a, const void *b, size_t bytes) {
     size_t n = bytes / 2;
     const unaligned_f16 *fa = a, *fb = b;
-    __m512 sum = _mm512_setzero_ps();
-
-    for (size_t i = 0; i < n; i += 16) {
-        __mmask16 mask = n - i >= 16 ? 0xFFFF : (__mmask16)((1u << (n - i)) - 1u);
-        sum = _mm512_fmadd_ps(_mm512_cvtph_ps(_mm256_maskz_loadu_epi16(mask, fa + i)), _mm512_cvtph_ps(_mm256_maskz_loadu_epi16(mask, fb + i)), sum);
+    __m512 sum0 = _mm512_setzero_ps();
+    __m512 sum1 = _mm512_setzero_ps();
+    __m512 sum2 = _mm512_setzero_ps();
+    __m512 sum3 = _mm512_setzero_ps();
+    size_t i = 0;
+    for (; i + 63 < n; i += 64) {
+        sum0 = _mm512_fmadd_ps(_mm512_cvtph_ps(_mm256_loadu_epi16(fa + i)), _mm512_cvtph_ps(_mm256_loadu_epi16(fb + i)), sum0);
+        sum1 = _mm512_fmadd_ps(_mm512_cvtph_ps(_mm256_loadu_epi16(fa + i + 16)), _mm512_cvtph_ps(_mm256_loadu_epi16(fb + i + 16)), sum1);
+        sum2 = _mm512_fmadd_ps(_mm512_cvtph_ps(_mm256_loadu_epi16(fa + i + 32)), _mm512_cvtph_ps(_mm256_loadu_epi16(fb + i + 32)), sum2);
+        sum3 = _mm512_fmadd_ps(_mm512_cvtph_ps(_mm256_loadu_epi16(fa + i + 48)), _mm512_cvtph_ps(_mm256_loadu_epi16(fb + i + 48)), sum3);
     }
-
-    return _mm512_reduce_add_ps(sum);
+    sum0 = _mm512_add_ps(sum0, sum1);
+    sum2 = _mm512_add_ps(sum2, sum3);
+    sum0 = _mm512_add_ps(sum0, sum2);
+    for (; i < n; i += 16) {
+        __mmask16 mask = n - i >= 16 ? 0xFFFF : (__mmask16)((1u << (n - i)) - 1u);
+        sum0 = _mm512_fmadd_ps(_mm512_cvtph_ps(_mm256_maskz_loadu_epi16(mask, fa + i)), _mm512_cvtph_ps(_mm256_maskz_loadu_epi16(mask, fb + i)), sum0);
+    }
+    return _mm512_reduce_add_ps(sum0);
 }
 
 __attribute__((target("avx2")))
