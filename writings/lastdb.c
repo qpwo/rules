@@ -1098,8 +1098,22 @@ static void fsync_parent(const char *path)
 
 static int do_compact(const char *path)
 {
+    enum { COMPACT_WRITE_BYTES = 32 * 1024 * 1024 };
+
     int lockfd = open_lockfile(path);
     load_db(path);
+
+    uint64_t live_bytes = 0;
+    for (uint64_t i = 0; i < ht_len; i++) {
+        Record *r = rec_at(ht[i].off1 - 1);
+        if (r->op == OP_DEL) {
+            continue;
+        }
+        if (UINT64_MAX - live_bytes < r->len) {
+            diex("compact live bytes overflow");
+        }
+        live_bytes += r->len;
+    }
 
     char tmp[4096];
     snprintf(tmp, sizeof(tmp), "%s.tmp", path);
@@ -1109,15 +1123,52 @@ static int do_compact(const char *path)
         die("open tmp");
     }
 
+    struct statvfs st;
+    if (!fstatvfs(fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
+        uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
+        uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.1L);
+        if (free_bytes < reserve_bytes || free_bytes - reserve_bytes < live_bytes) {
+            diex("compact needs temp space plus 10 percent disk reserve");
+        }
+    }
+
+    (void)posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
+    reserve_ram(COMPACT_WRITE_BYTES);
+    char *buf = mmap(NULL, COMPACT_WRITE_BYTES, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
+    if (buf == MAP_FAILED) {
+        die("mmap compact");
+    }
+    madvise(buf, COMPACT_WRITE_BYTES, MADV_HUGEPAGE);
+
+    size_t used = 0;
     for (uint64_t off = 0; off < valid_size;) {
         Record *r = rec_at(off);
         Node *n = ht_get(rec_t(r), r->t_len, rec_k(r), r->k_len);
         if (n && (n->off1 - 1) == off && r->op != OP_DEL) {
-            write_all(fd, r, r->len);
+            if (r->len > COMPACT_WRITE_BYTES) {
+                if (used) {
+                    write_all(fd, buf, used);
+                    used = 0;
+                }
+                write_all(fd, r, r->len);
+            } else {
+                if (COMPACT_WRITE_BYTES - used < r->len) {
+                    write_all(fd, buf, used);
+                    used = 0;
+                }
+                memcpy(buf + used, r, r->len);
+                used += r->len;
+            }
         }
         off += r->len;
     }
+    if (used) {
+        write_all(fd, buf, used);
+    }
 
+    if (munmap(buf, COMPACT_WRITE_BYTES)) {
+        die("munmap compact");
+    }
     sync_fd(fd);
     if (close(fd)) {
         die("close");
