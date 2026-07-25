@@ -107,11 +107,32 @@ static uint64_t fnv_u64(uint64_t h, uint64_t x)
 
 static uint64_t key_hash(const char *t, uint16_t tl, const char *k, uint16_t kl)
 {
-    uint64_t h = FNV0;
-    h = fnv_bytes(h, t, tl);
-    h = fnv_u64(h, 0);
-    h = fnv_bytes(h, k, kl);
+    uint64_t th = fnv_bytes(FNV0, t, tl);
+    uint64_t kh = fnv_bytes(FNV0, k, kl);
+    uint64_t h = (th << 32) | (kh >> 32);
     return h ? h : 1;
+}
+
+static void ht_tenant_range(const char *t, uint16_t tl, uint64_t *start_idx, uint64_t *end_idx) {
+    if (!ht_len) { *start_idx = 0; *end_idx = 0; return; }
+    uint64_t th = fnv_bytes(FNV0, t, tl);
+    uint64_t h_start = (th << 32);
+    uint64_t h_end = h_start | 0xFFFFFFFFULL;
+    if (h_start == 0) h_start = 1;
+    uint64_t l = 0, r = ht_len;
+    while (l < r) {
+        uint64_t m = l + (r - l) / 2;
+        if (ht[m].hash < h_start) l = m + 1;
+        else r = m;
+    }
+    *start_idx = l;
+    r = ht_len;
+    while (l < r) {
+        uint64_t m = l + (r - l) / 2;
+        if (ht[m].hash <= h_end) l = m + 1;
+        else r = m;
+    }
+    *end_idx = l;
 }
 
 static uint64_t rec_check(const Record *r, const char *t, const char *k, const char *v)
@@ -906,8 +927,10 @@ static int do_search(const char *t, int argc, char **argv)
         }
     }
 
+    uint64_t start_idx, end_idx;
+    ht_tenant_range(t, tl, &start_idx, &end_idx);
     #pragma omp parallel for schedule(dynamic, 1024) num_threads(worker_threads())
-    for (uint64_t i = 0; i < ht_len; i++) {
+    for (uint64_t i = start_idx; i < end_idx; i++) {
         Record *r = rec_at(ht[i].off1 - 1);
         if (r->op == OP_DEL || r->t_len != tl) {
             continue;
@@ -942,7 +965,9 @@ static int do_scan(const char *t, const char *prefix)
         return 0;
     }
 
-    for (uint64_t i = 0; i < ht_len; i++) {
+    uint64_t start_idx, end_idx;
+    ht_tenant_range(t, tl, &start_idx, &end_idx);
+    for (uint64_t i = start_idx; i < end_idx; i++) {
         Record *r = rec_at(ht[i].off1 - 1);
         if (r->op == OP_DEL || r->t_len != tl) {
             continue;
@@ -1102,6 +1127,9 @@ static int do_closest(const char *path, const char *type, const char *t, const c
     const char *best_k = NULL;
     uint16_t best_k_len = 0;
 
+    uint64_t start_idx, end_idx;
+    ht_tenant_range(t, r->t_len, &start_idx, &end_idx);
+
     #pragma omp parallel num_threads(worker_threads())
     {
         float local_best = -1e30f;
@@ -1109,7 +1137,7 @@ static int do_closest(const char *path, const char *type, const char *t, const c
         uint16_t local_k_len = 0;
 
         #pragma omp for schedule(dynamic, 1024)
-        for (uint64_t i = 0; i < ht_len; i++) {
+        for (uint64_t i = start_idx; i < end_idx; i++) {
             Record *c = rec_at(ht[i].off1 - 1);
             if (c->op == OP_DEL || c->t_len != r->t_len || c->v_len != r->v_len) continue;
             if (ht[i].off1 == n->off1) continue; // skip self
@@ -1431,9 +1459,11 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 #pragma omp critical (db)
                                 {
                                     load_db(db_path);
-                                    for (uint64_t i = 0; i < ht_len; i++) {
-                                        Record *r = rec_at(ht[i].off1 - 1);
-                                        if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
+                                uint64_t start_idx, end_idx;
+                                ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
+                                for (uint64_t i = start_idx; i < end_idx; i++) {
+                                    Record *r = rec_at(ht[i].off1 - 1);
+                                    if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
                                         int match = 0;
                                         if (op == 4) {
                                             match = (kl == 0 || (r->k_len >= kl && !memcmp(rec_k(r), k, kl)));
@@ -1575,10 +1605,11 @@ int main(int argc, char **argv)
                 uint64_t c = 0;
                 size_t tl = strlen(args[1]);
                 size_t pl = n == 3 ? strlen(args[2]) : 0;
-                #pragma omp parallel for reduction(+:c) schedule(static, 4096) num_threads(worker_threads())
-                for (uint64_t i = 0; i < ht_len; i++) {
-                    Record *r = rec_at(ht[i].off1 - 1);
-                    if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
+            uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
+            #pragma omp parallel for reduction(+:c) schedule(static, 4096) num_threads(worker_threads())
+            for (uint64_t i = start_idx; i < end_idx; i++) {
+                Record *r = rec_at(ht[i].off1 - 1);
+                if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
                     if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
                     c++;
                 }
@@ -1588,10 +1619,11 @@ int main(int argc, char **argv)
                 double s = 0;
                 size_t tl = strlen(args[1]);
                 size_t pl = n == 3 ? strlen(args[2]) : 0;
-                #pragma omp parallel for reduction(+:s) schedule(static, 4096) num_threads(worker_threads())
-                for (uint64_t i = 0; i < ht_len; i++) {
-                    Record *r = rec_at(ht[i].off1 - 1);
-                    if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
+            uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
+            #pragma omp parallel for reduction(+:s) schedule(static, 4096) num_threads(worker_threads())
+            for (uint64_t i = start_idx; i < end_idx; i++) {
+                Record *r = rec_at(ht[i].off1 - 1);
+                if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
                     if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
                     if (r->v_len > 0 && r->v_len < 64) {
                         char buf[64] = {0};
