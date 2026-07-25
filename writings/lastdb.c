@@ -405,14 +405,10 @@ static void append_fd(int fd, const char *t, const char *k, const char *v, uint8
 
 static int open_lockfile(const char *path)
 {
-    char *lock = malloc(strlen(path) + 6);
-    if (!lock) {
-        die("malloc");
-    }
-    sprintf(lock, "%s.lock", path);
+    char lock[4096];
+    snprintf(lock, sizeof(lock), "%s.lock", path);
 
     int fd = open(lock, O_RDWR | O_CREAT | O_CLOEXEC, 0666);
-    free(lock);
     if (fd < 0) {
         die("open lock");
     }
@@ -812,10 +808,8 @@ static void write_all(int fd, const void *p, size_t n)
 
 static void fsync_parent(const char *path)
 {
-    char *dir = strdup(path);
-    if (!dir) {
-        die("strdup");
-    }
+    char dir[4096];
+    snprintf(dir, sizeof(dir), "%s", path);
 
     char *slash = strrchr(dir, '/');
     if (!slash) {
@@ -830,10 +824,9 @@ static void fsync_parent(const char *path)
     if (fd >= 0) {
         sync_fd(fd);
         if (close(fd)) {
-        die("close");
+            die("close");
+        }
     }
-    }
-    free(dir);
 }
 
 static int do_compact(const char *path)
@@ -841,11 +834,8 @@ static int do_compact(const char *path)
     int lockfd = open_lockfile(path);
     load_db(path);
 
-    char *tmp = malloc(strlen(path) + 5);
-    if (!tmp) {
-        die("malloc");
-    }
-    sprintf(tmp, "%s.tmp", path);
+    char tmp[4096];
+    snprintf(tmp, sizeof(tmp), "%s.tmp", path);
 
     int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0666);
     if (fd < 0) {
@@ -870,7 +860,6 @@ static int do_compact(const char *path)
     }
     fsync_parent(path);
     close(lockfd);
-    free(tmp);
     return 0;
 }
 
