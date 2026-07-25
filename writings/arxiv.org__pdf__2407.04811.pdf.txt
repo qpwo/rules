@@ -1,0 +1,1994 @@
+begin https://arxiv.org/pdf/2407.04811.pdf
+Downloading https://arxiv.org/pdf/2407.04811.pdf to /Users/ubuntu/.cache/qvl_downloaded_2ca26a97.pdf...
+Starting qvl-pdf-to-md: /Users/ubuntu/.cache/qvl_downloaded_2ca26a97.pdf -> /Users/ubuntu/.cache/qvl_downloaded_2ca26a97.pdf_143885.md
+Rendering and resizing 44 pages in parallel...
+Found/rendered 44 pages in /Users/ubuntu/.cache/qvl-pdf-to-md/qvl_downloaded_2ca26a97.pdf_143885 in 2.33s
+Page 42 done via selecstar in 27.2s
+Page 41 done via selecstar in 29.3s
+Page 13 done via selecstar in 34.7s
+Page 6 done via selecstar in 36.4s
+Page 18 done via selecstar in 36.6s
+Page 19 done via selecstar in 38.0s
+Page 22 done via selecstar in 40.5s
+Page 25 done via selecstar in 43.2s
+Page 0 done via selecstar in 43.9s
+Page 17 done via selecstar in 44.0s
+Page 29 done via selecstar in 44.1s
+Page 31 done via selecstar in 44.2s
+Page 33 done via selecstar in 44.7s
+Page 9 done via selecstar in 46.1s
+Page 34 done via selecstar in 47.9s
+Page 35 done via selecstar in 48.0s
+Page 43 done via selecstar in 48.3s
+Page 16 done via selecstar in 49.0s
+Page 7 done via selecstar in 49.2s
+Page 14 done via selecstar in 50.5s
+Page 27 done via selecstar in 50.8s
+Page 24 done via selecstar in 51.1s
+Page 5 done via selecstar in 52.3s
+Page 40 done via selecstar in 52.6s
+Page 26 done via selecstar in 54.2s
+Page 30 done via selecstar in 54.3s
+Page 3 done via selecstar in 54.9s
+Page 12 done via selecstar in 56.7s
+Page 38 done via selecstar in 58.2s
+Page 10 done via selecstar in 58.4s
+Page 37 done via selecstar in 59.7s
+Page 32 done via selecstar in 60.9s
+Page 28 done via selecstar in 62.3s
+Page 11 done via selecstar in 63.1s
+Page 20 done via selecstar in 63.2s
+Page 2 done via selecstar in 65.7s
+Page 21 done via selecstar in 67.0s
+Page 23 done via selecstar in 67.0s
+Page 15 done via selecstar in 67.4s
+Page 8 done via selecstar in 68.1s
+Page 36 done via selecstar in 68.6s
+Page 4 done via selecstar in 69.6s
+Page 39 done via selecstar in 71.3s
+Page 1 done via selecstar in 71.8s
+Writing to /Users/ubuntu/.cache/qvl_downloaded_2ca26a97.pdf_143885.md
+
+
+Published as a conference paper at ICLR 2025
+
+# SIMPLIFYING DEEP TEMPORAL DIFFERENCE LEARNING
+
+**Matteo Gallicci**\*<sup>1</sup> **Mattie Fellows**\*<sup>2</sup> **Benjamin Ellis**<sup>2</sup> **Mario Martin**<sup>1</sup>
+**Bartomeu Pou**<sup>1,3</sup> **Ivan Masmitja**<sup>4</sup> **Jakob Nicolaus Foerster**<sup>2</sup>
+
+<sup>1</sup>Universitat Politècnica de Catalunya
+<sup>2</sup>University of Oxford
+<sup>3</sup>Barcelona Supercomputing Center
+<sup>4</sup>Institut de Ciències del Mar
+
+{gallici,mmartin}@cs.upc.edu
+{matthew.fellows,benjamin.ellis,jakob.foerster}@eng.ox.ac.uk
+bartomeu.poumulet@bsc.es masmitja@icm.csic.es
+
+## ABSTRACT
+
+Q-learning played a foundational role in the field reinforcement learning (RL). However, TD algorithms with off-policy data, such as Q-learning, or nonlinear function approximation like deep neural networks require several additional tricks to stabilise training, primarily a large replay buffer and target networks. Unfortunately, the delayed updating of frozen network parameters in the target network harms the sample efficiency and, similarly, the large replay buffer introduces memory and implementation overheads. In this paper, we investigate whether it is possible to accelerate and simplify off-policy TD training while maintaining its stability. Our key *theoretical* result demonstrates for the first time that regularisation techniques such as LayerNorm can yield provably convergent TD algorithms without the need for a target network or replay buffer, even with off-policy data. *Empirically*, we find that online, parallelised sampling enabled by vectorised environments stabilises training without the need for a large replay buffer. Motivated by these findings, we propose PQN, our *simplified* deep online Q-Learning algorithm. Surprisingly, this simple algorithm is competitive with more complex methods like: Rainbow in Atari, PPO-RNN in Craftax, QMix in Smax, and can be up to 50x faster than traditional DQN without sacrificing sample efficiency. In an era where PPO has become the go-to RL algorithm, PQN reestablishes off-policy Q-learning as a viable alternative. We open-source our code at: https://github.com/mttga/purejaxql.
+
+## 1 INTRODUCTION
+
+In reinforcement learning (RL), the challenge of developing simple, efficient and stable algorithms remains open. Temporal difference (TD) methods have the potential to be simple and efficient, but are notoriously unstable when combined with either off-policy sampling or nonlinear function approximation (Tsitsiklis & Van Roy, 1997). Starting with the introduction of the seminal deep Q-network (DQN)(Mnih et al., 2013), many tricks have been developed to stabilise TD for use with deep neural network function approximators, most notably: the introduction of batched learning through a replay buffer (Mnih et al., 2013), target networks (Mnih et al., 2015), trust region based methods (Schulman et al., 2015), double Q-networks (Wang & Blei, 2017; Fujimoto et al., 2018), maximum entropy methods (Haarnoja et al., 2017; 2018) and ensembling (Chen et al., 2021). Out of this myriad of algorithmic combinations, proximal policy optimisation (PPO) (Schulman et al., 2017) has emerged as the de facto choice for RL practitioners, proving to be a strong and efficient baseline across popular RL domains. Unfortunately, PPO is far from stable and simple: PPO does not have provable convergence properties for nonlinear function approximation and requires extensive tuning and additional tricks to implement effectively (Huang et al., 2022a; Engstrom et al., 2020).
+
+Recent empirical studies (Lyle et al., 2023; 2024; Bhatt et al., 2024) provide evidence that TD can be stabilised without target networks by introducing regularisation such as BatchNorm (Toffe & Szegedy, 2015) and LayerNorm (Ba et al., 2016; Nauman et al., 2024) into the Q-function approximator. Little is known about why these techniques work or whether they have unintended side-effects. Motivated
+
+\*Equal Contribution.
+
+Published as a conference paper at ICLR 2025
+
+by these findings, we ask: are regularisation techniques such as BatchNorm and LayerNorm the key to unlocking simple, efficient and stable RL algorithms? To answer this question, we provide a rigorous analysis of regularised TD. We summarise our core theoretical contributions as: **I)** Introduce a highly general and widely applicable analysis of TD stability; **II)** we show introducing LayerNorm and $\ell^2$ regularisation into the $Q$-function approximator leads to provable convergence, stabilising nonlinear and/or off-policy TD *without the need for target networks or replay buffers*.
+
+Many applications in RL allow for multiple actions to be taken in an environment at once, solving a parallel world problem. Guided by our theoretical insights, we develop a modern off-policy value-based TD method which we call a parallelised $Q$-network (PQN): for simplicity, we revisit the original $Q$-learning algorithm (Watkins, 1989), which updates a $Q$-function approximator without a target network. A recent breakthrough in RL has been running the environment and agent jointly on the GPU (Makoviychuk et al., 2021; Gu et al., 2023; Lu et al., 2022; Matthews et al., 2024b; Rutherford et al., 2023; Lange, 2022). However, the replay buffer's large memory footprint makes pure-GPU training impractical with traditional DQN. With the goal of enabling $Q$-learning in pure-GPU setting, we propose replacing a large replay buffer with a synchronous update across a large number of parallel environments, reducing memory requirements. For stability, we integrate our theoretical findings in the form of a regularised deep $Q$ network. We provide a schematic of our proposed PQN algorithm in Fig. 1d.
+
+Figure 1: Classical $Q$-Learning directly interacts with the environment and updates the learned $Q$-values at each transition. In contrast, DQN stores experiences in a replay buffer and trains a $Q$-network using minibatches sampled from this buffer. Distributed DQN enhances this approach by collecting experiences in parallel threads, while a separate process continually trains the network (i.e. a learner module and multiple actors modules run concurrently and independently). Similar to online $Q$-Learning, PQN trains a $Q$-network with the experiences as they are collected in the same process, but conducts interactions and learning in batches.
+
+```jsonl
+{"subfigure": "a", "type": "node", "label": "Environment"}
+{"subfigure": "a", "type": "node", "label": "Q-Values"}
+{"subfigure": "a", "type": "edge", "source": "Environment", "target": "Q-Values", "label": "Interact"}
+{"subfigure": "a", "type": "edge", "source": "Q-Values", "target": "Environment", "label": "Learning Experience"}
+{"subfigure": "b", "type": "node", "label": "Environment"}
+{"subfigure": "b", "type": "node", "label": "Replay Buffer"}
+{"subfigure": "b", "type": "node", "label": "Q-Network"}
+{"subfigure": "b", "type": "edge", "source": "Environment", "target": "Replay Buffer", "label": "New Experience"}
+{"subfigure": "b", "type": "edge", "source": "Q-Network", "target": "Environment", "label": "Interact"}
+{"subfigure": "b", "type": "edge", "source": "Replay Buffer", "target": "Q-Network", "label": "Learning Batch"}
+{"subfigure": "c", "type": "node", "label": "Actors"}
+{"subfigure": "c", "type": "node", "label": "Environment", "parent": "Actors"}
+{"subfigure": "c", "type": "node", "label": "Learner"}
+{"subfigure": "c", "type": "node", "label": "Replay Buffer", "parent": "Learner"}
+{"subfigure": "c", "type": "node", "label": "Q-Network", "parent": "Learner"}
+{"subfigure": "c", "type": "edge", "source": "Actors", "target": "Learner", "label": "Batched Interact"}
+{"subfigure": "c", "type": "edge", "source": "Learner", "target": "Actors", "label": "Copy Weights"}
+{"subfigure": "c", "type": "edge", "source": "Replay Buffer", "target": "Q-Network", "label": "Learning Batch"}
+{"subfigure": "d", "type": "node", "label": "Vectorised Environment"}
+{"subfigure": "d", "type": "node", "label": "Q-Network"}
+{"subfigure": "d", "type": "edge", "source": "Vectorised Environment", "target": "Q-Network", "label": "Batched Interact"}
+{"subfigure": "d", "type": "edge", "source": "Q-Network", "target": "Vectorised Environment", "label": "Learning Batch"}
+```
+
+To validate our theoretical results, we evaluated PQN in Baird's counterexample, a challenging domain that is provably divergent for off-policy methods (Baird, 1995). Our results show that PQN can converge where non-regularised variants fail. We provide an extensive empirical evaluation to test the performance of PQN in single-agent and multi-agent settings. Despite its simplicity, our algorithm is competitive in a range of tasks; notably, PQN achieves high performances in just a few hours in many games of the Arcade Learning Environment (ALE) (Bellemare et al., 2013), competes effectively with PPO on the open-ended Craftax task (Matthews et al., 2024a), and stands alongside state-of-the-art Multi-Agent RL (MARL) algorithms, such as MAPPO in Overcooked (Carroll et al., 2019) and Hanabi (Bard et al., 2020) and Qmix in Smax (Rutherford et al., 2023). Despite not sampling from a large buffer of historic data, the faster convergence of PQN demonstrates that the sample efficiency loss can be minimal. This positions PQN as a strong method for efficient and stable RL in the age of deep vectorised Reinforcement Learning (DVRL).
+
+We summarise our empirical contributions: **I)** we propose PQN, a simplified, parallelised, and normalised version of DQN which eliminates the use of both large replay buffers and the target network; **II)** we demonstrate that PQN is fast, stable, simple to implement, uses few hyperparameters, and is compatible with pure-GPU training and temporal-based networks such as RNNs, and **III)** our extensive empirical study demonstrates PQN achieves competitive results in *significantly less wall-clock time* than existing state-of-the-art methods.
+
+## 2 PRELIMINARIES
+
+Let $\|\cdot\|$ denote the $\ell^2$-norm and $\mathcal{P}(\mathcal{X})$ the set of all probability distributions over a set $\mathcal{X}$.
+
+2
+
+Published as a conference paper at ICLR 2025
+
+## 2.1 REINFORCEMENT LEARNING
+
+In this paper, we consider the infinite horizon discounted RL setting, formalised as a Markov Decision Process (MDP) (Bellman, 1957; Puterman, 2014): $\mathcal{M} := \langle \mathcal{S}, \mathcal{A}, P_S, P_0, P_R, \gamma \rangle$ with bounded state space $\mathcal{S}$, bounded action space $\mathcal{A}$, transition distribution $P_S : \mathcal{S} \times \mathcal{A} \to \mathcal{P}(\mathcal{S})$, initial state distribution $P_0 \in \mathcal{P}(\mathcal{S})$, bounded stochastic reward distribution $P_R : \mathcal{S} \times \mathcal{A} \to \mathcal{P}([-r_{max}, r_{max}])$ where $r_{max} \in \mathbb{R} < \infty$ and scalar discount factor $\gamma \in [0, 1)$. An agent in state $s_t \in \mathcal{S}$ taking action $a_t \in \mathcal{A}$ observes a reward $r_t \sim P_R(s_t, a_t)$. The agent's behaviour is determined by a policy that maps a state to a distribution over actions: $\pi : \mathcal{S} \to \mathcal{P}(\mathcal{A})$ and the agent transitions to a new state $s_{t+1} \sim P_S(s_t, a_t)$. As the agent interacts with the environment through a policy $\pi$, it follows a trajectory $\tau_t := (s_0, a_0, r_0, s_1, a_1, r_1, \dots s_{t-1}, a_{t-1}, r_{t-1}, s_t)$ with distribution $P^\pi_t$. For simplicity, we denote state-action pair $x_t := (s_t, a_t) \in \mathcal{X}$ where $\mathcal{X} := \mathcal{S} \times \mathcal{A}$. The state-action pair transitions under policy $\pi$ according to the distribution $P^\pi_X(x) : \mathcal{X} \to \mathcal{P}(\mathcal{X})$.
+
+The agent's goal is to learn an optimal policy of behaviour $\pi^* \in \Pi^*$ by optimising the expected discounted sum of rewards over all possible trajectories $J^\pi$, where: $\Pi^* := \arg \max_\pi J^\pi$ is the set of optimal policies for the objective:
+
+$$ J^\pi := \mathbb{E}_{\tau_\infty \sim P^\pi_\infty} \left[ \sum_{t=0}^\infty \gamma^t r_t \right] . $$
+
+The expected discounted reward for an agent in state $s_t$ for taking action $a_t$ is characterised by a $Q$-function, which is defined recursively through the Bellman equation: $Q^\pi(x_t) = \mathcal{B}^\pi[Q^\pi](x_t)$, where the Bellman operator $\mathcal{B}^\pi$ projects functions forwards by one step through the dynamics of the MDP:
+
+$$ \mathcal{B}^\pi[Q^\pi](x_t) := \mathbb{E}_{x_{t+1} \sim P^\pi_X(x_t), r_t \sim P_R(x_t)} [r_t + \gamma Q^\pi(x_{t+1})] . $$
+
+Of special interest is the $Q$-function for an optimal policy $\pi^*$, which we denote as $Q^*(x_t) := Q^{\pi^*}(x_t)$. The optimal $Q$-function satisfies the optimal Bellman equation $Q^*(x_t) = \mathcal{B}^*[Q^*](x_t)$, where $\mathcal{B}^*$ is the optimal Bellman operator:
+
+$$ \mathcal{B}^*[Q^*](x_t) := \mathbb{E}_{s_{t+1} \sim P_S(s_t), r_t \sim P_R(x_t)} \left[ r_t + \gamma \max_{a'} Q^*(s_{t+1}, a') \right] . $$
+
+## 2.2 TEMPORAL DIFFERENCE METHODS
+
+Many RL algorithms employ TD learning for policy evaluation, which combines bootstrapping, state samples and sampled rewards to estimate the expectation in the Bellman operator (Sutton, 1988). We introduce a $Q$-function approximation $Q_\phi : \mathcal{X} \to \mathbb{R}$ parametrised by $\phi \in \Phi$ to represent the space of $Q$-functions. We assume that $Q_\phi$ is initialised from a distribution $\phi_0 \sim P_\Phi$. In their simplest form, TD methods estimate the application of a Bellman operator by updating the $Q$-function approximator parameters according to:
+
+$$ \phi_{i+1} = \phi_i + \alpha_i \left( r + \gamma Q_{\phi_i}(x') - Q_{\phi_i}(x) \right) \nabla_\phi Q_{\phi_i}(x), \quad (1) $$
+
+where $x \sim d^\mu, r \sim P_R(x), x' \sim P^\pi_X(x)$ and $\alpha_i$ is a sequence of stepsizes satisfying the standard Robbins-Munro conditions (Robbins & Monro, 1951):
+
+**Assumption 1 (RM Conditions).** We assume $\alpha_i > 0$ with $\sum_{i=0}^\infty \alpha_i = \infty$ and $\sum_{i=0}^\infty \alpha_i^2 < \infty$.
+
+Here $d^\mu \in \mathcal{P}(\mathcal{X})$ is a sampling distribution, and $\mu$ is a sampling policy that may be different from the target policy $\pi$. Methods for which the sampling policy differs from the target policy are known as *off-policy* methods. In this paper, we will study the $Q$-learning (Watkins, 1989; Dayan, 1992) TD update: $\phi_{i+1} = \phi_i + \alpha_i (r + \gamma \sup_{a'} Q_{\phi_i}(s', a') - Q_{\phi_i}(x)) \nabla_\phi Q_{\phi_i}(x)$, which aims to learn an optimal $Q$-function by estimating the optimal Bellman operator. As data in $Q$-learning is gathered from an exploratory policy $\mu$ that is not optimal, $Q$-learning is an inherently off-policy algorithm. For simplicity of notation we define the tuple $\varsigma := (x, r, x')$ with distribution $P_\varsigma$ and the TD-error vector as:
+
+$$ \delta(\phi, \varsigma) := \left( r + \gamma Q_\phi(x') - Q_\phi(x) \right) \nabla_\phi Q_\phi(x), \quad (2) $$
+
+allowing us to write the TD parameter update as:
+
+$$ \phi_{i+1} = \phi_i + \alpha_i \delta(\phi, \varsigma). $$
+
+Typically, $d^\mu$ is the stationary state-action distribution of an ergodic Markov chain but may be another offline distribution such as a distribution induced by a replay buffer. We introduce the following mild regularity assumptions for our analysis.
+
+3
+
+
+
+Published as a conference paper at ICLR 2025
+
+**Assumption 2 (Regularity Assumptions).** Assume that $\Phi \subset \mathbb{R}^d$ is compact and convex and $\delta(\phi, \varsigma)$ is Lipschitz in $\phi, \varsigma$. When updating TD, $x \sim d^\mu$ is either sampled i.i.d. from a distribution with support over $\mathcal{X}$ or is sampled from a geometrically ergodic Markov chain with stationary distribution $d^\mu$.
+
+The condition of $\Phi \subset \mathbb{R}^d$ being compact is ubiquitous in TD theory and stochastic approximation (Papavassiliou & Russell, 1999; Nemirovski et al., 2009; Maei et al., 2010; Kushner, 2010; Lacoste-Julien et al., 2012; Bhandari et al., 2018; Wang et al., 2020; Yang et al., 2019; Zhang et al., 2021) and can be achieved by projecting any $\phi \notin \Phi$ back into $\Phi$ using the projection $P_\Phi(\phi') := \arg\min_{\phi \in \Phi} \|\phi - \phi'\|$. Projection is a mathematical formality and should not be required in practice as $\Phi$ can be made large enough to contain all updates when TD is stable and a suitable stepsize regime is chosen. Finally, geometric ergodicity extends traditional notions of aperiodicity and irreducibility in discrete MDPs to the more general continuous state-action space formulations (see Roberts & Rosenthal (2004) for details). It is one of the weakest ergodicity assumptions.
+
+We denote the expected TD-error vector as: $\delta(\phi) := \mathbb{E}_{\varsigma \sim P_\varsigma}[\delta(\phi, \varsigma)]$, and define the set of TD fixed points as: $\phi^* \in \{\phi | \delta(\phi) = 0\}$. If a TD algorithm converges, it must converge to a TD fixed point as the expected parameter update is zero for all $\phi^*$. We remark that convergence to a TD fixed point does not imply a value error of zero between the approximate and true $Q$-function (Kolter, 2011).
+
+### 2.3 Vectorised Environments
+
+Parallelising the interactions between an RL agent and a learning environment is a standard method for speeding up training. In classical frameworks like Gymnasium (Towers et al., 2023), this is achieved by processing multiple environments via multi-threading. In more recent GPU-based frameworks like IsaacGym (Makoviychuk et al., 2021), ManiSkill2 (Gu et al., 2023), Jumanji (Bonnet et al., 2024), Craftax (Matthews et al., 2024b), JaxMARL (Rutherford et al., 2023) the environments' operations are *vectorised*, meaning that they are performed together using batched tensors. This allows an agent to easily interact with thousands of environments, and it enables the compilation of end-to-end GPU learning pipelines, which can accelerate the training of on-policy agents like PPO and A2C by orders of magnitude (Makoviychuk et al., 2021; Weng et al., 2022; Gu et al., 2023; Lu et al., 2022). Unfortunately, end-to-end single-GPU training is not compatible with traditional off-policy methods like DQN for two reasons: firstly, maintaining a replay buffer in GPU is not feasible in complex environments, as it would occupy most of the GPU memory; and secondly, the convergence of off-policy methods demands a very high number of updates in relation to the sampled experiences (DQN traditionally performs one gradient step per environment step). Commonly, parallelisation of Q-Learning (like in Ape-X (Horgan et al., 2018), R2D2 (Kapturowski et al., 2018) and a recent method presented in Li et al. (2023)) is achieved by continuously training the Q-network in a separate process in order to keep up with the fast sampling (see Fig. 1c), a setup that is not feasible in a single pure-GPU setting. For
+
+Published as a conference paper at ICLR 2025
+
+guaranteed in the general case and convergence of TD methods has been studied extensively (Watkins & Dayan, 1992; Tsitsiklis & Van Roy, 1997; Dalal et al., 2017; Bhandari et al., 2018; Srikant & Ying, 2019). We now extend the methods of Fellows et al. (2023) to study general nonlinear TD in a Markov chain, meaning our analysis applies exactly to TD methods used in practice. Key to determining stability of the TD updates is establishing that the Jacobian is *negative definite*:
+
+> **TD Stability Criterion:** Define the TD Jacobian as $J(\phi) := \nabla_\phi \delta(\phi)$. The TD stability criterion holds if the Jacobian is negative definite, that is: $v^\top J(\phi) v < 0$ for any test vector $v \neq 0$ and $\phi \in \Phi$, except possibly on a set of measure 0.
+
+Intuitively, the Jacobian replaces the Hessian from classical optimisation theory (Boyd & Vandenberghe, 2004), which measures curvature of the underlying objective, thereby ensuring convexity. As TD methods are not a gradient of any objective, the TD stability condition instead implies $\delta(\phi_t)^\top (\phi_t - \phi^*) < 0$ for all $\phi_t$, ensuring the expected update vector will always move the parameters closer to a fixed point with a sufficiently small stepsize. We sketch a geometric interpretation in Fig. 2. Mathematically, if the TD stability criterion holds, then as stepsizes approach zero in the limit $\lim_{i \to \infty} \alpha_i = 0$, there exists some $t$ such that for every $i > t$ each update is a contraction mapping:
+
+$$ \mathbb{E} \left[ \| \phi_{i+1} - \phi^* \| \right] < \mathbb{E} \left[ \| \phi_i - \phi^* \| \right]. $$
+
+This key condition allows us to prove convergence of TD:
+
+**Theorem 1 (TD Stability).** Let Assumptions 1 and 2 hold. If the TD criterion holds then the TD updates in Eq. (1) converge with: $\lim_{i \to \infty} \mathbb{E} \left[ \| \phi_i - \phi^* \|^2 \right] = 0$.
+
+We can split the TD Jacobian condition into two separate off-policy and nonlinear components: $v^\top J(\phi) v = \mathcal{C}_{\text{OffPolicy}}(Q_\phi, d^\mu) + \mathcal{C}_{\text{Nonlinear}}(Q_\phi)$, whose negativity ensure the overall TD stability criterion is satisfied (see Appendix B.1.). This naturally yields two forms of TD instability:
+
+**Off-policy Instability:** The TD stability criterion can be violated if:
+
+$$ \mathcal{C}_{\text{OffPolicy}}(Q_\phi, d^\mu) := \gamma \mathbb{E}_{\zeta \sim P_\zeta} \left[ v^\top \nabla_\phi Q_\phi(x') v^\top \nabla_\phi Q_\phi(x) \right] - \mathbb{E}_{x \sim d^\mu} \left[ \left( v^\top \nabla_\phi Q_\phi(x) \right)^2 \right] < 0, \quad (3) $$
+
+does not hold for any test vector $v$. To better understand the off-policy component, we invoke the Cauchy-Schwarz inequality to show:
+
+$$ \mathbb{E}_{\zeta \sim P_\zeta} \left[ \left( v^\top \nabla_\phi Q_\phi(x') \right)^2 \right] \leq \mathbb{E}_{x \sim d^\mu} \left[ \left( v^\top \nabla_\phi Q_\phi(x) \right)^2 \right], $$
+
+is key to proving $\mathcal{C}_{\text{OffPolicy}}(Q_\phi, d^\mu) < 0$ (see Appendix B.1 for a derivation). Unfortunately, ergodic theory reveals this condition only holds in the *on-policy* sampling regime, i.e. when $d^\mu = d^\pi$, for both i.i.d. or Markov chain sampling. For off-policy sampling, the distributional shift between the target policy $\pi$ and the sampling policy $\mu$ can cause the expectation $\mathbb{E}_{\zeta \sim P_\zeta} \left[ \left( v^\top \nabla_\phi Q_\phi(x') \right)^2 \right]$ to be arbitrarily large. We conclude that $\mathcal{C}_{\text{OffPolicy}}(Q_\phi, d^\mu)$ characterises the degree of distributional shift that TD can tolerate before becoming unstable and *off-policy sampling* is a key source of instability in TD, especially in algorithms such as *Q-learning*.
+
+**Nonlinear Instability:** The TD stability criterion can be violated if:
+
+$$ \mathcal{C}_{\text{Nonlinear}}(Q_\phi) := \mathbb{E}_{\zeta \sim P_\zeta} \left[ (r + \gamma Q_\phi(x') - Q_\phi(x)) v^\top \nabla^2_\phi Q_\phi(x') v \right] < 0, \quad (4) $$
+
+does not hold for any test vector $v$. This condition does not apply in the linear case as second order derivatives are zero: $\nabla^2_\phi Q_\phi(x) = 0$. In the nonlinear case, the left hand side of the inequality can be arbitrarily positive depending upon the specific MDP and choice of function approximator. Hence *nonlinearity* is a key source of instability in TD which is characterised by $\mathcal{C}_{\text{Nonlinear}}(Q_\phi)$. Together both off-policy and nonlinear instability formalise the *deadly triad* (Sutton & Barto, 2018a; van Hasselt et al., 2018) and TD can be unstable if *either* Conditions 3 or 4 are not satisfied. We now investigate how LayerNorm with $\ell^2$ regularisation can tackle these sources of instability.
+
+5
+
+
+
+Published as a conference paper at ICLR 2025
+
+### 3.2 STABILISING TD WITH LAYERNORM + ℓ² REGULARISATION
+
+To understand how LayerNorm with ℓ² regularisation stabilises TD, we study the following Q-function approximator:
+
+$$Q_\phi^k(x) = w^\top \sigma_{\text{Post}} \circ \text{LayerNorm}^k [\sigma_{\text{Pre}} \circ Mx]. \quad (5)$$
+
+Here $\phi = [w^\top, \text{Vec}(M)^\top]^\top$ is the parameter vector where $M \in \mathbb{R}^{k \times d}$ is a $k \times d$ matrix where each row $\|m_i\|$ is bounded, $w \in \mathbb{R}^k$ is a vector of final layer weights where $\|w\|$ is bounded and $\sigma_{\text{Pre}}$ and $\sigma_{\text{Post}}$ are element-wise $C^2$ continuous activations with bounded 2nd order derivatives. We assume the final activation $\sigma_{\text{Post}}$ is $L_{\text{Post}}$-Lipschitz with $\sigma_{\text{Post}}(0) = 0$ (e.g. tanh, identity, GELU, ELU...). LayerNorm (Ba et al., 2016) is defined element-wise as:
+
+$$ \text{LayerNorm}_i^k [f(x)] := \frac{1}{\sqrt{k}} \cdot \frac{f_i(x) - \frac{1}{k} \sum_{j=0}^{k-1} f_j(x)}{\sqrt{\frac{1}{k} \sum_{i=0}^{k-1} (f_i(x) - \frac{1}{k} \sum_{j=0}^{k-1} f_j(x))^2 + \epsilon}}, \quad (6) $$
+
+where $\epsilon > 0$ is a small constant introduced for numerical stability. Deeper networks with more LayerNorm layers may be used in practice, however our analysis reveals that only the final layer weights affect the stability of TD with wide LayerNorm neural networks. We observe that adding LayerNorm does not affect the representational capacity of the network as it merely rescales the input according to a standard Gaussian. The output is then rescaled due to the final linear layer. As $k$ increases, the empirical mean and standard deviations in Eq. (6) approach their true expectations, thereby increasing the degree of normalisation provided. Using the LayerNorm Q-function, we can bound the off-policy and nonlinear components of the TD stability condition:
+
+**Lemma 2.** *Let Assumption 2 apply. Let $v_w$ be the first $k$ components of the test vector $v = [v_w^\top, v_M^\top]^\top$, associated with final layer parameters $w$, and $v_M$ be the remaining components, associated with the matrix parameters $\text{Vec}(M)$. Using the LayerNorm Q-function defined in Eq. (5):*
+
+```jsonl
+{"Label": "Off-Policy Bound", "Equation": "C_{OffPolicy}(Q_\\phi^k, d^\\mu) \\leq \\|v_w \\cdot \\gamma^{L_{Post}/2}\\|^2 + \\mathcal{O}\\left(\\|v_M\\|^2/k\\right)"}
+{"Label": "Nonlinear Bound", "Equation": "C_{Nonlinear}(Q_\\phi^k) = \\mathcal{O}\\left(\\|v\\|^2/\\sqrt{k}\\right)"}
+```
+
+*almost surely for any test vector $v$ and any state-action transition pair $x, x' \\in \\mathcal{X}$.*
+
+Analysis in Eq. (7) and Eq. (8) of Lemma 2 reveals that as the degree of regularisation increases, that is in the limit $k \\to \\infty$, all nonlinear instability can be mitigated: $\\lim_{k \\to \\infty} C_{Nonlinear}(Q_\\phi^k) = 0$ and a residual term is left in the off-policy bound: $\\lim_{k \\to \\infty} C_{OffPolicy}(Q_\\phi^k, d^\\mu) \\leq \\|v_w \\cdot \\gamma^{L_{Post}/2}\\|^2$. The nonlinear bound in Eq. (8) can be explained using established theory of wide neural networks; as layer width increases, second order derivative terms tend to zero (Liu et al., 2020). Our proof extends this theory, showing that LayerNorm preserves this property.
+
+As linear function approximators still suffer from off-policy instability due the distributional shift between $\\pi$ and $\\mu$, linearisation of wide networks cannot explain the bound in Eq. (7). Instead, our proof for Lemma 2 reveals this bound is due to the normalising property of LayerNorm, which upper bounds the expected norm: $\\mathbb{E}_{x \\sim d^\\mu} \\left[ \\|\\text{LayerNorm}^k [Mx]\\| \\right] \\leq 1$ *regardless of the sampling distribution $d^\\mu$ or magnitude of $M$*. This yields a bound with a residual term of $\\|v_w \\cdot \\gamma^{L_{Post}/2}\\|^2$ that is independent of $\\pi$ and $\\mu$, overcoming the distributional shift issue responsible for off-policy instability. We tackle it by targeting $\\phi$ with $\\ell^2$ regularisation using the following TD update vector:
+
+$$ \delta_{reg}^k(\phi, \zeta) := \delta^k(\phi, \zeta) - \left( \eta \left(\gamma^{L_{Post}/2}\right)^2 \begin{bmatrix} w \\ 0 \end{bmatrix} + (\eta - 1) \begin{bmatrix} 0 \\ \text{Vec}(M) \end{bmatrix} \right), \quad (9) $$
+
+for any $\eta > 1$ where $\delta^k(\phi, \zeta)$ is the TD update vector from Eq. (2) using the LayerNorm critic from Eq. (5) respectively. Eq. (9) yields a bound:
+
+$$ C_{OffPolicy}(Q_\phi^k, d^\mu) \leq (1 - \eta) \left( \|v_w \cdot \gamma^{L_{Post}/2}\|^2 + \|v_M\|^2 \right) + \mathcal{O}(1/k), $$
+
+which implies $C_{OffPolicy}(Q_\phi^k, d^\mu) < 0$ with sufficiently large $k$, meaning the TD stability criterion will be satisfied. We now formally confirm now this intuition:
+
+**Theorem 2.** *Let Assumption 2 apply. Using the LayerNorm regularised TD update $\delta_{reg}^k(\phi, \zeta)$ in Eq. (9), there exists some finite $k'$ such that the TD stability criterion holds for all $k > k'$.*
+
+6
+
+
+
+Published as a conference paper at ICLR 2025
+
+In Section 5.1 we test our theoretical claim in Theorem 2 empirically, demonstrating that LayerNorm + $\ell^2$ regularisation can stabilise Baird's counterexample, an MDP intentionally designed to cause TD to diverge (Baird, 1995). We remark that whilst adding an $\ell^2$ regularisation term $-\eta\phi$ to all parameters can stabilise TD alone, large $\eta$ recovers a quadratic optimisation problem with minimum at $\phi = 0$, pulling the TD fixed points towards 0. Hence, we suggest $\ell^2$-regularisation *should be used sparingly*; only when LayerNorm alone cannot stabilise the environment and initially only over the final layer weights. Aside from Baird's counterexample, we find LayerNorm without $\ell^2$ regularisation can stabilise all environments in our extensive empirical evaluation in Section 5.
+
+### 3.3 LAYERNORM AND BATCHNORM TD
+
+We have seen from Theorem 2 that LayerNorm + $\ell^2$ regularised TD can stabilise TD by mitigating the effects of nonlinearity and off-policy sampling. Empirical evidence suggests that BatchNorm (Ioffe & Szegedy, 2015) regularisation, which is essential for stabilising algorithms such as CrossQ (Bhatt et al., 2024), may also possess similar properties to LayerNorm. It is natural to ask: 'what are the potential benefits of LayerNorm over BatchNorm methods?'
+
+Naively applying BatchNorm as presented by Ioffe & Szegedy (2015) does not stabilise TD as CrossQ does not succeed without applying several modifying 'tricks' such as double Q-learning, batch renormalisation using running statistics and calculating the batch statistics from a mixture of datasets (Bhatt et al., 2024). In contrast, LayerNorm + $\ell^2$ regularisation benefits from the strong theoretical guarantees in Theorem 2 without burdening practioners with additional tricks and their associated hyperparameter tuning. Additionally, compared to BatchNorm, LayerNorm does not require memory or estimation of the running batch averages.
+
+Our empirical analysis in Section 5 shows that BatchNorm can degrade performance in some cases, while in others it can improve results if applied early in the network. Therefore, we don't dismiss BatchNorm outright, but a thorough theoretical analysis is needed to fully understand its practical effects. Nonetheless, we recommend starting with LayerNorm and $\ell^2$ regularisation as a strong, simple baseline for stabilising TD algorithms before experimenting with alternatives like BatchNorm.
+
+## 4 PARALLELISED Q-LEARNING
+
+Guided by our analysis in Section 3, we develop a simplified version of deep Q-learning to exploit the power of parallelised sampling with minimal memory requirements and without target networks. The Q-Network is regularised with network normalisation (preferably LayerNorm) and $\ell^2$ regularisation as required (see Eq. (9)). As we are developing an online algorithm, it is straightforward to exploit $n$-step returns. In Algorithm 1 we present PQN with $\lambda$-returns, which is a parallelised variant of the approach of Daley & Amato (2019). An exploration policy $\pi_{\text{Explore}}$ ($\epsilon$-greedy for this paper) is rolled out for a small trajectory of size $T$: $(s_i, a_i, r_i, s_{i+1} \dots s_{i+T})$. Starting with
+
+$$R_{i+T}^\lambda = \max_{a'} Q_\phi(s_{i+T}, a'),$$
+
+the targets are computed recursively back in time from $R_{i+T-1}^\lambda$ to $R_i^\lambda$ using:
+
+$$R_i^\lambda = r_t + \gamma \left[ \lambda R_{i+1}^\lambda + (1 - \lambda) \max_{a'} Q_\phi(s_{i+1}, a') \right],$$
+
+or $R_i^\lambda = r_t$ if $s_t$ is a terminal state. We provide a derivation of our approach in Appendix B.4. Due to the use of $\lambda$-returns and minibatches, we require a small buffer of size $I \cdot T$ containing interactions from the *current exploration policy*.
+
+The special case $\lambda = 0$ with $T = 1$ is equivalent to a vectorised variant of Watkins (1989)'s original Q-learning algorithm with LayerNorm + $\ell^2$ regularisation where $I$ separate interactions occur in parallel with the environment.
+
+PQN with $\lambda$-returns is simpler than existing state-of-the-art $\lambda$-based algorithms such as Retrace (Munos et al., 2016) which adopt computationally intensive techniques to handle the computation of $\lambda$-targets. Similarly, an implementation of PQN using RNNs only requires sampling trajectories for multiple time-steps and then back-propagating the gradient through time in the learning phase. In contract existing approaches like R2D2 (Kapturowski et al., 2018) that integrate RNNs with replay buffers must handle hidden states of trajectories collected with old policies during replay. A basic
+
+7
+
+
+
+Published as a conference paper at ICLR 2025
+
+multi-agent version of PQN for coordination problems can be obtained by adopting Value Network Decomposition Networks (VDN) (Sunehag et al., 2017b), i.e. optimising the joined action-value function as a sum of the single agents action-values. Finally, similar to PPO, it is possible to increase PQN's sample efficiency by dividing the collected experiences into multiple minibatches and using them multiple times within epochs.
+
+Algorithm 1 PQN with $\lambda$-returns
+```text
+1: $\phi \leftarrow$ initialise regularised $Q$-network parameters
+2: $s_0 \sim P_0, t \leftarrow 0$
+3: **for each episode do**
+4:     **for each** $i \in \{0, 1, \dots I-1\}$ **(in parallel) do**
+5:         $a_t^i \sim \pi_{\text{Explore}}(s_t^i)$, (e.g. $\epsilon$-greedy)
+6:         $r_t^i \sim P_R(s_t^i, a_t^i)$ $s_{t+1}^i \sim P_S(s_t^i, a_t^i)$,
+7:         $t \leftarrow t + 1$,
+8:     **end for**
+9:     **if** $t \pmod T = 0$ **then**
+10:        calculate $R_{t-1}^{\lambda, i}$ to $R_{t-T}^{\lambda, i}$,
+11:        **for number of epochs do**
+12:            **for number of minibatches do**
+13:                draw minibatch $B$ of size $b \le I \cdot T$ from $\{t-T, \dots t-1\}$ and $\{0, \dots I-1\}$
+14:                $\phi \leftarrow \phi + \frac{\alpha_b}{2b} \nabla_\phi \sum_{i, t \in B} (R_t^{\lambda, i} - Q_\phi(x_t^i))^2$
+15:            **end for**
+16:        **end for**
+17:    **end if**
+18: **end for**
+```
+
+Table 1 summarises the advantages of PQN in comparison to popular methods. Compared to traditional DQN and distributed DQN, PQN enjoys ease of implementation, fast execution, very low memory requirements, and high compatibility with GPU-based training and RNNs. The only algorithm that shares these attributes is PPO. However, although PPO is in principle a simple algorithm, its success is determined by numerous interacting implementation details (Huang et al., 2022a; Engstrom et al., 2020), making the actual implementation challenging. Moreover, PQN uses few main hyperparameters, namely the number of parallel environments, the learning rate and epsilon with its decay, plus the value for $\lambda$ if $\lambda$-returns are used. We emphasise that, whilst PQN can be run using a single environment interaction at each timestep (i.e. with $I=1, T=1$), yielding a stable, regularised $Q$-learning algorithm without a replay buffer (see Fig. 10), PQN is also designed to exploit vectorisation to solve *parallel world problems*, i.e. applications trained in simulators where parallelisation is advantageous and possible.
+
+Table 1: Advantages and Disadvantages of DQN, Distributed DQN, PPO and PQN.
+
+```jsonl
+{"Feature": "Implementation", "DQN": "Easy", "Distr. DQN": "Difficult", "PPO": "Medium", "PQN": "Very Easy"}
+{"Feature": "Memory Requirement", "DQN": "High", "Distr. DQN": "Very High", "PPO": "Low", "PQN": "Low"}
+{"Feature": "Training Speed", "DQN": "Slow", "Distr. DQN": "Fast", "PPO": "Fast", "PQN": "Fast"}
+{"Feature": "Sample Efficient", "DQN": "Yes", "Distr. DQN": "No", "PPO": "Yes", "PQN": "Yes"}
+{"Feature": "Compatibility with RNNs", "DQN": "Medium", "Distr. DQN": "Medium", "PPO": "High", "PQN": "High"}
+{"Feature": "Compatibility w. end-to-end GPU Training", "DQN": "Low", "Distr. DQN": "Low", "PPO": "High", "PQN": "High"}
+{"Feature": "Amount of Hyper-Parameters", "DQN": "Medium", "Distr. DQN": "High", "PPO": "Medium", "PQN": "Low"}
+{"Feature": "Convergence", "DQN": "No", "Distr. DQN": "No", "PPO": "No", "PQN": "Yes"}
+```
+
+## 4.1 BENEFITS OF ONLINE Q-LEARNING WITH VECTORISED ENVIRONMENTS
+
+Vectorisation of the environment enables fast collection of many parallel transitions from independent trajectories. Denoting the stationary distribution at time $t$ of the MDP under policy $\pi_t$ as $d^{\pi_t}$, uniformly sampling from a replay buffer containing historic data estimates sampling from the average of all distributions across all timesteps: $\frac{1}{t'+1} \sum_{t=0}^{t'} d^{\pi_t}$. In contrast, vectorised sampling in PQN estimates sampling from the stationary distribution $d^{\pi_{t'}}$ at timestep $t'$. We sketch the difference in these sampling regimes in Fig. 3. Coloured lines represent different state-actions trajectories across the vectorised environment as a function of timestep $t$. Crosses represent samples drawn for each algorithm at timestep $t'$.
+
+Figure 3: Sketch of Sampling Regimes in DQN and PQN
+
+```jsonl
+{"element": "axis_label_time", "position": "left", "label": "t = t'"}
+{"element": "axis_label_time", "position": "left", "label": "t = 0"}
+{"element": "trajectory_type", "algorithm": "DQN", "color": "black", "shape": "single_line_with_crosses", "description": "Single trajectory sampling from average distribution"}
+{"element": "formula", "position": "left", "text": "x ~ 1/(t'+1) sum(d^pi_t)"}
+{"element": "trajectory_type", "algorithm": "PQN", "color": "multi-colored", "shape": "multiple_lines", "description": "Multiple parallel trajectories sampling from stationary distribution at t'"}
+{"element": "formula", "position": "right", "text": "x ~ d^pi_t'"}
+{"element": "caption", "text": "Sketch of Sampling Regimes in DQN and PQN"}
+```
+
+PQN's sampling further aids algorithmic stability by better approximating this regime in two ways: firstly, the parallelised nature can help exploration since the (potential) natural stochasticity in the
+
+8
+
+# Published as a conference paper at ICLR 2025
+
+Figure 4: (a) Comparison between PPO and PQN in Atari-10. (b) Median score of PQN in the full Atari suite of 57 games. (c) Percentage of games with score higher than human score. (d) Computational time required to run a single game and the full ALE suite for PQN and DQN implementation of CleanRL. In (c) and (d) performances of PQN are relative to training for 400M frames.
+
+```jsonl
+{"subplot": "(a)", "title": "Atari-10 Score", "x_label": "Frames", "y_label": "Atari-10 Score", "series": ["PQN", "PPO", "Rainbow", "Prior-DQN", "DQN"]}
+{"subplot": "(b)", "title": "Atari-57 Median", "x_label": "Frames", "y_label": "Median Normalized Score (%)", "series": ["PQN", "Rainbow", "Prior-DQN", "DQN"]}
+{"subplot": "(c)", "title": "Atari-57 Score Profile", "x_label": "Normalised Score (T)", "y_label": "R%", "series": ["DQN", "Prior-DQN", "Rainbow", "PQN"]}
+{"subplot": "(d)", "title": "Speed Comparison", "x_label": "Task", "y_label": "Computational Time (Hours-Log)", "data": [{"category": "Single Game", "series": "CleanRL-DQN-Jax", "value": 100}, {"category": "Single Game", "series": "PQN", "value": 10}, {"category": "Full Suite", "series": "CleanRL-DQN-Jax", "value": 2000}, {"category": "Full Suite", "series": "PQN", "value": 100}]}
+```
+
+dynamics means even a greedy policy will explore several different states in parallel. Secondly, by taking multiple actions in multiple states, PQN's sampling distribution is a good approximation of the true stationary distribution under the current policy: as time progresses, ergodic theory states that this sampling distribution converges to $d^{\pi_{\epsilon'}}$. In contrast, sampling from DQN's replay buffer involves sampling from an average of *older* stationary distributions under shifting policies from a single agent, which will be more offline and take longer to converge, as illustrated in Fig. 3. We emphasise that *PQN is still an off-policy approach* since it uses two different policies to optimise the Bellman equations: the $\epsilon$-greedy policy for the current timestep and the current policy for the next. Notice that at beginning of training PQN uses an $\epsilon = 1$, meaning that it approximates a value function from a completely random policy. This requires normalisation to mitigate off-policy instability identified in Section 3.
+
+## 5 EXPERIMENTS
+
+In contrast to prior work in $Q$-learning, which has focused heavily on evaluation in the Atari Learning Environment (ALE) (Bellemare et al., 2013), probably overfitting to this environment, we evaluate PQN on a range of single- and multi-agent environments, with PPO as the primary baseline. We summarise the memory and sample efficiency of PQN in Table 2. Due to our extensive evaluation, additional results are presented in Appendix D. All experimental results are shown as mean of 10 seeds, except in ALE where we followed a common practice of reporting 3 seeds.
+
+### 5.1 CONFIRMING THEORETICAL RESULTS
+
+Fig. 5a shows that together LayerNorm + $\ell^2$ can stabilise TD in Baird's counterexample (Baird, 1995), a challenging environment that is intentionally designed to be provably divergent, even for linear function approximators. Our results show that stabilisation is mostly attributed to the introduction of LayerNorm. Moreover the degree of $\ell^2$-regularisation needed is small - just enough to mitigate off-policy stability due to final layer weights according to Theorem 2 - and it makes relatively little difference when used in isolation.
+
+### 5.2 ATARI
+
+To save computational resources, we evaluate PQN against PPO in the Atari-10 suite of games from the ALE, which estimates the median across the full suite using a smaller sample of games. PQN outperforms PPO in terms of sample efficiency, final score, and training time (1 hour compared to 2.5 hours for PPO), and also surpasses sample-efficient methods like Double-DQN and Prioritised DDQN in the same number of frames, despite these methods being trained for several days and using over 16 times more gradient updates (12.5M compared to 780k for PQN). To further test our method, we train PQN on the full suite of 57 Atari games. Fig. 4d shows that the time needed to train PQN on the full Atari suite is equivalent to the time required to train traditional DQN methods on a single game^1. With an additional budget of 100M frames (30 minutes of training), PQN achieves the median score of Rainbow (Hessel et al., 2018), which is still a SOTA method in ALE for sample efficiency but requires around 3 days of training per game, meaning that PQN can be considered 50x faster. While Rainbow is slightly more sample efficient, it's important to note that Rainbow is a much more complex system, designed specifically for Atari. Moreover, parallelisation of $Q$-Learning has traditionally sacrificed far more sample efficiency than PQN. For instance, Ape-X struggles to solve even the simplest Atari game, Pong, within 200M frames (Horgan et al., 2018). In this regard,
+
+^1 DQN training time was optimistically estimated using the JAX-based CleanRL DQN implementation.
+
+9
+
+
+
+Published as a conference paper at ICLR 2025
+
+```jsonl
+{"subplot": "(a) Baird's Counter", "x_label": "Episodes", "y_label": "Loss (log)", "series": ["layer1sum", "layer1sum+2", "layer1sum+layer2", "no_normalization", "no_normalization+2"]}
+{"subplot": "(b) Craftax", "x_label": "Timesteps 1e9", "y_label": "Return (k x 1e3)", "series": ["PQN-RNN", "PPO-RNN"]}
+{"subplot": "(c) Smax", "x_label": "Timesteps 1e7", "y_label": "Win Rate IQM", "series": ["MAPPO", "QMIX", "PQN-VDN", "VDN"]}
+{"subplot": "(d) Overcooked", "x_label": "Timesteps 1e6", "y_label": "Max-Normalized IQM", "series": ["PPO", "IQL", "VDN", "PQN-VDN"]}
+{"subplot": "(e) Hanabi", "x_label": "Timesteps 1e10", "y_label": "Returns", "series": ["PQN-VDN", "VDN", "MAPPO"]}
+```
+
+Figure 5: Results in Baird’s Counterexample, Craftax and Multi-Agent tasks. For Smax, we report the Interquartile Mean (IQM) of the Win Rate on the 9 most popular maps. For Overcooked, we report the IQM of the returns normalized by the maximum obtained score in the classic 4 layouts. In Hanabi, we report the returns of self-play in the 2-player game.
+
+PQN represents a significant advancement in Q-Learning research, offering a balanced compromise between speed, simplicity, and sample efficiency.
+
+In Appendix D, we provide detailed data from these experiments, a comparison with Dopamine-Rainbow using the IQM score, and a comparative bar chart (Fig. 13) of the performances of algorithms in all the games. In this chart, we show that PQN reaches human-level performance in 40 of the 57 games of the ALE, underperforming mainly in the hard-exploration games, suggesting that the $\epsilon$-greedy exploration used by PQN is *too* simple to solve ALE, and indicating a clear research direction to improve the method.
+
+### 5.3 CRAFTAX
+
+Craftax (Matthews et al., 2024b) is an open-ended RL environment based on Crafter (Hafner, 2021) and Nethack (Küttler et al., 2020). It is a challenging environment that requires an agent to solve multiple tasks before completion. By design, Craftax is fast to run in a pure-GPU setting, but existing benchmarks are based solely on PPO. The observation size of the symbolic environment is around 8000 floats, making a pure-GPU DQN implementation with a buffer prohibitive, as it would take around 30GBs of GPU-ram. PQN can provide an off-policy Q-learning baseline without using GPU memory for a replay buffer. Following the Craftax paper, we evaluate for 1B steps and compared PQN to PPO using both an MLP and an RNN. The RNN results are shown in Fig. 5b. PQN is more sample efficient and with a RNN obtains a higher score of 16% against the 15.3% of PPO-RNN. The two methods also take a similar amount of time to train. PQN offers researchers a simple, successful Q-learning alternative to PPO that can be run on a GPU in this challenging environment.
+
+### 5.4 MULTI-AGENT TASKS
+
+When dealing with multi-agent problems, any replay buffer needs to store observations for all agents, increasing the memory requirements up to hundreds of gigabytes. Additionally, RNNs are highly effective in handling the individual agents’ partial observability of the environments and credit assignment, a key challenge in MARL, is typically addressed with value-based methods Sunehag et al. (2017b); Rashid et al. (2020a). Therefore, a memory-efficient, RNN-compatible and value-based method is highly desirable. We evaluate PQN combined with VDN in Hanabi (Bard et al., 2020), SMAC-SMACV2 (Ellis et al., 2024; Samvelyan et al., 2019) (in its JAX-vectorised version, Smax) (Rutherford et al., 2023), and Overcooked (Carroll et al., 2019). Smax is a faster version of SMAC, running entirely on a single GPU. Notably, when at least 20 agents are active in the environment, a replay buffer can consume all available memory on a typical 10GB GPU. PQN-VDN runs successfully on Smax without a large buffer, outperforming MAPPO and QMIX. Remarkably, PQN learns a coordination policy even in the most difficult scenarios in about 10 minutes, compared to QMIX’s 1 hour (see Fig. 17). Similarly, PQN outperforms the replay-buffer-based version of VDN and PPO in Overcooked, and is significantly more sample-efficient than MAPPO in Hanabi, where it achieves an average score of 24 points.
+
+### 5.5 ABLATIONS
+
+To examine the effectiveness of PQN’s algorithmic components, we perform the following ablations.
+
+**Regularisation:** In Fig. 6a, we examine the impact of regularisation on performance in the Atari-10 suite. Results show that LayerNorm significantly improves performance, supporting the theoretical
+
+10
+
+
+
+Published as a conference paper at ICLR 2025
+
+<!-- JSONL for Figure 6 -->
+```json
+{"subplot": "(a)", "caption": "Normalisation in Atari-10", "x_label": "Frames 1e8", "y_label": "Atari-10 Score", "legend": ["LayerNorm", "BatchNorm", "NoNorm", "CrossQ"]}
+{"subplot": "(b)", "caption": "Normalisation in Craftax", "x_label": "Timesteps 1e9", "y_label": "Return (% of Max)", "legend": ["LayerNorm", "BatchNorm", "NoNorm", "CrossQ"]}
+{"subplot": "(c)", "caption": "lambda-returns in Atari-10", "x_label": "Frames 1e8", "y_label": "Atari-10 Score", "legend": ["lambda=0", "lambda=0.3", "lambda=0.65", "lambda=1.0"]}
+{"subplot": "(d)", "caption": "Replay Buffer in Craftax", "x_label": "Time (Hours)", "y_label": "Return (% of Max)", "legend": ["PQN", "PQN+buffer"]}
+{"subplot": "(e)", "caption": "Num. Environments in MinAtar", "x_label": "Timesteps 1e7", "y_label": "Max Normalised IQM", "legend": ["1", "2", "4", "8", "16", "32", "64", "128", "256", "512", "1024"]}
+```
+
+Figure 6: Ablations confirming the importance of the different components of our method.
+
+findings in Section 3, while BatchNorm can degrade performance when applied through the network. Additionally, applying the additional tricks from CrossQ further worsens PQN's performance.
+
+**Input Normalisation:** In preliminary experiments, we observed that BatchNorm significantly improves PQN performances in Craftax. Figure 6b compares the performance of PQN RNN with BatchNorm, LayerNorm, and no normalisation in the two cases where BatchNorm is applied to the input before the first hidden layer or not. Without input normalisation, BatchNorm provides a substantial boost. However, PQN performs best when only the input to the first layer is batch normalised, and applying LayerNorm to the rest of the network offers a similar improvement. This suggests BatchNorm can be effective as *input normalisation*, particularly in scenarios like Craftax with large, sparse observation vectors.
+
+**Varying $\lambda$:** In Fig. 6c we compare different values of $\lambda$ in Atari-10. We find that a value of $\lambda = 0.65$ performs the best by a significant margin. It significantly outperforms $\lambda = 0$ (which is equal to performing 1-step update with the traditional Bellman operator) confirming that the use of $\lambda$-returns represents an important design choice over one-step TD.
+
+**Replay Buffer:** In Fig. 6d, we compare PQN from with a variant that maintains a standard sized replay buffer of 1M of experiences in GPU using Flashbax Toledo et al. (2023). This version converges to the same final performance but takes ~6x longer to train, which is likely due to the constant need to perform random access of a buffer of around 30GBs. This reinforces our core message that a large memory buffer should be avoided in pure GPU training.
+
+**Number of Environments:** PQN can learn even with a small number of environments but clearly benefits from collecting more experiences in parallel (Fig. 6e). As expected, PQN is also significantly faster when greater parallelisation is used, (see Fig. 10 in Appendix).
+
+## 6 CONCLUSION
+
+We have presented the first rigorous analysis explaining the stabilising properties of LayerNorm and $\ell^2$ regularisation in TD methods. These results allowed us to develop PQN, a simple, stable and efficient regularised $Q$-learning algorithm without the need for target networks or a large replay buffer. PQN exploits vectorised computation to achieve excellent performance across an extensive empirical evaluation with a significant boost in computational efficiency and without sacrificing sample efficiency. PQN offers a simple pipeline that is easy to implement and out-of-the-box compatible with key elements in RL, such as $\lambda$-returns and RNNs, which are otherwise difficult to use in current $Q$-Learning implementations. Additionally, it provides a valuable baseline for multi-agent systems. By saving the memory occupied by large replay buffers, PQN paves the way for a generation of powerful but stable algorithms that exploit end-to-end GPU vectorised deep RL.
+
+Table 2: Summary of Memory Saved and Speedup of PQN Compared to Baselines. The Atari speedup is relative to the traditional DQN pipeline, which runs a single environment on the CPU while training the network on GPU. Smax and Craftax speedups are relative to baselines that also run entirely on GPU but use a replay buffer. The Hanabi speed-up is relative to an R2D2 multi-threaded implementation.
+
+<!-- JSONL for Table 2 -->
+```json
+{"Environment": "Atari", "Memory Saved": "26gb", "Speedup": "50x"}
+{"Environment": "Smax", "Memory Saved": "10gb (up to hundreds)", "Speedup": "6x"}
+{"Environment": "Hanabi", "Memory Saved": "250gb", "Speedup": "4x"}
+{"Environment": "Craftax", "Memory Saved": "31gb", "Speedup": "6x"}
+```
+
+11
+
+
+
+Published as a conference paper at ICLR 2025
+
+## REPRODUCIBILITY STATEMENT
+All our experiments can be replicated with the following repository: https://github.com/mttga/purejaxql. Proofs for all theorems and corollaries can be found in Appendix B.
+
+## ACKNOWLEDGMENTS
+Mattie Fellows is funded by a generous grant from the UKRI Engineering and Physical Sciences Research Council EP/Y028481/1. Jakob Nicolaus Foerster is partially funded by the UKRI grant EP/Y028481/1 (originally selected for funding by the ERC). Jakob Nicolaus Foerster is also supported by the JPMC Research Award and the Amazon Research Award.
+
+Matteo Gallici was partially funded by the FPI-UPC Santander Scholarship FPI-UPC_93. Ivan Masmitja is partially funded by the European Union’s Horizon Europe programme under grant agreement No 101112883, as part of DIGI4ECO. This work also acknowledges the Spanish Ministerio de Ciencia, Innovacion y Universidades (BITER-ECO: PID2020- 114732RBC31), the the Spanish National Program Ramon y Cajal RYC2022-038056-I (IM) and "Severo Ochoa Centre of Excellence" accreditation (CEX2019-000928-S).
+
+## REFERENCES
+Matthew Aitchison, Penny Sweetser, and Marcus Hutter. Atari-5: Distilling the arcade learning environment down to five games. In *International Conference on Machine Learning*, pp. 421–438. PMLR, 2023. C
+
+Jimmy Lei Ba, Jamie Ryan Kiros, and Geoffrey E. Hinton. Layer normalization. *arXiv preprint arXiv:1607.06450*, 2016. 1, 3.2
+
+Adrià Puigdomènech Badia, Bilal Piot, Steven Kapturowski, Pablo Sprechmann, Alex Vitvitskyi, Zhaohan Daniel Guo, and Charles Blundell. Agent57: Outperforming the atari human benchmark. In *International Conference on Machine Learning (ICML)*, pp. 507–517. PMLR, 2020. A.1
+
+Leemon
+
+
+
+Published as a conference paper at ICLR 2025
+
+*   Vivek Borkar. *Stochastic Approximation: A Dynamical Systems Viewpoint*. Hindustan Book Agency Gurgaon, 01 2008. ISBN 978-81-85931-85-2. doi: 10.1007/978-93-86279-38-5. 3.1
+*   Stephen Boyd and Lieven Vandenberghe. *Convex Optimization*. Cambridge University Press, 2004. 3.1
+*   Micah Carroll, Rohin Shah, Mark K Ho, Tom Griffiths, Sanjit Seshia, Pieter Abbeel, and Anca Dragan. On the utility of learning about humans for human-ai coordination. *Advances in neural information processing systems*, 32, 2019. 1, 5.4
+*   Pablo Samuel Castro, Subhodeep Moitra, Carles Gelada, Saurabh Kumar, and Marc G. Bellemare. Dopamine: A Research Framework for Deep Reinforcement Learning. 2018. URL http://arxiv.org/abs/1812.06110.
+
+
+
+Published as a conference paper at ICLR 2025
+
+Tuomas Haarnoja, Aurick Zhou, Pieter Abbeel, and Sergey Levine. Soft Actor-Critic: Off-policy maximum entropy deep reinforcement learning with a stochastic actor. In Jennifer Dy and Andreas Krause (eds.), *Proceedings of the 35th International Conference on Machine Learning*, volume 80 of *Proceedings of Machine Learning Research*, pp. 1861–1870, Stockholmsmässan, Stockholm Sweden, 10–15 Jul 2018. PMLR. URL <http://proceedings.mlr.press/v80/haarnoja18b.html>. 1
+
+Danijar Hafner. Benchmarking the spectrum of agent capabilities. In *The Ninth International Conference on Learning Representations*, 2021. 5.3
+
+Matteo Hessel, Joseph Modayil, Hado Van Hasselt, Tom Schaul, Georg Ostrovski, Will Dabney, Dan Horgan, Bilal Piot, Mohammad Azar, and David Silver. Rainbow: Combining improvements in deep reinforcement learning. In *Proceedings of the Thirty-Second Conference on Uncertainty in Artificial Intelligence*, 2018. 5.2
+
+Matthew W. Hoffman, Bobak Shahriari, John Aslanides, Gabriel Barth-Maron, Nikola Momchev, Danila Sinopalnikov, Piotr Stańczyk, Sabela Ramos, Anton Raichuk, Damien Vincent, Léonard Hussenot, Robert Dadashi, Gabriel Dulac-Arnold, Manu Orsini, Alexis Jacq, Johan Ferret, Nino Vieillard, Seyed Kamyar Seyed Ghasemipour, Sertan Girgin, Olivier Pietquin, Feryal Behbahani, Tamara Norman, Abbas Abdolmaleki, Albin Cassirer, Fan Yang, Kate Baumli, Sarah Henderson, Abe Friesen, Ruba Haroun, Alex Novikov, Sergio Gómez Colmenarejo, Serkan Cabi, Caglar Gulcehre, Tom Le Paine, Srivatsan Srinivasan, Andrew Cowie, Ziyu Wang, Bilal Piot, and Nando de Freitas. Acme: A research framework for distributed reinforcement learning. *arXiv preprint arXiv:2006.00979*, 2020. URL <https://arxiv.org/abs/2006.00979>. A.1
+
+Dan Horgan, John Quan, David Budden, Gabriel Barth-Maron, Matteo Hessel, Hado Van Hasselt, and David Silver. Distributed prioritized experience replay. *arXiv preprint arXiv:1803.00933*, 2018. 2.3, 5.2, A.1, C
+
+Hengyuan Hu, Adam Lerer, Brandon Cui, Luis Pineda, Noam Brown, and Jakob Foerster. Off-belief learning. In *International Conference on Machine Learning*, pp. 4369–4379. PMLR, 2021. C
+
+Shengyi Huang, Rousslan Fernand Julien Dossa, Antonin Raffin, Anssi Kanervisto, and Weixun Wang. The 37 implementation details of proximal policy optimization. In *ICLR Blog Track*, 2022a. URL <https://iclr-blog-track.github.io/2022/03/25/ppo-implementation-details/>. <https://iclr-blog-track.github.io/2022/03/25/ppo-implementation-details/>. 1, 4
+
+Shengyi Huang, Rousslan Fernand Julien Dossa, Chang Ye, Jeff Braga, Dipam Chakraborty, Kinal Mehta, and João G.M. Araújo. Cleanrl: High-quality single-file implementations of deep reinforcement learning algorithms. *Journal of Machine Learning Research*, 23(274):1–18, 2022b. URL <http://jmlr.org/papers/v23/21-1342.html>. C
+
+Sergey Ioffe and Christian Szegedy. Batch normalization: accelerating deep network training by reducing internal covariate shift. In *Proceedings of the 32nd International Conference on International Conference on Machine Learning - Volume 37*, ICML'15, pp. 448–456. JMLR.org, 2015. 1, 3.3
+
+Steven Kapturowski, Georg Ostrovski, John Quan, Remi Munos, and Will Dabney. Recurrent experience replay in distributed reinforcement learning. In *The Sixth International Conference on Learning Representations (ICLR)*, 2018. 2.3, 4, A.1
+
+J. Kolter. The fixed points of off-policy td. In J. Shawe-Taylor, R. Zemel, P. Bartlett, F. Pereira, and K.Q. Weinberger (eds.), *Advances in Neural Information Processing Systems*, volume 24. Curran Associates, Inc., 2011. URL <https://proceedings.neurips.cc/paper_files/paper/2011/file/fe2d010308a6b3799a3d9c728ee74244-Paper.pdf>. 2.2
+
+Tadashi Kozuno, Yunhao Tang, Mark Rowland, Remi Munos, Steven Kapturowski, Will Dabney, Michal Valko, and David Abel. Revisiting peng’s q(lambda) for modern reinforcement learning. In Marina Meila and Tong Zhang (eds.), *Proceedings of the 38th International Conference on Machine Learning*, volume 139 of *Proceedings of Machine Learning Research*, pp. 5794–5804. PMLR, 18–24 Jul 2021. URL <https://proceedings.mlr.press/v139/kozuno21a.html>. A.4
+
+14
+
+
+
+Published as a conference paper at ICLR 2025
+
+Harold J. Kushner. Stochastic approximation: a survey. *Wiley Interdisciplinary Reviews: Computational Statistics*, 2, 2010. URL https://api.semanticscholar.org/CorpusID:15194610. 2.2
+
+Heinrich Küttler, Nantas Nardelli, Alexander Miller, Roberta Raileanu, Marco Selvatici, Edward Grefenstette, and Tim Rocktäschel. The nethack learning environment. *Advances in Neural Information Processing Systems*, 33:7671–7684, 2020. 5.3
+
+Simon Lacoste-Julien, Mark Schmidt, and Francis Bach. A simpler approach to obtaining an o(1/t) convergence rate for the projected stochastic subgradient method. 12 2012. 2.2
+
+Robert Tjarko Lange. gymmax: A JAX-based reinforcement learning environment library, 2022. URL http://github.com/RobertTLange/gymmax. 1
+
+Zechu Li, Tao Chen, Zhang-Wei Hong, Anurag Ajay, and Pulkit Agrawal. Parallel q-learning: Scaling off-policy reinforcement learning under massively parallel simulation. In *International Conference on Machine Learning*, pp. 19440–19459. PMLR, 2023. 2.3
+
+Chaoyue Liu, Libin Zhu, and Mikhail Belkin. On the linearity of large non-linear models: when and why the tangent kernel is constant. In *Proceedings of the 34th International Conference on Neural Information Processing Systems*, NeurIPS 2020, Red Hook, NY, USA, 2020. Curran Associates Inc. ISBN 9781713829546. 3.2, B.3
+
+Liyuan Liu, Haoming Jiang, Pengcheng He, Weizhu Chen, Xiaodong Liu, Jianfeng Gao, and Jiawei Han. On the variance of the adaptive learning rate and beyond. *arXiv preprint arXiv:1908.03265*, 2019. C
+
+Ryan Lowe, Aviv Tamar, Jean Harb, OpenAI Pieter Abbeel, and Igor Mordatch. Multi-agent actor-critic for mixed cooperative-competitive environments. *Advances in neural information processing systems*, 30, 2017. A.5
+
+Chris Lu, Jakub Kuba, Alistair Letcher, Luke Metz, Christian Schroeder de Witt, and Jakob Foerster. Discovered policy optimisation. *Advances in Neural Information Processing Systems*, 35:16455–16468, 2022. 1, 2.3
+
+Clare Lyle, Zeyu Zheng, Evgenii Nikishin, Bernardo Avila Pires, Razvan Pascanu, and Will Dabney. Understanding plasticity in neural networks. In *International Conference on Machine Learning*, pp. 23190–23211. PMLR, 2023. 1, A.2, A.3
+
+Clare Lyle, Zeyu Zheng, Khimya Khetarpal, Hado van Hasselt, Razvan Pascanu, James Martens, and Will Dabney. Disentangling the causes of plasticity loss in neural networks. *arXiv preprint arXiv:2402.18762*, 2024. 1, A.3
+
+Hamid Reza Maei, Csaba Szepesvári, Shalabh Bhatnagar, and Richard S. Sutton. Toward off-policy learning control with function approximation. In *Proceedings of the 27th International Conference on International Conference on Machine Learning*, ICML'10, pp. 719–726, Madison, WI, USA, 2010. Omnipress. ISBN 9781605589077. 2.2
+
+Viktor Makoviychuk, Lukasz Wawrzyniak, Yunrong Guo, Michelle Lu, Kier Storey, Miles Macklin, David Hoeller, Nikita Rudin, Arthur Allshire, Ankur Handa, and Gavriel State. Isaac gym: High performance gpu-based physics simulation for robot learning, 2021. 1, 2.3
+
+Michael Matthews, Michael Beukman, Benjamin Ellis, Mikayel Samvelyan, Matthew Jackson, Samuel Coward, and Jakob Foerster. Craftax: A lightning-fast benchmark for open-ended reinforcement learning. *arXiv preprint arXiv:2402.16801*, 2024a. 1, C
+
+Michael Matthews, Michael Beukman, Benjamin Ellis, Mikayel Samvelyan, Matthew Jackson, Samuel Coward, and Jakob Foerster. Craftax: A lightning-fast benchmark for open-ended reinforcement learning. *arXiv preprint arXiv:2402.16801*, 2024b. 1, 2.3, 5.3
+
+Volodymyr Mnih, Koray Kavukcuoglu, David Silver, Alex Graves, Ioannis Antonoglou, Daan Wierstra, and Martin Riedmiller. Playing atari with deep reinforcement learning. *arXiv preprint arXiv:1312.5602*, 2013. URL http://arxiv.org/abs/1312.5602. cite arxiv:1312.5602Comment: NIPS Deep Learning Workshop 2013. 1
+
+15
+
+Published as a conference paper at ICLR 2025
+
+Volodymyr Mnih, Koray Kavukcuoglu, David Silver, Andrei A. Rusu, Joel Veness, Marc G. Bellemare, Alex Graves, Martin Riedmiller, Andreas K. Fidjeland, Georg Ostrovski, Stig Petersen, Charles Beattie, Amir Sadik, Ioannis Antonoglou, Helen King, Dharshan Kumaran, Daan Wierstra, Shane Legg, and Demis Hassabis. Human-level control through deep reinforcement learning. *Nature*, 518(7540):529–533, February 2015. ISSN 00280836. URL http://dx.doi.org/10.1038/nature14236. 1
+
+Volodymyr Mnih, Adria Puigdomenech Badia, Mehdi Mirza, Alex Graves, Timothy Lillicrap, Tim Harley, David Silver, and Koray Kavukcuoglu. Asynchronous methods for deep reinforcement learning. In Maria Florina Balcan and Kilian Q. Weinberger (eds.), *Proceedings of The 33rd International Conference on Machine Learning*, volume 48 of *Proceedings of Machine Learning Research*, pp. 1928–1937, New York, New York, USA, 20–22 Jun 2016. PMLR. URL https://proceedings.mlr.press/v48/mnih16.html. A.1
+
+Remi Munos, Tom Stepleton, Anna Harutyunyan, and Marc Bellemare. Safe and efficient off-policy reinforcement learning. In D. Lee, M. Sugiyama, U. Luxburg, I. Guyon, and R. Garnett (eds.), *Advances in Neural Information Processing Systems*, volume 29. Curran Associates, Inc., 2016. URL https://proceedings.neurips.cc/paper_files/paper/2016/file/c3992e9a68c5ae12bd18488bc579b30d-Paper.pdf. 4, A.4
+
+Michal Nauman, Mateusz Ostaszewski, Krzysztof Jankowski, Piotr Miłoś, and Marek Cygan. Bigger, regularized, optimistic: scaling for compute and sample-efficient continuous control, 2024. URL https://arxiv.org/abs/2405.16158. 1
+
+A. Nemirovski, A. Juditsky, G. Lan, and A. Shapiro. Robust stochastic approximation approach to stochastic programming. *SIAM Journal on Optimization*, 19(4):1574–1609, 2009. doi: 10.1137/070704277. URL https://doi.org/10.1137/070704277. 2.2
+
+Ian Osband, Charles Blundell, Alexander Pritzel, and Benjamin Van Roy. Deep exploration via bootstrapped dqn. In D. Lee, M. Sugiyama, U. Luxburg, I. Guyon, and R. Garnett (eds.), *Advances in Neural Information Processing Systems*, volume 29. Curran Associates, Inc., 2016. URL https://proceedings.neurips.cc/paper_files/paper/2016/file/8d8818c8e140c64c743113f563cf750f-Paper.pdf. C
+
+Ian Osband, Yotam Doron, Matteo Hessel, John Aslanides, Eren Sezener, Andre Saraiva, Katrina McKinney, Tor Lattimore, Csaba Szepesvari, Satinder Singh, et al. Behaviour suite for reinforcement learning. *arXiv preprint arXiv:1908.03568*, 2019. C
+
+Vassilis A. Papavassiliou and Stuart Russell. Convergence of reinforcement learning with general function approximators. In *Proceedings of the 16th International Joint Conference on Artificial Intelligence - Volume 2*, IJCAI’99, pp. 748–755, San Francisco, CA, USA, 1999. Morgan Kaufmann Publishers Inc. 2.2
+
+Jing Peng and Ronald J. Williams. Incremental multi-step q-learning. In William W. Cohen and Haym Hirsh (eds.), *Machine Learning Proceedings 1994*, pp. 226–232. Morgan Kaufmann, San Francisco (CA), 1994. ISBN 978-1-55860-335-6. doi: https://doi.org/10.1016/B978-1-55860-335-6.50035-0. URL https://www.sciencedirect.com/science/article/pii/B9781558603356500350. A.4
+
+Martin L Puterman. *Markov decision processes: discrete stochastic dynamic programming*. John Wiley & Sons, 2014. 2.1
+
+Tabish Rashid, Mikayel Samvelyan, Christian Schroeder De Witt, Gregory Farquhar, Jakob Foerster, and Shimon Whiteson. Monotonic value function factorisation for deep multi-agent reinforcement learning. *Journal of Machine Learning Research*, 21(178):1–51, 2020a. 5.4
+
+Tabish Rashid, Mikayel Samvelyan, Christian Schroeder De Witt, Gregory Farquhar, Jakob Foerster, and Shimon Whiteson. Monotonic value function factorisation for deep multi-agent reinforcement learning. *Journal of Machine Learning Research*, 21(178):1–51, 2020b. A.5
+
+Herbert Robbins and Sutton Monro. A Stochastic Approximation Method. *The Annals of Mathematical Statistics*, 22(3):400 – 407, 1951. doi: 10.1214/aoms/1177729586. URL https://doi.org/10.1214/aoms/1177729586. 2.2, 3.1
+
+16
+
+
+
+Published as a conference paper at ICLR 2025
+
+*   Gareth O. Roberts and Jeffrey S. Rosenthal. General state space Markov chains and MCMC algorithms. *Probability Surveys*, 1(none):20 – 71, 2004. doi: 10.1214/154957804100000024. URL https://doi.org/10.1214/154957804100000024. 2.2, 1, 1
+*   Alexander Rutherford, Benjamin Ellis, Matteo Gallici, Jonathan Cook, Andrei Lupu, Gardar Ingvarsson, Timon Willi, Akbir Khan, Christian Schroeder de Witt, Alexandra Souly, et al. Jaxmarl: Multi-agent rl environments in jax. *arXiv preprint arXiv:2311.10090*, 2023. 1, 1, 2.3, 5.4
+*   Mikayel Samvelyan, Tabish Rashid, Christian Schroeder De Witt, Gregory Farquhar, Nantas Nardelli, Tim GJ Rudner, Chia-Man Hung, Philip HS Torr, Jakob Foerster, and Shimon Whiteson. The starcraft multi-agent challenge. *arXiv preprint arXiv:1902.04043*, 2019. 5.4
+*   John Schulman, Sergey Levine, Pieter Abbeel, Michael Jordan, and Philipp Moritz. Trust region policy optimization. In Francis Bach and David Blei (eds.), *Proceedings of the 32nd International Conference on Machine Learning*, volume 37 of *Proceedings of Machine Learning Research*, pp. 1889–1897, Lille, France, 07–09 Jul 2015. PMLR. URL https://proceedings.mlr.press/v37/schulman15.html. 1
+*   John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov. Proximal policy optimization algorithms. *CoRR*, abs/1707.06347, 2017. URL http://arxiv.org/abs/1707.06347. 1
+*   Kyunghwan Son, Daewoo Kim, Wan Ju Kang, David Earl Hostallero, and Yung Yi. Qtran: Learning to factorize with transformation for cooperative multi-agent reinforcement learning. In *International Conference on Machine Learning (ICML)*, pp. 5887–5896. PMLR, 2019. A.5
+*   Rayadurgam Srikant and Lei Ying. Finite-time error bounds for linear stochastic approximation and td learning. In *Conference on Learning Theory*, pp. 2803–2830. PMLR, 2019. 3.1, A.2
+*   Peter Sunehag, Guy Lever, Audrunas Gruslys, Wojciech Marian Czarnecki, Vinicius Zambaldi, Max Jaderberg, Marc Lanctot, Nicolas Sonnerat, Joel Z Leibo, Karl Tuyls, et al. Value-decomposition networks for cooperative multi-agent learning. *arXiv preprint arXiv:1706.05296*, 2017a. A.5
+*   Peter Sunehag, Guy Lever, Audrunas Gruslys, Wojciech Marian Czarnecki, Vinicius Zambaldi, Max Jaderberg, Marc Lanctot, Nicolas Sonnerat, Joel Z Leibo, Karl Tuyls, et al. Value-decomposition networks for cooperative multi-agent learning. *arXiv preprint arXiv:1706.05296*, 2017b. 4, 5.4
+*   Richard S. Sutton. Learning to predict by the methods of temporal differences. *Machine Learning*, 3(1):9–44, Aug 1988. ISSN 1573-0565. doi: 10.1007/BF00115009. 2.2
+*   Richard S. Sutton and Andrew G. Barto. *Reinforcement Learning: An Introduction*. The MIT Press, second edition, 2018a. URL http://incompleteideas.net/book/the-book-2nd.html. 3.1
+*   Richard S Sutton and Andrew G Barto. *Reinforcement learning: An introduction*. MIT press, 2018b. C
+*   Edan Toledo, Laurence Midgley, Donal Byrne, Callum Rhys Tilbury, Matthew Macfarlane, Cyprien Courtot, and Alexandre Laterre. Flashbax: Streamlining experience replay buffers for reinforcement learning with jax, 2023. URL https://github.com/instadeepai/flashbax/. 5.5
+*   Mark Towers, Jordan K. Terry, Ariel Kwiatkowski, John U. Balis, Gianluca de Cola, Tristan Deleu, Manuel Goulão, Andreas Kallinteris, Arjun KG, Markus Krimmel, Rodrigo Perez-Vicente, Andrea Pierré, Sander Schulhoff, Jun Jet Tai, Andrew Tan Jin Shen, and Omar G. Younis. Gymnasium, March 2023. URL https://zenodo.org/record/8127025. 2.3
+*   J. N. Tsitsiklis and B. Van Roy. An analysis of temporal-difference learning with function approximation. *IEEE Transactions on Automatic Control*, 42(5):674–690, May 1997. ISSN 2334-3303. doi: 10.1109/9.580874. 1, 3.1, A.2
+*   Hado van Hasselt, Yotam Doron, Florian Strub, Matteo Hessel, Nicolas Sonnerat, and Joseph Modayil. Deep Reinforcement Learning and the Deadly Triad. working paper or preprint, December 2018. URL https://hal.science/hal-01949304. 3.1
+
+17
+
+
+
+Published as a conference paper at ICLR 2025
+
+Lingxiao Wang, Qi Cai, Zhuoyan Yang, and Zhaoran Wang. On the global optimality of model-agnostic meta-learning: reinforcement learning and supervised learning. In *Proceedings of the 37th International Conference on Machine Learning*, ICML'20. JMLR.org, 2020. 2.2
+
+Yixin Wang and David Blei. Frequentist consistency of variational bayes. *Journal of the American Statistical Association*, 05 2017. doi: 10.1080/01621459.2018.1473776. 1
+
+Ziyu Wang, Tom Schaul, Matteo Hessel, Hado Hasselt, Marc Lanctot, and Nando Freitas. Dueling network architectures for deep reinforcement learning. In *International Conference on Machine Learning (ICML)*, pp. 1995–2003. PMLR, 2016. C
+
+Christopher J. C. H. Watkins and Peter Dayan. Technical note: q -learning. *Mach. Learn.*, 8(3–4): 279–292, May 1992. ISSN 0885-6125. doi: 10.1007/BF00992698. URL https://doi.org/10.1007/BF00992698. 3.1
+
+Christopher John Cornish Hellaby Watkins. *Learning from Delayed Rewards*. PhD thesis, King’s College, University of Cambridge, Cambridge, UK, May 1989. URL http://www.cs.rhul.ac.uk/~chrisw/new_thesis.pdf. 1, 2.2, 4
+
+Jiayi Weng, Min Lin, Shengyi Huang, Bo Liu, Denys Makoviichuk, Viktor Makoviychuk, Zichen Liu, Yufan Song, Ting Luo, Yukun Jiang, Zhongwen Xu, and Shuicheng Yan. EnvPool: A highly parallel reinforcement learning environment execution engine. In S. Koyejo, S. Mohamed, A. Agarwal, D. Belgrave, K. Cho, and A. Oh (eds.), *Advances in Neural Information Processing Systems*, volume 35, pp. 22409–22421. Curran Associates, Inc., 2022. URL https://proceedings.neurips.cc/paper_files/paper/2022/file/8caaf08e49ddbad6694fae067442ee21-Paper-Datasets_and_Benchmarks.pdf. 2.3
+
+Zhuora Yang, Yuchen Xie, and Zhaoran Wang. A theoretical analysis of deep q-learning, 2019. 2.2
+
+Kenny Young and Tian Tian. Minatar: An atari-inspired testbed for thorough and reproducible reinforcement learning experiments. *arXiv preprint arXiv:1903.03176*, 2019. C
+
+Chao Yu, Akash Velu, Eugene Vinitsky, Jiaxuan Gao, Yu Wang, Alexandre Bayen, and Yi Wu. The surprising effectiveness of ppo in cooperative multi-agent games. *Advances in Neural Information Processing Systems*, 35:24611–24624, 2022. A.5
+
+Yang Yue, Rui Lu, Bingyi Kang, Shiji Song, and Gao Huang. Understanding, predicting and better resolving q-value divergence in offline-rl. In A. Oh, T. Naumann, A. Globerson, K. Saenko, M. Hardt, and S. Levine (eds.), *Advances in Neural Information Processing Systems*, volume 36, pp. 60247–60277. Curran Associates, Inc., 2023. URL https://proceedings.neurips.cc/paper_files/paper/2023/file/bd6bb13e78da078d8adcabbe6d9ca737-Paper-Conference.pdf. A.2
+
+Shangtong Zhang, Hengshuai Yao, and Shimon Whiteson. Breaking the deadly triad with a target network. *Proceedings of the International Conference on Machine Learning*, Unknown Month 2021. URL NoURL. 2.2
+
+18
+
+
+
+Published as a conference paper at ICLR 2025
+
+## A RELATED WORK
+
+### A.1 ASYNCHRONOUS METHODS AND PARALLELISATION OF Q-LEARNING
+
+Existing attempts to parallelise *Q-learning* adopt a distributed architecture, where a separate process continually trains the agent and sampling occurs in parallel threads which contain a delayed copy of its parameters (Horgan et al., 2018; Kapturowski et al., 2018; Badia et al., 2020; Hoffman et al., 2020). On the contrary, PQN samples and trains in the same process, enabling end-to-end single GPU training. While distributed methods can benefit from a separate process that continuously train the network, PQN is easier to implement, doesn't introduce time-lags between the learning agent and the exploratory policy. Moreover, PQN can be optimised to be sample efficient other than fast, while distributed system usually ignore sample efficiency.
+
+Mnih et al. (2016) propose an asynchronous *Q-learning*, a parallelised version of *Q-learning* which performs updates of a centralised network asynchronously. Compared to PQN, asynchronous *Q-learning* still uses target networks and accumulates gradients over many timesteps to update the network. Moreover, it is a multi-threaded approach where each worker independently performs exploration and gradient updates with its own target network. This setup results in each actor being optimised independently with its own experiences and objective, introducing significant noise into the central learner that periodically unifies the gradients. Finally, the algorithm relies on collecting historical data: "We also accumulate gradients over multiple timesteps before they are applied" (Mnih et al., 2016). This undermines a key benefit of parallelised methods, which is avoiding the use of data collected under historic policies (see Section 4.1).
+
+PQN is a synchronous method where a single actor interacts with vectorised environments, and a single gradient is computed at once using all the experiences. PQN can be seen as the synchronous version of that asynchronous Q-Learning algorithm, which has never been implemented before. Note that moving from asynchronous to synchronous, removing the target networks, and avoiding multi-step gradient accumulation drastically changes the optimisation procedure and implementation, resulting in a much simpler and more stable algorithm. To our knowledge, we are the first to unlock the potential of a parallelised deep Q-learning algorithm with minimal memory requirements and without target networks.
+
+### A.2 ANALYSIS OF TD
+
+Most prior approaches analysing TD focus on linear function approximation. Tsitsiklis & Van Roy (1997) first proved convergence of linear, on-policy TD, arguing that the projected Bellman operator in this setting is a contraction. Dalal et al. (2017) give the first finite time bounds for linear TD(0), under an i.i.d. data model similar to the one that we use here. Bhandari et al. (2018) provide bounds for linear TD in both the i.i.d. and Markov chain setting. Srikant & Ying (2019) approach the problem from the perspective of Ordinary Differential Equations (ODE) analysis, bounding the divergence of a Lyapunov function from the limiting point of the ODE that arises from the TD update scheme. Analysis of pure TD in the general nonlinear and Markov chain sampling regime is lacking.
+
+Two papers that are most closely related to our work are: (Fellows et al., 2023) and (Yue et al., 2023).
+
+(Yue et al., 2023) analyses the effect of LayerNorm in TD, however there are several important differences. Firstly, the paper analyzes the neural tangent kernel (NTK) of the update, which only exists in the limit of infinite width networks and does not capture the nonlinear instability that we analyse. We make no such assumption as this will never hold in practice. Instead, we use the analysis of Fellows et al. (2023) which predates (Yue et al., 2023) and provides a more general framework for studying TD with finite width nonlinear networks. Moreover, Fellows et al. (2023) provide key results on establishing stability of general TD using an eigenvalue analysis this is more general but are remarkably similar to Yue et al. (2023)'s SEEM framework. We extend these results to Markov chain sampling with normalised regularisation.
+
+Yue et al. (2023) claim that LayerNorm alone can stabilise TD. Under our more general and applicable analysis, as our results show, LayerNorm without $\ell^2$ regularisation *cannot completely stabilise TD for all domains*. This is because for stability, the Jacobian eigenvalues need to be strictly negative. As Lemma 2 shows, there may still be a residual positive term that prevents this. Our empirical results in Baird's counterexample confirm this, showing that the algorithm can only be stabilised using normalisation. Existing empirical research (Lyle et al., 2023) also supports this.
+
+19
+
+
+
+Published as a conference paper at ICLR 2025
+
+### A.3 REGULARISATION IN RL
+
+CrossQ is a recently developed off-policy algorithm based on SAC that removes target networks and introduces BatchNorm into the critic (Bhatt et al., 2024). CrossQ demonstrates impressive performance when evaluated across a suite of MuJoCo domain with high sample and computational efficiency, however no analysis is provided explaining its stability properties or what effect introducing BatchNorm has. To develop PQN, we performed a rigorous analysis of LayerNorm in TD. Here is a complete list of the differences between CrossQ and PQN:
+
+*   CrossQ is based on a soft-actor critic architecture for continuous action control. Its entropy-based actor objective optimises a stochastic policy. On the contrary, PQN consists of a single, simple value network optimised with the standard Bellman Equations, which is used to learn a deterministic policy for discrete actions.
+*   CrossQ is not parallelised, i.e., it interacts with a single environment at a time, while a fundamental contribution of PQN is handling parallel environments for faster training on modern hardware. Parallelisation of Q-Learning algorithms is not trivial: one cannot simply interact with multiple environments while leaving the rest of the learning pipeline unchanged, as this drastically modifies the ratio between interactions with the environments and the number of gradient updates. PQN approaches this problem by offering a sample-efficient implementation based on normalisation, Q-Lambda, and mini-batches/mini-epochs updates.
+*   CrossQ uses a large replay buffer containing data from historical policies to perform updates, while PQN obtains mini-batches directly from interactions with parallel environments under a single policy.
+*   CrossQ is not directly compatible with Q-Lambda and Recurrent Neural Networks because of the overhead introduced by the replay buffers: the use of old experiences in the update step makes computation of Q-Lambda unsafe, and the use of hidden states for the RNNs problematic. To include these methods in CrossQ one should add, e.g., Retrace and Burn-In techniques. Conversely, the theoretical absence of a replay buffer in PQN allows us to use them out of the box. Note that these are crucial in many scenarios (see Q-Lambda ablation for Atari and MLP-RNN results in Craftax).
+*   There is no theoretical analysis of normalisation in CrossQ and empirical evidence limited to six Mujoco continuous-action tasks. This is not sufficient to make any reasonable claims for its performance in general RL scenarios. We give a theoretical basis for our method and we compare it with baselines across 79 discrete-action tasks (2 Classic Control tasks, 4 MinAtar games, 57 Atari games, Craftax, 9 Smax tasks, 5 Overcooked, and Hanabi). The limited evaluation provided for CrossQ is concerning, and the results in Mujoco might not reflect its true capabilities. Our results in Atari demonstrate it.
+*   PQN is designed for complete GPU implementation and to be compatible with end-to-end compilation, which is a fundamental step for bringing Q-Learning into modern RL research (currently dominated by PPO). CrossQ does not tackle this problem, instead favouring a standard pipeline (which consists of interacting with one environment - sampling from the replay buffer - updating the network - repeat) with the addition of normalisation. This pipeline is exactly the same as that used by DQN in our Atari experiments, where we show that PQN is between 50x and 100x faster and uses 26 times less memory.
+
+The benefits of regularisation have also been reported in other areas of the RL literature. Lyle et al. (Lyle et al., 2023; 2024) investigate plasticity loss in off-policy RL, a phenomenon where neural networks lose their ability to fit a new target functions throughout training. They propose LayerNorm (Lyle et al., 2023) and LayerNorm with $l^2$ regularisation (Lyle et al., 2024), as a solution to this problem, and show improved performance on the Atari Learning Environment, but they also use other methods of stabilisation, such as target networks, that we explicitly remove. In addition, they provide no formal analysis explaining stability.
+
+### A.4 MULTI-STEP Q-LEARNING
+
+The concept of n-step returns in reinforcement learning extends the traditional one-step update to consider rewards over future timesteps. The n-step return for a state-action pair $(s, a)$ is defined as the cumulative reward over the next $n$ steps plus the discounted value of the state reached after $n$ steps. Several variations of n-step Q-learning have been proposed to enhance learning efficiency and
+
+20
+
+Published as a conference paper at ICLR 2025
+
+stability. Peng & Williams (1994) introduced a variation known as Q(λ), which integrates eligibility traces to account for multiple time steps while maintaining the off-policy nature of Q-learning. Replay buffers are difficult to combine with Q(λ), so standard methods like DQN use a single-step TD learning. The most relevant work that aimed to use Q(λ) with a replay buffer is Retrace (Munos et al., 2016). More recent methods have tried to reconcile λ-returns with the experience buffer Daley & Amato (2019) most notably in TD3 Kozuno et al. (2021).
+
+### A.5 MULTI-AGENT DEEP Q LEARNING
+
+Q-learning methods are a popular choice for multi-agent RL (MARL), especially in the purely cooperative centralised training with decentralised execution (CTDE) setting (Foerster et al., 2018; Lowe et al., 2017). In CTDE, global information is made available at training time, but not at test time. Many of these methods develop approaches to combine individual utility functions into a joint estimate of the Q function: Son et al. (2019) introduce the individual-global-max (IGM) principle to describe when a centralised Q function can be computed from individual utility functions in a decentralised fashion; Value Decomposition Networks (VDN) (Sunehag et al., 2017a) combines individual value estimates by summing them, and QMIX (Rashid et al., 2020b) learns a hypernetwork with positive weights to ensure monotonicity. All these methods can be combined with PQN, which parallels the learning process.
+
+IPPO (De Witt et al., 2020) and MAPPO (Yu et al., 2022) use vectorised environments, adapting a single-agent method for use in multi-agent RL. These are both on-policy actor-critic based methods based on PPO.
+
+### B PROOFS AND DERIVATIONS
+
+### B.1 DERIVATION OF TD STABILITY RESULTS
+
+We start by examining the TD Jacobian to separate the TD stability condition into two components. From the definition of the TD Jacobian:
+
+$$
+\begin{aligned}
+J(\phi) &= \nabla_\phi \delta(\phi) = \nabla_\phi \mathbb{E}_{\zeta \sim P_\zeta}[\delta(\phi, \zeta)], \\
+&= \mathbb{E}_{\zeta \sim P_\zeta} [\nabla_\phi ((r + \gamma Q_\phi(x') - Q_\phi(x)) \nabla_\phi Q_\phi(x))], \\
+&= \gamma \mathbb{E}_{\zeta \sim P_\zeta} [\nabla_\phi Q_\phi(x') \nabla_\phi Q_\phi(x)^\top] - \mathbb{E}_{\zeta \sim P_\zeta} [\nabla_\phi Q_\phi(x) \nabla_\phi Q_\phi(x)^\top] \\
+&+ \mathbb{E}_{\zeta \sim P_\zeta} [(r + \gamma Q_\phi(x') - Q_\phi(x)) \nabla^2_\phi Q_\phi(x)], \\
+&= \gamma \mathbb{E}_{\zeta \sim P_\zeta} [\nabla_\phi Q_\phi(x') \nabla_\phi Q_\phi(x)^\top] - \mathbb{E}_{x \sim d^\mu} [\nabla_\phi Q_\phi(x) \nabla_\phi Q_\phi(x)^\top] \\
+&+ \mathbb{E}_{\zeta \sim P_\zeta} [(r + \gamma Q_\phi(x') - Q_\phi(x)) \nabla^2_\phi Q_\phi(x)],
+\end{aligned}
+$$
+
+hence, we can write the TD Jacobian condition as:
+$$
+\begin{aligned}
+v^\top J(\phi) v &= \gamma \mathbb{E}_{\zeta \sim P_\zeta} [v^\top \nabla_\phi Q_\phi(x') \nabla_\phi Q_\phi(x)^\top v] - \mathbb{E}_{x \sim d^\mu} [v^\top \nabla_\phi Q_\phi(x) \nabla_\phi Q_\phi(x)^\top v] \\
+&+ \mathbb{E}_{\zeta \sim P_\zeta} [(r + \gamma Q_\phi(x') - Q_\phi(x)) v^\top \nabla^2_\phi Q_\phi(x) v], \\
+&= \gamma \mathbb{E}_{\zeta \sim P_\zeta} [v^\top \nabla_\phi Q_\phi(x') \nabla_\phi Q_\phi(x)^\top v] - \mathbb{E}_{x \sim d^\mu} [(v^\top \nabla_\phi Q_\phi(x))^2] \\
+&+ \mathbb{E}_{\zeta \sim P_\zeta} [(r + \gamma Q_\phi(x') - Q_\phi(x)) v^\top \nabla^2_\phi Q_\phi(x) v], \\
+&= \mathcal{C}_{\text{OffPolicy}}(Q_\phi^k, d^\mu) + \mathcal{C}_{\text{Nonlinear}}(Q_\phi^k),
+\end{aligned}
+$$
+
+yielding the two stability components introduced in Section 3.1. Next, we investigate the effect that off-policy sampling has on $\mathcal{C}_{\text{OffPolicy}}(Q_\phi^k, d^\mu)$:
+
+$$
+\mathcal{C}_{\text{OffPolicy}}(Q_\phi^k, d^\mu) = \gamma \mathbb{E}_{\zeta \sim P_\zeta} [v^\top \nabla_\phi Q_\phi(x') \nabla_\phi Q_\phi(x)^\top v] - \mathbb{E}_{x \sim d^\mu} [(v^\top \nabla_\phi Q_\phi(x))^2]. \quad (10)
+$$
+
+We now apply the Cauchy-Schwarz inequality to separate the expectations in the first term:
+$$
+\begin{aligned}
+\mathbb{E}_{\zeta \sim P_\zeta} [v^\top \nabla_\phi Q_\phi(x') \nabla_\phi Q_\phi(x)^\top v] &\le |\mathbb{E}_{\zeta \sim P_\zeta} [v^\top \nabla_\phi Q_\phi(x') \nabla_\phi Q_\phi(x)^\top v]|, \\
+&= \sqrt{|\mathbb{E}_{\zeta \sim P_\zeta} [v^\top \nabla_\phi Q_\phi(x') \nabla_\phi Q_\phi(x)^\top v]|^2}, \\
+&\le \sqrt{\mathbb{E}_{\zeta \sim P_\zeta} [(v^\top \nabla_\phi Q_\phi(x'))^2] \mathbb{E}_{\zeta \sim P_\zeta} [(v^\top \nabla_\phi Q_\phi(x))^2]}, \\
+&= \sqrt{\mathbb{E}_{\zeta \sim P_\zeta} [(v^\top \nabla_\phi Q_\phi(x'))^2] \mathbb{E}_{x \sim d^\pi} [(v^\top \nabla_\phi Q_\phi(x))^2]}.
+\end{aligned}
+$$
+
+21
+
+Published as a conference paper at ICLR 2025
+
+Substituting into Eq. (10) yields:
+$$
+\begin{aligned}
+\mathcal{C}_{\text{OffPolicy}}(Q_{\phi}^k, d^\mu) &\leq \gamma \sqrt{\mathbb{E}_{\varsigma \sim P_\varsigma} \left[ \left( v^\top \nabla_\phi Q_\phi(x') \right)^2 \right] \mathbb{E}_{x \sim d^\pi} \left[ \left( v^\top \nabla_\phi Q_\phi(x) \right)^2 \right]} \\
+&\quad - \mathbb{E}_{x \sim d^\mu} \left[ \left( v^\top \nabla_\phi Q_\phi(x) \right)^2 \right].
+\end{aligned}
+$$
+
+Now, as $\gamma \in [0, 1)$, to prove that $\mathcal{C}_{\text{OffPolicy}}(Q_{\phi}^k, d^\mu) < 0$, we require that $\mathbb{E}_{\varsigma \sim P_\varsigma} \left[ \left( v^\top \nabla_\phi Q_\phi(x') \right)^2 \right] \leq \mathbb{E}_{x \sim d^\pi} \left[ \left( v^\top \nabla_\phi Q_\phi(x) \right)^2 \right]$, yielding:
+$$
+\begin{aligned}
+\mathcal{C}_{\text{OffPolicy}}(Q_{\phi}^k, d^\mu) &\leq \gamma \sqrt{\mathbb{E}_{x \sim d^\pi} \left[ \left( v^\top \nabla_\phi Q_\phi(x) \right)^2 \right]^2} - \mathbb{E}_{x \sim d^\mu} \left[ \left( v^\top \nabla_\phi Q_\phi(x) \right)^2 \right], \\
+&= (\gamma - 1)\mathbb{E}_{x \sim d^\mu} \left[ \left( v^\top \nabla_\phi Q_\phi(x) \right)^2 \right], \\
+&< 0.
+\end{aligned}
+$$
+
+### B.2 THEOREM 1 - ANALYSING TD
+
+We now characterise the convergence of TD in our general setting. Our proof is structured as follows: we first bound the expected norm one timestep into the future in terms of the expected norm at the current timestep: $\mathbb{E}_{\varsigma_i, -\varsigma_i} \left[ \| \phi_{i+1} - \phi^* \|^2 \right] \leq \text{Constant} \cdot \mathbb{E}_{-\varsigma_i} \left[ \| \phi_i - \phi^* \|^2 \right] + \text{Residual}_i$ where $\text{Residual}_i$ is a residual term that accounts for the variance of the updates and sampling from the Markov chain. This is done by expanding $\| \phi_{i+1} - \phi^* \|^2$ and following the algebra to Ineq. 11 of Theorem 1. To bound the residual term, we then invoke Lemma 1. Bounding the variance contribution results naturally from our Lipschitz assumption. Bounding the Markov contribution follows from the definition of geometric ergodicity and our proof is similar to Bhandari et al. (2018). Crucially, this bound implies $\lim_{i \to \infty} \text{Residual}_i = 0$. We then use the fundamental theorem of calculus to show that the TD stability criterion implies $\text{Constant} < 1$ for small enough $\alpha_i$ (see Eq. (12)). This demonstrates that the TD updates are a contraction mapping with a decaying residual term, allowing us to verify convergence in the remainder of the proof.
+
+**Theorem 1 (TD Stability).** *Let Assumptions 1 and 2 hold. If the TD criterion holds then the TD updates in Eq. (1) converge with:*
+$$ \lim_{i \to \infty} \mathbb{E} \left[ \| \phi_i - \phi^* \|^2 \right] = 0. $$
+
+*Proof.* We use the notation $\mathbb{E}_{-\varsigma_i}[\cdot]$ to denote the expectation over $\{\varsigma_0, \dots \varsigma_{i-1}\}$ and $\mathbb{E}_{\varsigma_i | \varsigma_{i-1}}[\cdot]$ to denote the expectation over $\varsigma_i$ conditioned on $\varsigma_{i-1}$. Substituting for $\phi_{i+1} = \phi_i + \alpha_i \delta(\phi_i, \varsigma_i)$ into $\mathbb{E} \left[ \| \phi_{i+1} - \phi^* \|^2 \right]$ yields:
+$$
+\begin{aligned}
+\mathbb{E}_{\varsigma_i, -\varsigma_i} \left[ \| \phi_{i+1} - \phi^* \|^2 \right] &= \mathbb{E}_{\varsigma_i, -\varsigma_i} \left[ \| \phi_i + \alpha_i \delta(\phi_i, \varsigma_i) - \phi^* \|^2 \right], \\
+&= \mathbb{E}_{\varsigma_i, -\varsigma_i} \left[ \| \phi_i - \phi^* \|^2 + 2\alpha_i \delta(\phi_i, \varsigma_i)^\top (\phi_i - \phi^*) + \alpha_i^2 \| \delta(\phi_i, \varsigma_i) \|^2 \right], \\
+&= \mathbb{E}_{-\varsigma_i} \left[ \| \phi_i - \phi^* \|^2 + 2\alpha_i \mathbb{E}_{-\varsigma_i} \left[ \delta(\phi_i, \varsigma_i) \right]^\top (\phi_i - \phi^*) + \alpha_i^2 \mathbb{E}_{\varsigma_i | -\varsigma_i} \left[ \| \delta(\phi_i, \varsigma_i) \|^2 \right] \right], \\
+&= \mathbb{E}_{-\varsigma_i} \Big[ \| \phi_i - \phi^* \|^2 + 2\alpha_i \left( \mathbb{E}_{\varsigma_i | -\varsigma_i} \left[ \delta(\phi_i, \varsigma_i) \right] - \delta(\phi_i) + \delta(\phi_i) \right)^\top (\phi_i - \phi^*) \\
+&\quad + \alpha_i^2 \mathbb{E}_{\varsigma_i | -\varsigma_i} \left[ \| \delta(\phi_i, \varsigma_i) \|^2 \right] \Big], \\
+&= \mathbb{E}_{-\varsigma_i} \Big[ \| \phi_i - \phi^* \|^2 + 2\alpha_i \delta(\phi_i)^\top (\phi_i - \phi^*) \\
+&\quad + 2\alpha_i \left( \mathbb{E}_{\varsigma_i | -\varsigma_i} \left[ \delta(\phi_i, \varsigma_i) \right] - \delta(\phi_i) \right)^\top (\phi_i - \phi^*) + \alpha_i^2 \mathbb{E}_{\varsigma_i | -\varsigma_i} \left[ \| \delta(\phi_i, \varsigma_i) \|^2 \right] \Big], \\
+&\leq \mathbb{E}_{-\varsigma_i} \left[ \| \phi_i - \phi^* \|^2 + 2\alpha_i \delta(\phi_i)^\top (\phi_i - \phi^*) \right] \\
+&\quad + 2\alpha_i \underbrace{\left| \mathbb{E}_{-\varsigma_i} \left[ \left( \mathbb{E}_{\varsigma_i | -\varsigma_i} \left[ \delta(\phi_i, \varsigma_i) \right] - \delta(\phi_i) \right)^\top (\phi_i - \phi^*) \right] \right|}_{\text{Non i.i.d. term}} + \alpha_i^2 \underbrace{\mathbb{E}_{\varsigma_i, -\varsigma_i} \left[ \| \delta(\phi_i, \varsigma_i) \|^2 \right]}_{\text{Variance term}}, \quad (11)
+\end{aligned}
+$$
+
+22
+
+
+
+Published as a conference paper at ICLR 2025
+
+where we have isolated the contribution of variance and non-i.i.d. sampling in deriving the final line. We now bound the non-i.i.d. contribution in total variation and variance term using Lemma 1:
+
+$$
+\mathbb{E}_{\varsigma_i, -\varsigma_i} \left[ \|\phi_{i+1} - \phi^*\|^2 \right] \le \mathbb{E}_{-\varsigma_i} \left[ \|\phi_i - \phi^*\|^2 + 2\alpha_i \delta(\phi_i)^\top (\phi_i - \phi^*) \right] + 2\alpha_i C_{\text{Markov}} \rho^i + \alpha_i^2 C_{\text{Var}}.
+$$
+
+Note that for i.i.d. sampling, $\mathbb{E}_{\varsigma_i | -\varsigma_i} [\delta(\phi_i, \varsigma_i)] = \mathbb{E}_{\varsigma_i \sim P_\xi} [\delta(\phi_i, \varsigma_i)] = \delta(\phi_i)$ and so $C_{\text{Markov}} = 0$. Next, we re-write $\delta(\phi_i)$ to contain a factor of $\phi_i - \phi^*$. Define the line joining $\phi^*$ to $\phi_i$ as $\ell(l) = \phi_i - l(\phi_i - \phi^*)$. Under Assumption 2, we can apply the fundamental theorem of calculus to integrate along this line, yielding:
+
+$$
+\begin{aligned}
+\delta(\phi_i) &= \delta(\phi_i) - \underbrace{\delta(\phi^*)}_{=0}, \\
+&= \delta(\phi = \ell(0)) - \delta(\phi = \ell(1)), \\
+&= - \int_0^1 \partial_l \delta(\phi = \ell(l)) dl, \\
+&= \int_0^1 \nabla_\phi \delta(\phi = \ell(l)) (\phi_i - \phi^*) dl, \\
+&= \int_0^1 J(\phi = \ell(l)) dl (\phi_i - \phi^*), \\
+&= \tilde{J} (\phi_i - \phi^*)
+\end{aligned}
+$$
+
+where we have used the chain rule to derive the fourth line and introduced the notation $\tilde{J} := \int_0^1 J(\phi = \ell(l)) dl$. Substituting yields:
+
+$$
+\begin{aligned}
+\mathbb{E}_{\varsigma_i, -\varsigma_i} \left[ \|\phi_{i+1} - \phi^*\|^2 \right] \le \mathbb{E}_{-\varsigma_i} &\left[ \|\phi_i - \phi^*\|^2 + 2\alpha_i (\phi_i - \phi^*)^\top \tilde{J} (\phi_i - \phi^*) \right] \\
+&+ 2\alpha_i C_{\text{Markov}} \rho^i + \alpha_i^2 C_{\text{Var}}.
+\end{aligned}
+$$
+
+Now, as the TD criterion: $v^\top J(\phi) v < 0$ holds almost everywhere, it follows that:
+
+$$
+\begin{aligned}
+(\phi_i - \phi^*)^\top \underbrace{\int_0^1 J(\phi = \ell(l)) dl}_{:= \tilde{J}} (\phi_i - \phi^*) &< 0, \\
+\implies (\phi_i - \phi^*)^\top \tilde{J} (\phi_i - \phi^*) &= (\phi_i - \phi^*)^\top \frac{1}{2} \left( \tilde{J} + \tilde{J}^\top \right) (\phi_i - \phi^*) \le -\lambda_{\min} \|\phi_i - \phi^*\|^2,
+\end{aligned}
+$$
+
+where $\lambda_{\min} > 0$ is the smallest (in magnitude) eigenvalue of $-\frac{1}{2} (\tilde{J} + \tilde{J}^\top)$. Substituting yields:
+
+$$
+\mathbb{E}_{\varsigma_i, -\varsigma_i} \left[ \|\phi_{i+1} - \phi^*\|^2 \right] \le \mathbb{E}_{-\varsigma_i} \left[ \|\phi_i - \phi^*\|^2 \right] (1 - 2\alpha_i \lambda_{\min}) + 2\alpha_i C_{\text{Markov}} \rho^i + \alpha_i^2 C_{\text{Var}}. \quad (12)
+$$
+
+Re-arranging yields:
+
+$$
+\begin{aligned}
+2\lambda_{\min} \alpha_i \mathbb{E}_{-\varsigma_i} \left[ \|\phi_i - \phi^*\|^2 \right] \\
+\le \mathbb{E}_{-\varsigma_i} \left[ \|\phi_i - \phi^*\|^2 \right] - \mathbb{E}_{\varsigma_i, -\varsigma_i} \left[ \|\phi_{i+1} - \phi^*\|^2 \right] + 2\alpha_i C_{\text{Markov}} \rho^i + \alpha_i^2 C_{\text{Var}}.
+\end{aligned}
+$$
+
+23
+
+Published as a conference paper at ICLR 2025
+
+Summing over $i$ up to timestep $t$ and using the telescoping property of the series yields:
+
+$$
+\begin{aligned}
+2\lambda_{\min} \sum_{i=0}^t \alpha_i \mathbb{E}_{-\varsigma_i} \left[ \|\phi_i - \phi^*\|^2 \right] \\
+\le \mathbb{E}_{-\varsigma_i} \left[ \|\phi_0 - \phi^*\|^2 \right] - \mathbb{E}_{-\varsigma_i} \left[ \|\phi_{t+1} - \phi^*\|^2 \right] + 2C_{\text{Markov}} \sum_{i=0}^t \alpha_i \rho^i + C_{\text{Var}} \sum_{i=0}^t \alpha_i^2, \\
+\le \mathbb{E}_{-\varsigma_i} \left[ \|\phi_0 - \phi^*\|^2 \right] + 2C_{\text{Markov}} \sum_{i=0}^t \alpha_i \rho^i + C_{\text{Var}} \sum_{i=0}^t \alpha_i^2, \\
+\implies \sum_{i=0}^t \frac{\alpha_i}{\sum_{i'=0}^t \alpha_{i'}} \mathbb{E}_{-\varsigma_i} \left[ \|\phi_i - \phi^*\|^2 \right] \\
+\le \frac{1}{2\lambda_{\min}} \left( \frac{\mathbb{E}_{-\varsigma_i} \left[ \|\phi_0 - \phi^*\|^2 \right]}{\sum_{i'=0}^t \alpha_{i'}} + 2C_{\text{Markov}} \frac{\sum_{i=0}^t \alpha_i \rho^i}{\sum_{i=0}^t \alpha_i} + C_{\text{Var}} \frac{\sum_{i=0}^t \alpha_i^2}{\sum_{i'=0}^t \alpha_{i'}} \right),
+\end{aligned}
+\tag{13}
+$$
+
+where the penultimate bound follows from $\mathbb{E}_{\varsigma_i, -\varsigma_i} \left[ \|\phi_{t+1} - \phi^*\|^2 \right] \ge 0$. In preparation for taking the limit $t \to \infty$, we observe that by the Cauchy-Schwarz inequality:
+
+$$
+\sum_{i=0}^t \alpha_i \rho^i = \sum_{i=0}^t |\alpha_i| \rho^i \le \sqrt{\sum_{i=0}^t \alpha_i^2 \rho^{2i}} \le \sqrt{\sum_{i=0}^t \alpha_i^2 \sum_{i=0}^t \rho^{2i}}.
+$$
+
+Now, from Assumption 1, $\lim_{t \to \infty} \sum_{i=0}^t \alpha_i^2 < \infty$, hence:
+
+$$
+\lim_{t \to \infty} \sum_{i=0}^t \alpha_i \rho^i \le \sqrt{\lim_{t \to \infty} \sum_{i=0}^t \alpha_i^2 \lim_{t \to \infty} \sum_{i=0}^t \rho^{2i}} = \mathcal{O}(1)
+$$
+
+As $\lim_{t \to \infty} \sum_{i=0}^t \alpha_i = \infty$, this implies:
+
+$$
+\lim_{t \to \infty} \frac{\sum_{i=0}^t \alpha_i \rho^i}{\sum_{i=0}^t \alpha_i} = 0.
+$$
+
+We are now ready to take limits of Eq. (13), yielding:
+
+$$
+\lim_{t \to \infty} \sum_{i=0}^t \frac{\alpha_i}{\sum_{i'=0}^t \alpha_{i'}} \mathbb{E}_{-\varsigma_i} \left[ \|\phi_i - \phi^*\|^2 \right] = 0.
+\tag{14}
+$$
+
+Eq. (14) proves our desired result:
+
+$$
+\lim_{i \to \infty} \mathbb{E}_{-\varsigma_i} \left[ \|\phi_i - \phi^*\|^2 \right] = 0.
+$$
+
+To see why, assume this does not hold, that is $\lim_{i \to \infty} \mathbb{E}_{-\varsigma_i} \left[ \|\phi_i - \phi^*\|^2 \right] \ne 0$. This implies there exists some infinite length sub-sequence $S$ such that for all $i \in S$:
+
+$$
+\mathbb{E}_{-\varsigma_i} \left[ \|\phi_i - \phi^*\|^2 \right] > 0,
+$$
+
+hence, as all quantities are positive:
+
+$$
+\lim_{t \to \infty} \sum_{i=0}^t \frac{\alpha_i}{\sum_{i'=0}^t \alpha_{i'}} \mathbb{E}_{-\varsigma_i} \left[ \|\phi_i - \phi^*\|^2 \right] \ge \lim_{t \to \infty} \sum_{i \in S} \frac{\alpha_i}{\sum_{i'=0}^t \alpha_{i'}} \mathbb{E}_{-\varsigma_i} \left[ \|\phi_i - \phi^*\|^2 \right] > 0,
+$$
+
+which is a contradiction. $\square$
+
+**Lemma 1.** *Let Assumption 2 hold. Then there exist constants: $0 < C_{\text{Markov}} < \infty$, $0 < C_{\text{Var}} < \infty$ and $\rho \in [0, 1)$ such that:*
+
+$$
+\left| \mathbb{E}_{-\varsigma_i} \left[ \left( \mathbb{E}_{\varsigma_i | -\varsigma_i} \left[ \delta(\phi_i, \varsigma_i) \right] - \delta(\phi_i) \right)^\top (\phi_i - \phi^*) \right] \right| \le C_{Markov} \rho^i, \quad \mathbb{E}_{\varsigma_i, -\varsigma_i} \left[ \| \delta(\phi_i, \varsigma_i) \|^2 \right] \le C_{\text{Var}}.
+$$
+
+24
+
+
+
+Published as a conference paper at ICLR 2025
+
+Proof. For both results, we use the fact that, because $\Phi$ is compact and $\mathcal{X}$ is bounded, rewards are bounded and $\delta(\phi, \varsigma)$ is Lipschitz under Assumption 2, $\delta(\phi, \varsigma)$ is bounded almost everywhere. To prove the first bound, we denote the marginal probability distribution of the $i$-th timestep element in the Markov chain $\varsigma_i$ as $P^i$ with density:
+
+$$p^i(\varsigma_i) = \int p(-\varsigma_i, \varsigma_i) d(-\varsigma_i).$$
+
+Under this notation we write:
+
+$$
+\begin{aligned}
+\mathbb{E}_{-\varsigma_i} & \left[ \left( \mathbb{E}_{\varsigma_i | -\varsigma_i} [\delta(\phi_i, \varsigma_i)] - \delta(\phi_i) \right)^\top (\phi_i - \phi^*) \right] \\
+&= \mathbb{E}_{-\varsigma_i, \varsigma_i} \left[ \left( \delta(\phi_i, \varsigma_i) - \mathbb{E}_{\varsigma'_i \sim P_\varsigma} [\delta(\phi_i, \varsigma'_i)] \right)^\top (\phi_i - \phi^*) \right], \\
+&= \mathbb{E}_{-\varsigma_i, \varsigma_i} \left[ \delta(\phi_i, \varsigma_i)^\top (\phi_i - \phi^*) - \mathbb{E}_{\varsigma'_i \sim P_\varsigma} [\delta(\phi_i, \varsigma'_i)]^\top (\phi_i - \phi^*) \right], \\
+&= \mathbb{E}_{-\varsigma_i, \varsigma_i} \left[ \delta(\phi_i, \varsigma_i)^\top (\phi_i - \phi^*) - \mathbb{E}_{\varsigma'_i \sim P_\varsigma} [\delta(\phi_i, \varsigma'_i)^\top (\phi_i - \phi^*)] \right], \\
+&= \mathbb{E}_{\varsigma_i \sim P^i} \left[ \mathbb{E}_{-\varsigma_i \sim P^i(\varsigma_i)} \left[ \delta(\phi_i, \varsigma_i)^\top (\phi_i - \phi^*) \right] \right] - \mathbb{E}_{\varsigma_i \sim P_\varsigma} \left[ \mathbb{E}_{-\varsigma_i \sim P^i(\varsigma_i)} \left[ \delta(\phi_i, \varsigma_i)^\top (\phi_i - \phi^*) \right] \right],
+\end{aligned}
+\tag{15}
+$$
+
+where $P^i(\varsigma_i)$ is the backwards conditional distribution in the Markov chain with density:
+
+$$p^i(-\varsigma_i | \varsigma_i) = \frac{p^i(-\varsigma_i, \varsigma_i)}{p^i(\varsigma_i)}.$$
+
+Introducing the notation:
+
+$$g(\varsigma_i) = \mathbb{E}_{-\varsigma_i \sim P^i(\varsigma_i)} \left[ \delta(\phi_i, \varsigma_i)^\top (\phi_i - \phi^*) \right],$$
+
+we write Eq. (15) as:
+
+$$
+\begin{aligned}
+\mathbb{E}_{-\varsigma_i} & \left[ \left( \mathbb{E}_{\varsigma_i | -\varsigma_i} [\delta(\phi_i, \varsigma_i)] - \delta(\phi_i) \right)^\top (\phi_i - \phi^*) \right] = \mathbb{E}_{\varsigma_i \sim P^i} [g(\varsigma_i)] - \mathbb{E}_{\varsigma_i \sim P_\varsigma} [g(\varsigma_i)], \\
+&= \mathbb{E}_{\varsigma_0} \left[ \mathbb{E}_{\varsigma_i \sim P^i(\varsigma_0)} [g(\varsigma_i)] - \mathbb{E}_{\varsigma_i \sim P_\varsigma} [g(\varsigma_i)] \right],
+
+
+
+Published as a conference paper at ICLR 2025
+
+almost surely (see Roberts & Rosenthal (2004)[Section 3.4]), hence substituting into Eq. (17) yields our desired result:
+
+$$
+\begin{aligned}
+\left| \mathbb{E}_{-\varsigma_i} \left[ \left( \mathbb{E}_{\varsigma_i | -\varsigma_i} \left[ \delta(\phi_i, \varsigma_i) \right] - \delta(\phi_i) \right)^\top (\phi_i - \phi^*) \right] \right| &\le 2g_{\max} \mathbb{E}_{\varsigma_0} \left[ \text{TV}(P^i(\varsigma_0) \| P_\varsigma) \right], \\
+&\le 2g_{\max} \mathbb{E}_{\varsigma_0} \left[ M(\varsigma_0) \rho^i \right], \\
+&= 2g_{\max} \mathbb{E}_{\varsigma_0} \left[ M(\varsigma_0) \right] \rho^i, \\
+&= C_{\text{Markov}} \rho^i,
+\end{aligned}
+$$
+
+where $C_{\text{Markov}} := 2g_{\max} \mathbb{E}_{\varsigma_0} [M(\varsigma_0)] < \infty$. Our second bound follows from the fact that $\delta(\phi, \varsigma)$ is bounded almost everywhere. This implies there exists some $C_{\text{Var}} > 0$ such that $\| \delta(\phi, \varsigma) \|^2 \le C_{\text{Var}}$ almost everywhere, hence:
+
+$$
+\mathbb{E}_{\varsigma_i, -\varsigma_i} \left[ \| \delta(\phi_i, \varsigma_i) \|^2 \right] \le C_{\text{Var}}.
+$$
+
+$\square$
+
+### B.3 THEOREM 2 - STABILISING TD WITH LAYERNORM AND $\ell^2$-REGULARISATION
+
+**Notation:** For all proofs in this section, we introduce the following simplifying notations:
+
+$$
+f_M(x) := \sigma_{\text{Pre}} \circ Mx,
+$$
+
+$$
+\text{LayerNorm}_i^k[f](x) := \frac{1}{\sqrt{k}} \cdot \frac{f_i(x) - \hat{\mu}[f](x)}{\hat{\sigma}[f](x)},
+$$
+
+where $\hat{\mu}[f](x)$ and $\hat{\sigma}[f](x)$ are the element-wise empirical mean and standard deviation of the output $f(x)$:
+
+$$
+\hat{\mu}[f](x) := \frac{1}{k} \sum_{i=0}^{k-1} f_i(x), \quad \hat{\sigma}[f](x) := \sqrt{\frac{1}{k} \sum_{i=0}^{k-1} (f_i(x) - \hat{\mu}[f](x))^2 + \epsilon},
+$$
+
+Finally, we write $M$ in terms of its row vectors:
+
+$$
+M = \begin{bmatrix} - & m_0^\top & - \\ - & m_1^\top & - \\ & \vdots & \\ - & m_{k-1}^\top & - \end{bmatrix}.
+$$
+
+and split the test vector into the corresponding $k+1$ sub-vectors:
+
+$$
+v^\top = [v_w^\top, v_{m_0}^\top, v_{m_1}^\top, \cdots v_{m_{k-1}}^\top],
+$$
+
+where $v_w$ is a vector with the same dimension as the final weight vector $w$ and each $v_{m_i} \in \mathbb{R}^n$ has the same dimension as $x$. We will make use of the following three key properties of LayerNorm:
+
+**Proposition 1.** *Let $f : \mathcal{X} \to \mathbb{R}^k$ be a vector-valued function such that all components $f_i$ are bounded, then:*
+
+$$
+\| \text{LayerNorm}^k[f(x)] \| \le 1,
+$$
+
+$$
+\partial_{f_i} \text{LayerNorm}_j^k[f(x)] = \mathcal{O} \left( k^{-\frac{1}{2}} \left( \mathbb{1}(i=j) + \frac{1}{k} \right) \right),
+$$
+
+$$
+\partial_{f_s} \partial_{f_t} \text{LayerNorm}_j^k[f(x)] = \mathcal{O} \left( k^{-\frac{3}{2}} \left( \mathbb{1}(t=j) + \mathbb{1}(t=s) + \mathbb{1}(j=s) + \frac{1}{k} \right) \right).
+$$
+
+26
+
+
+
+Published as a conference paper at ICLR 2025
+
+Proof. Our first result follows directly from the definition of LayerNorm:
+$$
+\begin{aligned}
+\|\text{LayerNorm}^k[f(x)]\| &= \frac{1}{\sqrt{k}} \frac{\|f(x) - \hat{\mu}[f](x)\|}{\hat{\sigma}[f](x)}, \\
+&= \frac{\sqrt{\frac{1}{k} \sum_{i=0}^{k-1} (f_i(x) - \hat{\mu}[f](x))^2}}{\hat{\sigma}[f](x)}, \\
+&\le \frac{\sqrt{\frac{1}{k} \sum_{i=0}^{k-1} (f_i(x) - \hat{\mu}[f](x))^2 + \epsilon}}{\hat{\sigma}[f](x)}, \\
+&= \frac{\hat{\sigma}[f](x)}{\hat{\sigma}[f](x)}, \\
+&= 1,
+\end{aligned}
+$$
+as required. For our second result, we take partial derivatives with respect to the $i$th input channel to the LayerNorm:
+$$
+\begin{aligned}
+\partial_{f_i} \text{LayerNorm}_j^k[f(x)] &= \frac{1}{\sqrt{k}} \left( \frac{\mathbb{1}(i=j) - \frac{1}{k}}{\hat{\sigma}[f](x)} - \frac{f_j(x) - \hat{\mu}[f](x)}{\hat{\sigma}[f](x)^2} \partial_{f_i} \hat{\sigma}[f](x) \right), \\
+&= \frac{1}{\sqrt{k}} \left( \frac{\mathbb{1}(i=j) - \frac{1}{k}}{\hat{\sigma}[f](x)} - \sqrt{k} \frac{\text{LayerNorm}_j^k[f(x)]}{\hat{\sigma}[f](x)} \partial_{f_i} \hat{\sigma}[f](x) \right).
+\end{aligned}
+$$
+Finding the derivative of the empirical variance yields:
+$$
+\begin{aligned}
+\partial_{f_i} \hat{\sigma}[f](x) &= \partial_{f_i} \sqrt{\frac{1}{k} \sum_{i=0}^{k-1} (f_i(x) - \hat{\mu}[f](x))^2 + \epsilon}, \\
+&= \frac{1}{2} \left( \frac{1}{k} \sum_{i=0}^{k-1} (f_i(x) - \hat{\mu}[f](x))^2 + \epsilon \right)^{-\frac{1}{2}} \partial_{f_i} \left( \frac{1}{k} \sum_{i=0}^{k-1} (f_i(x) - \hat{\mu}[f](x))^2 + \epsilon \right), \\
+&= \frac{1}{k \hat{\sigma}[f](x)} \sum_{l=0}^{k-1} (f_l(x) - \hat{\mu}[f](x)) \left( \mathbb{1}(i=l) - \frac{1}{k} \right), \\
+&= \frac{1}{k \hat{\sigma}[f](x)} \left( \sum_{l=0}^{k-1} (f_l(x) - \hat{\mu}[f](x))\mathbb{1}(i=l) - \frac{1}{k} \sum_{l=0}^{k-1} f_l(x) + \hat{\mu}[f](x) \sum_{l=0}^{k-1} \frac{1}{k} \right), \\
+&= \frac{1}{k \hat{\sigma}[f](x)} \left( f_i(x) - \hat{\mu}[f](x) - \frac{1}{k} \sum_{l=0}^{k-1} f_l(x) + \hat{\mu}[f](x) \right), \\
+&= \frac{f_i(x) - \hat{\mu}[f](x)}{k \hat{\sigma}[f](x)}, \\
+&= \frac{1}{\sqrt{k}} \text{LayerNorm}_i^k[f(x)],
+\end{aligned}
+$$
+hence:
+$$
+\begin{aligned}
+\partial_{f_i} \text{LayerNorm}_j^k[f(x)] &= \frac{1}{\sqrt{k}\hat{\sigma}[f](x)} \left( \mathbb{1}(i=j) - \frac{1}{k} - \text{LayerNorm}_i^k[f(x)] \text{LayerNorm}_j^k[f(x)] \right), \\
+&= \mathcal{O} \left( \frac{1}{\sqrt{k}} \left( \mathbb{1}(i=j) + \frac{1}{k} \right) \right),
+\end{aligned}
+\quad (18)
+$$
+where we use the fact that $\text{LayerNorm}_j^k[f(x)] = \mathcal{O}\left(\frac{1}{\sqrt{k}}\right)$ to derive the final line. To prove our third result, we start with the first order partial derivative using Eq. (18):
+$$
+\partial_{f_t} \text{LayerNorm}_j^k[f(x)] = \frac{1}{\sqrt{k}\hat{\sigma}[f](x)} \left( \mathbb{1}(t=j) - \frac{1}{k} - \text{LayerNorm}_t^k[f(x)] \text{LayerNorm}_j^k[f(x)] \right),
+$$
+
+27
+
+
+
+
+Published as a conference paper at ICLR 2025
+
+Taking partial derivatives with respect to $f_s$ yields:
+
+$$
+\begin{aligned}
+& \partial_{f_s} \partial_{f_t} \text{LayerNorm}^k_j[f(x)] \\
+& = - \frac{\partial_{f_s} \hat{\sigma}[f](x)}{\sqrt{k} \hat{\sigma}[f](x)^2} \left( \mathbb{1}(t=j) - \frac{1}{k} - \text{LayerNorm}^k_i[f(x)] \text{LayerNorm}^k_j[f(x)] \right) \\
+& - k^{-\frac{1}{2}} \cdot \frac{\partial_{f_s} \text{LayerNorm}^k_i[f(x)] \cdot \text{LayerNorm}^k_j[f(x)] + \text{LayerNorm}^k_i[f(x)] \partial_{f_s} \text{LayerNorm}^k_j[f(x)]}{\hat{\sigma}[f](x)}, \\
+& = \mathcal{O}\left( k^{-\frac{3}{2}} \left( \mathbb{1}(t=j) + \frac{1}{k} \right) \right) + \mathcal{O}\left( k^{-\frac{3}{2}} \left( \mathbb{1}(t=s) + \frac{1}{k} \right) \right) + \mathcal{O}\left( k^{-\frac{3}{2}} \left( \mathbb{1}(j=s) + \frac{1}{k} \right) \right), \\
+& = \mathcal{O}\left( k^{-\frac{3}{2}} \left( \mathbb{1}(t=j) + \mathbb{1}(t=s) + \mathbb{1}(j=s) + \frac{1}{k} \right) \right),
+\end{aligned}
+$$
+
+as required. $\square$
+
+We are now ready to prove our main result. Most of the work is done by proving Lemma 2: once the bounds in Lemma 2 have been established, the result follows by subtracting the regularisation term from the off policy and nonlinear components of the TD stability condition. We split the proof of Lemma 2 into two parts. Firstly, we bound the off-policy contribution by splitting it further into components that affect the final layer weights and the other matrix weights. By doing so, we find a residual term remains that is only affected by the final layer weights (Lemma 3). Secondly, we bound the non-linear contribution in Lemma 4 by isolating the second order derivative of the function approximator. What remains is to show this term decays as $1/\sqrt{k}$, which we prove in Lemma 5. Our proof of Lemma 5 is similar to Liu et al. (2020).
+
+**Theorem 2.** Let Assumption 2 apply. Using the LayerNorm regularised TD update $\delta^k_{\text{reg}}(\phi, \varsigma)$ in Eq. (9), there exists some finite $k'$ such that the TD stability criterion holds for all $k > k'$.
+
+Proof. From the definition of the expected regularised TD error vector:
+
+$$
+\begin{aligned}
+\delta^k_{\text{reg}}(\phi) &= \mathbb{E}_{\varsigma \sim P_\varsigma} \left[ \left( r + \gamma Q^k_\phi(x') - Q^k_\phi(x) \right) \nabla_\phi Q^k_\phi(x) \right] \\
+& \quad - \left( \eta \left( \frac{\gamma L_{\text{Post}}}{2} \right)^2 \begin{bmatrix} w \\ 0 \end{bmatrix} + (\eta - 1) \begin{bmatrix} 0 \\ \text{Vec}(M) \end{bmatrix} \right), \\
+\implies v^\top \nabla_\phi \delta^k_{\text{reg}}(\phi)v &= \mathbb{E}_{\varsigma \sim P_\varsigma} \left[ \left( r + \gamma Q^k_\phi(x') - Q^k_\phi(x) \right) v^\top \nabla^2_\phi Q^k_\phi(x)v \right] \\
+& \quad + \mathbb{E}_{\varsigma \sim P_\varsigma} \left[ v^\top (\gamma \nabla_\phi Q^k_\phi(x') - \nabla_\phi Q^k_\phi(x)) \nabla_\phi Q^k_\phi(x)^\top v \right] \\
+& \quad - \eta \left( \frac{\gamma L_{\text{Post}}}{2} \right)^2 \|v_w\|^2 - (\eta - 1) \|v_{-m}\|^2, \\
+& = \mathcal{C}_{\text{OffPolicy}}(Q^k_\phi, d^\mu) + \mathcal{C}_{\text{Nonlinear}}(Q^k_\phi) \\
+& \quad - \eta \left( \frac{\gamma L_{\text{Post}}}{2} \right)^2 \|v_w\|^2 - (\eta - 1) \|v_{-m}\|^2.
+\end{aligned}
+$$
+
+Applying Lemma 2 and taking the limit $k \to \infty$ yields:
+
+$$
+\lim_{k \to \infty} v^\top \nabla_\phi \delta^k_{\text{reg}}(\phi)v = \left( \frac{\gamma L_{\text{Post}}}{2} \right)^2 (1-\eta)\|v_w\|^2 + (1-\eta)\|v_M\|^2 < 0,
+$$
+
+almost everywhere, which follows from the fact $\eta > 1$, hence, by the definition of the limit, there must exist some finite $k'$ such that for all $k > k'$:
+
+$$
+v^\top \nabla_\phi \delta^k_{\text{reg}}(\phi)v < 0,
+$$
+
+almost everywhere, as required. $\square$
+
+**Lemma 2.** Let Assumption 2 apply. Let $v_w$ be the first $k$ components of the test vector $v = [v_w^\top, v_M^\top]^\top$, associated with final layer parameters $w$, and $v_M$ be the remaining components, associated with the
+
+28
+
+Published as a conference paper at ICLR 2025
+
+matrix $M$ parameters. Using the LayerNorm $Q$-function defined in Eq. (5):
+
+Off-Policy Bound: $\mathcal{C}_{\text{OffPolicy}}(Q_\phi^k, d^\mu) \le \|v_w \cdot \gamma L_{\text{Post}/2}\|^2 + \mathcal{O}\left(\|v_M\|^2/k\right)$,
+Nonlinear Bound: $\mathcal{C}_{\text{Nonlinear}}(Q_\phi^k) = \mathcal{O}\left(\|v\|^2/\sqrt{k}\right)$,
+
+almost surely for any test vector and any state-action transition pair $x, x' \in \mathcal{X}$.
+
+**Proof.** By definition of the off-policy and nonlinear contribution terms:
+$$
+\begin{aligned}
+\mathcal{C}_{\text{OffPolicy}}(Q_\phi^k, d^\mu) &:= \gamma \mathbb{E}_{\zeta \sim P_\zeta} \left[ v^\top \nabla_\phi Q_\phi^k(x') v^\top \nabla_\phi Q_\phi^k(x) \right] - \mathbb{E}_{x \sim d^\nu} \left[ \left( v^\top \nabla_\phi Q_\phi^k(x) \right)^2 \right], \\
+\mathcal{C}_{\text{Nonlinear}}(Q_\phi^k) &:= \mathbb{E}_{\zeta \sim P_\zeta} \left[ (r + \gamma Q_\phi^k(x') - Q_\phi^k(x)) v^\top \nabla_\phi^2 Q_\phi^k(x) v \right].
+\end{aligned}
+$$
+Applying Lemma 3 and Lemma 4 yields:
+$$
+\begin{aligned}
+\mathcal{C}_{\text{OffPolicy}}(Q_\phi^k, d^\mu) &= \mathbb{E}_{\zeta \sim P_\zeta} \left[ \gamma v^\top \nabla_\phi Q_\phi^k(x') v^\top \nabla_\phi Q_\phi^k(x) - \left( v^\top \nabla_\phi Q_\phi^k(x) \right)^2 \right], \\
+&\le \mathbb{E}_{\zeta \sim P_\zeta} \left[ \left( \frac{\gamma L_{\text{Post}} \|v_w\|}{2} \right)^2 + \mathcal{O}\left( \frac{\|v_M\|^2}{k} \right) \right], \\
+&= \left( \frac{\gamma L_{\text{Post}} \|v_w\|}{2} \right)^2 + \mathcal{O}\left( \frac{\|v_M\|^2}{k} \right), \\
+\mathcal{C}_{\text{Nonlinear}}(Q_\phi^k) &:= \mathbb{E}_{\zeta \sim P_\zeta} \left[ (r + \gamma Q_\phi^k(x') - Q_\phi^k(x)) v^\top \nabla_\phi^2 Q_\phi^k(x) v \right], \\
+&\le \mathbb{E}_{\zeta \sim P_\zeta} \left[ |(r + \gamma Q_\phi^k(x') - Q_\phi^k(x)) v^\top \nabla_\phi^2 Q_\phi^k(x) v| \right], \\
+&= \mathcal{O}\left( \frac{\|v\|^2}{\sqrt{k}} \right),
+\end{aligned}
+$$
+as required. $\square$
+
+**Lemma 3 (Mitigating Off-policy Instability).** Under Assumption 2, using the LayerNorm critic in Eq. (5):
+$$
+\gamma v^\top \nabla_\phi Q_\phi^k(x') \nabla_\phi Q_\phi^k(x)^\top v - (v^\top \nabla_\phi Q_\phi^k(x))^2 \le \left( \frac{\gamma L_{\text{Post}} \|v_w\|}{2} \right)^2 + \mathcal{O}\left( \frac{\|v_M\|^2}{k} \right), \quad (19)
+$$
+almost surely for any test vector and any state-action transition pair $x, x' \in \mathcal{X}$.
+
+**Proof.** Using the notation introduced at the start of Appendix B.3, we start by splitting the left hand side of Eq. (19) into two terms, one determining the stability of the final layer weights and one for the matrix vectors:
+$$
+\begin{aligned}
+&\gamma v^\top \nabla_\phi Q_\phi^k(x') \nabla_\phi Q_\phi^k(x)^\top v - (v^\top \nabla_\phi Q_\phi^k(x))^2 \\
+&= \gamma v_w^\top \nabla_w Q_\phi^k(x') \nabla_w Q_\phi^k(x)^\top v_w - (v_w^\top \nabla_w Q_\phi^k(x))^2 \\
+&\quad + \sum_{i=0}^{k-1} \left( \gamma v_{m_i}^\top \nabla_{m_i} Q_\phi^k(x') \nabla_{m_i} Q_\phi^k(x)^\top v_{m_i} - v_{m_i}^\top \nabla_{m_i} Q_\phi^k(x) \nabla_{m_i} Q_\phi^k(x)^\top v_{m_i} \right). \quad (20)
+\end{aligned}
+$$
+We first focus on the term determining stability of the final layer weights. Taking derivatives of the critic with respect to the final layer weights $w$ yields:
+$$
+\nabla_w Q_\phi^k(x') = \sigma_{\text{Post}} \circ \text{LayerNorm}^k [f_M(x')],
+$$
+hence:
+$$
+\begin{aligned}
+\|\nabla_w Q_\phi^k(x')\| &= \|\sigma_{\text{Post}} \circ \text{LayerNorm}^k [f_M(x')]\|, \\
+&= \|\sigma_{\text{Post}} \circ \text{LayerNorm}^k [f_M(x')] - \underbrace{\sigma_{\text{Post}}(0)}_{=0}\|, \\
+&\le L_{\text{Post}} \|\text{LayerNorm}^k [f_M(x')] - 0\|, \\
+&= L_{\text{Post}} \|\text{LayerNorm}^k [f_M(x')]\|, \\
+&\le L_{\text{Post}}, \quad (21)
+\end{aligned}
+$$
+
+29
+
+
+
+Published as a conference paper at ICLR 2025
+
+where we have used the fact that $\sigma_{\text{Post}}(\cdot)$ is $L_{\text{Post}}$-Lipschitz to derive the third line and applied $\|\text{LayerNorm}^k[f_M(x')]\| \le 1$ from Proposition 1 to derive the final line. We then bound $v_w^\top \nabla_w Q_\phi^k(x') \nabla_w Q_\phi^k(x)^\top v_w$ as:
+$$
+\begin{aligned}
+v_w^\top \nabla_w Q_\phi^k(x') \nabla_w Q_\phi^k(x)^\top v_w &\le \|v_w\| \|\nabla_w Q_\phi^k(x')\| \|\nabla_w Q_\phi^k(x)^\top v_w\|, \\
+&\le L_{\text{Post}} \|v_w\| \|\nabla_w Q_\phi^k(x)^\top v_w\|.
+\end{aligned}
+$$
+Defining $\epsilon := |\nabla_w Q_\phi^k(x)^\top v_w|$ yields:
+$$
+\begin{aligned}
+\gamma v_w^\top \nabla_w Q_\phi^k(x') \nabla_w Q_\phi^k(x)^\top v_w - (v_w^\top \nabla_w Q_\phi^k(x))^2 &\le \gamma \|v_w\| \|\nabla_w Q_\phi^k(x)^\top v_w\| - |\nabla_w Q_\phi^k(x)^\top v_w|^2, \\
+&= \gamma L_{\text{Post}} \|v_w\| \epsilon - \epsilon^2, \\
+&\le \max_{\epsilon} \left( \gamma L_{\text{Post}} \|v_w\| \epsilon - \epsilon^2 \right).
+\end{aligned}
+$$
+Our desired result follows from the fact that the function $\gamma L_{\text{Post}} \|v_w\| \epsilon - \epsilon^2$ is maximised at $\epsilon = \frac{\gamma L_{\text{Post}} \|v_w\|}{2}$, hence:
+$$
+\begin{aligned}
+\gamma v_w^\top \nabla_w Q_\phi^k(x') \nabla_w Q_\phi^k(x)^\top v_w - (v_w^\top \nabla_w Q_\phi^k(x))^2 &\le \frac{\gamma^2 L_{\text{Post}}^2 \|v_w\|^2}{2} - \left( \frac{\gamma L_{\text{Post}} \|v_w\|}{2} \right)^2 \\
+&= \left( \frac{\gamma L_{\text{Post}} \|v_w\|}{2} \right)^2
+\end{aligned}
+$$
+Substituting into Eq. (20) yields:
+$$
+\begin{aligned}
+\gamma v^\top \nabla_\phi Q_\phi^k(x') \nabla_\phi Q_\phi^k(x)^\top v - (v^\top \nabla_\phi Q_\phi^k(x))^2 &\le \left( \frac{\gamma L_{\text{Post}} \|v_w\|}{2} \right)^2 \\
+&+ \sum_{i=0}^{k-1} \left( \gamma v_{m_i}^\top \nabla_{m_i} Q_\phi^k(x') \nabla_{m_i} Q_\phi^k(x)^\top v_{m_i} - v_{m_i}^\top \nabla_{m_i} Q_\phi^k(x) \nabla_{m_i} Q_\phi^k(x)^\top v_{m_i} \right). \quad (22)
+\end{aligned}
+$$
+We now bound the remaining terms (i.e. those that characterise stability of the matrix row vectors) by taking derivatives of the critic with respect to each matrix row vector: $m_i$ :
+$$
+\begin{aligned}
+\nabla_{m_i} Q_\phi^k(x) &= \nabla_{m_i} w^\top \sigma_{\text{Post}} \circ \text{LayerNorm}^k [f_M(x)], \\
+&= \sum_{j=0}^{k-1} w_j \nabla_{m_i} \sigma_{\text{Post}}(\text{LayerNorm}_j^k [f_M(x)]).
+\end{aligned}
+$$
+Applying the chain rule to find an expression for the derivative:
+$$
+\begin{aligned}
+\nabla_{m_i} Q_\phi^k(x) &= \sum_{j=0}^{k-1} w_j \sigma'_{\text{Post}}(\text{LayerNorm}_j^k [f_M(x)]) \nabla_{m_i} \text{LayerNorm}_j^k [f_M(x)], \\
+&= \sum_{j=0}^{k-1} w_j \sigma'_{\text{Post}}(\text{LayerNorm}_j^k [f_M(x)]) \partial_{f_i} \text{LayerNorm}_j^k [f_M(x)] \sigma'_{\text{pre}}(m_i^\top x) x,
+\end{aligned}
+$$
+where $\sigma'_{\text{pre}}$ and $\sigma'_{\text{Post}}$ denote the derivatives of the activation functions, which are bounded almost surely from the Lipschitz assumption, hence:
+$$
+\sigma'_{\text{pre}}(m_i^\top x), \sigma'_{\text{Post}}(\text{LayerNorm}_j^k [f_M(x)]) = \mathcal{O}(1).
+$$
+Using this, we bound $|\nabla_{m_i} Q_\phi^k(x)^\top v_{m_i}|$ as:
+$$
+|\nabla_{m_i} Q_\phi^k(x)^\top v_{m_i}| \le \sum_{j=0}^{k-1} \mathcal{O}(1) w_j \partial_{f_i} \text{LayerNorm}_j^k [f_M(x)] v_{m_i}^\top x.
+$$
+
+30
+
+
+
+Published as a conference paper at ICLR 2025
+
+Now, as each element $f_{M, i}(x)$ is Lipschitz and defined over a bounded set of parameters $m_i$ and inputs $\mathcal{X}$, it follows that $f_{M, i}(x)$ must be a bounded function. We can thus apply the derivative bound to $\partial_{f_i} \text{LayerNorm}_j^k [f_M(x)]$ from Proposition 1, yielding:
+
+$$
+\begin{aligned}
+|\nabla_{m_i} Q_\phi^k(x)^\top v_{m_i}| &\le \left( \sum_{j=0}^{k-1} \mathcal{O}\left( \frac{\mathbb{1}(i=j) - \frac{1}{k}}{\sqrt{k}} \right) w_j \right) v_{m_i}^\top x, \\
+&= \left( \sum_{j=0}^{k-1} \mathcal{O}\left( \frac{\mathbb{1}(i=j) - \frac{1}{k}}{\sqrt{k}} \right) \right) v_{m_i}^\top x, \\
+&= \mathcal{O}\left( \frac{1}{\sqrt{k}} \right) v_{m_i}^\top x,
+\end{aligned}
+$$
+
+where we have used the fact that $w_j = \mathcal{O}(1)$ in deriving the second line. Finally, we use this result to bound each $\nabla_{m_i} Q_\phi^k(x')^\top v_{m_i}$ and $\nabla_{m_i} Q_\phi^k(x)^\top v_{m_i}$ term in Eq. (22):
+
+$$
+\begin{aligned}
+\gamma v^\top \nabla_\phi Q_\phi^k(x') \nabla_\phi Q_\phi^k(x)^\top v - (v^\top \nabla_\phi Q_\phi^k(x))^2 &\le \left( \frac{\gamma L_{\text{Post}} \|v_w\|}{2} \right)^2 \\
++ \sum_{i=0}^{k-1} \left( \gamma \left| v_{m_i}^\top \nabla_{m_i} Q_\phi^k(x') \right| \left| \nabla_{m_i} Q_\phi^k(x)^\top v_{m_i} \right| + \left| v_{m_i}^\top \nabla_{m_i} Q_\phi^k(x) \right|^2 \right), \\
+&\le \left( \frac{\gamma L_{\text{Post}} \|v_w\|}{2} \right)^2 + \mathcal{O}\left( \frac{1}{k} \right) \sum_{i=0}^{k-1} \left( \gamma \left| v_{m_i}^\top x' \right| \left| v_{m_i}^\top x \right| + \left| v_{m_i}^\top x \right|^2 \right), \\
+&\le \left( \frac{\gamma L_{\text{Post}} \|v_w\|}{2} \right)^2 + \mathcal{O}\left( \frac{1}{k} \right) \left( \sum_{i=0}^{k-1} \|v_{m_i}\|^2 \right) \left( \gamma \|x'\| \|x\| + \|x\|^2 \right).
+\end{aligned}
+$$
+
+Now, it follows from the definition of the euclidean norm:
+
+$$
+\sum_{i=0}^{k-1} \|v_{m_i}\|^2 = \|v_M\|^2,
+$$
+
+and by the definition of the state-action space of the MDP in Section 2.1:
+
+$$
+\|x\|, \|x'\| = \mathcal{O}(1),
+$$
+
+hence:
+
+$$
+\gamma v^\top \nabla_\phi Q_\phi^k(x') \nabla_\phi Q_\phi^k(x)^\top v - (v^\top \nabla_\phi Q_\phi^k(x))^2 \le \left( \frac{\gamma L_{\text{Post}} \|v_w\|}{2} \right)^2 + \mathcal{O}\left( \frac{\|v_M\|^2}{k} \right),
+$$
+
+as required. $\square$
+
+**Lemma 4** (Mitigating Nonlinear Instability). Under Assumption 2, using the LayerNorm Q-function defined in Eq. (5):
+
+$$
+\left| \left( r + \gamma Q_\phi^k(x') - Q_\phi^k(x) \right) v^\top \nabla_\phi^2 Q_\phi^k(x) v \right| = \mathcal{O}\left( \frac{\|v\|^2}{\sqrt{k}} \right),
+$$
+
+almost surely for any test vector and any state-action transition pair $x, x' \in \mathcal{X}$.
+
+Proof. We start by bounding the TD error, second order derivative and test vector separately:
+
+$$
+\left| \left( r + \gamma
+
+
+
+Published as a conference paper at ICLR 2025
+
+where the final line follows from Eq. (21). As the reward is bounded by definition and $\|w\|$ is bounded under Assumption 2, we can bound the TD error vector as:
+$$ |(r + \gamma Q_\phi^k(x') - Q_\phi^k(x))| = \mathcal{O}(1), $$
+hence:
+$$ |(r + \gamma Q_\phi^k(x') - Q_\phi^k(x)) v^\top \nabla_\phi^2 Q_\phi^k(x) v| = \|\nabla_\phi^2 Q_\phi^k(x)\| \|v\|^2. $$
+Our result follows immediately by using Lemma 5 to bound the second order derivative:
+$$ |(r + \gamma Q_\phi^k(x') - Q_\phi^k(x)) v^\top \nabla_\phi^2 Q_\phi^k(x) v| = \mathcal{O}\left(\frac{\|v\|^2}{\sqrt{k}}\right). $$
+
+$\square$
+
+**Lemma 5.** Let Assumption 2 hold. $\|\nabla_\phi^2 Q_\phi^k(x)\| = \mathcal{O}\left(\frac{1}{\sqrt{k}}\right).$
+
+*Proof.* Using the notation introduced at the start of Appendix B.3, we denote the partial derivative with respect to the $i, j$-th matrix element as: $\partial_{m_{i,j}} \text{LayerNorm}_l^k [f_M(x)]$. Using the chain rule, we find the partial derivatives with respect to each element as:
+$$ \begin{aligned} \partial_{m_{i,j}} \text{LayerNorm}_l^k [f_M(x)] &= \partial_{f_i} \text{LayerNorm}_l^k [f_M(x)] \partial_{m_{i,j}} f_i, \\ &= \partial_{f_i} \text{LayerNorm}_l^k [f_M(x)] \sigma'_{\text{pre}}(m_i^\top x) x_j, \end{aligned} $$
+where $\sigma'_{\text{pre}}$ denotes the derivatives of the activation function, which is bounded almost surely from the Lipschitz assumption, hence applying Proposition 1 it follows:
+$$ \begin{aligned} \partial_{m_{i,j}} \text{LayerNorm}_l^k [f_M(x)] &= \mathcal{O}\left(\partial_{f_i} \text{LayerNorm}_l^k [f_M(x)]\right), \\ &= \mathcal{O}\left(k^{-\frac{1}{2}} \left(\mathbb{1}(l=i) + \frac{1}{k}\right)\right). \end{aligned} $$
+We find a similar result for the second order derivative:
+$$ \begin{aligned} \partial_{m_{s,i}} \partial_{m_{i,j}} \text{LayerNorm}_l^k [f_M(x)] &= \partial_{f_i} \text{LayerNorm}_l^k [f_M(x)] \sigma''_{\text{pre}}(m_i^\top x) x_j x_i \mathbb{1}(i=s) \\ &+ \partial_{f_s} \partial_{f_i} \text{LayerNorm}_l^k [f_M(x)] \partial_{m_{s,i}} f_s, \\ &= \partial_{f_i} \text{LayerNorm}_l^k [f_M(x)] \sigma''_{\text{pre}}(m_i^\top x) x_j x_i \mathbb{1}(i=s) \\ &+ \partial_{f_s} \partial_{f_i} \text{LayerNorm}_l^k [f_M(x)] \sigma'_{\text{pre}}(m_s^\top x) x_i, \end{aligned} $$
+where $\sigma''_{\text{pre}}$ denotes the second order derivative, which is bounded by assumption, hence:
+$$ \begin{aligned} \partial_{m_{s,i}} \partial_{m_{i,j}} \text{LayerNorm}_l^k [f_M(x)] &= \mathcal{O}\left(\partial_{f_i} \text{LayerNorm}_l^k [f_M(x)]\right) \mathbb{1}(i=s) + \mathcal{O}\left(\partial_{f_s} \partial_{f_i} \text{LayerNorm}_l^k [f_M(x)]\right), \\ &= \mathcal{O}\left(\mathbb{1}(i=s) k^{-\frac{1}{2}} \left(\mathbb{1}(l=i) + \frac{1}{k}\right)\right) + \mathcal{O}\left(k^{-\frac{3}{2}} \left(\mathbb{1}(l=i) + \mathbb{1}(i=s) + \mathbb{1}(l=s) + \frac{1}{k}\right)\right), \end{aligned} $$
+We now use these results find the partial derivatives of the LayerNorm Q-function. Starting with $\partial_{w_u} \partial_{m_{i,j}} Q_\phi^k(x)$:
+$$ \begin{aligned} \partial_{w_u} \partial_{m_{i,j}} Q_\phi^k(x) &= \partial_{m_{s,i}} \sum_{l=0}^{k-1} w_l \partial_{m_{i,j}} \sigma_{\text{post}}(\text{LayerNorm}_l^k [f_M(x)]), \\ &= \partial_{w_u} \sum_{l=0}^{k-1} w_l \sigma'_{\text{post}}(\text{LayerNorm}_l^k [f_M(x)]) \partial_{m_{i,j}} \text{LayerNorm}_l^k [f_M(x)], \\ &= \partial_{w_u} \sum_{l=0}^{k-1} w_l \mathcal{O}\left(k^{-\frac{1}{2}}\right) \left(\mathbb{1}(l=i) + \mathcal{O}\left(\frac{1}{k}\right)\right), \\ &= \mathcal{O}\left(k^{-\frac{1}{2}}\right) \left(\mathbb{1}(u=i) + \mathcal{O}\left(\frac{1}{k}\right)\right), \end{aligned} \eqno{(23)} $$
+
+32
+
+Published as a conference paper at ICLR 2025
+
+and now for $\partial_{m_{s,t}} \partial_{m_{i,j}} Q^k_\phi(x)$:
+
+$$
+\begin{aligned}
+\partial_{m_{s,t}} \partial_{m_{i,j}} Q^k_\phi(x) &= \partial_{m_{s,t}} \sum_{l=0}^{k-1} w_l \sigma'_{\text{Post}}(\text{LayerNorm}^k_l[f_M(x)]) \partial_{m_{i,j}} \text{LayerNorm}^k_l[f_M(x)], \\
+&= \sum_{l=0}^{k-1} w_l (\sigma'_{\text{Post}}(\text{LayerNorm}^k_l[f_M(x)]) \partial_{m_{s,t}} \partial_{m_{i,j}} \text{LayerNorm}^k_l[f_M(x)] \\
+&\quad + \sigma''_{\text{Post}}(\text{LayerNorm}^k_l[f_M(x)]) \partial_{m_{s,t}} \text{LayerNorm}^k_l[f_M(x)] \partial_{m_{i,j}} \text{LayerNorm}^k_l[f_M(x)]), \\
+&= \sum_{l=0}^{k-1} w_l \left( \mathcal{O}\left( \mathbb{1}(i=s) k^{-\frac{1}{2}} \left( \mathbb{1}(l=i) + \frac{1}{k} \right) \right) + \right. \\
+&\quad + \mathcal{O}\left( k^{-\frac{3}{2}} \left( \mathbb{1}(l=i) + \mathbb{1}(i=s) + \mathbb{1}(l=s) + \frac{1}{k} \right) \right) \\
+&\quad + \mathcal{O}\left( \frac{1}{k} \right) \left( \mathbb{1}(l=s) + \mathcal{O}\left( \frac{1}{k} \right) \right) \left( \mathbb{1}(l=i) + \mathcal{O}\left( \frac{1}{k} \right) \right) \Bigg), \\
+&= \mathcal{O}\left( \mathbb{1}(i=s) k^{-\frac{1}{2}} \right) + \mathcal{O}\left( k^{-\frac{1}{2}} \right) \left( \mathbb{1}(i=s) + \mathcal{O}\left( \frac{1}{k} \right) \right) \\
+&\quad + \sum_{l=0}^{k-1} w_l \mathcal{O}\left( \frac{1}{k} \right) \left( \mathbb{1}(l=s) + \mathcal{O}\left( \frac{1}{k} \right) \right) \left( \mathbb{1}(l=i) + \mathcal{O}\left( \frac{1}{k} \right) \right), \\
+&= \mathcal{O}\left( k^{-\frac{1}{2}} \right) \left( \mathbb{1}(i=s) + \mathcal{O}\left( \frac{1}{k} \right) \right) + \mathcal{O}\left( \frac{1}{k} \right) \mathbb{1}(i=s) + \mathcal{O}\left( \frac{1}{k^2} \right), \\
+&= \mathcal{O}\left( k^{-\frac{1}{2}} \right) \left( \mathbb{1}(i=s) + \mathcal{O}\left( \frac{1}{k} \right) \right),
+\end{aligned}
+\tag{24}
+$$
+
+where $\sigma''_{\text{Post}}(x)$ denotes the second order derivative and we have used the fact that $\sigma'_{\text{Post}}(\cdot)$ and $\sigma''_{\text{Post}}(\cdot)$ are bounded by assumption.
+
+Now, from the definition of the Matrix 2-norm:
+
+$$
+\|\nabla^2_\phi Q^k_\phi(x)\| = \sup_v \frac{v^\top \nabla^2_\phi Q^k_\phi(x) v}{v^\top v},
+$$
+
+for any test vector. As the $Q$-function is linear in $w$, we can ignore second order derivatives with respect to elements of $w$ as their value is zero. The matrix norm can then be written in terms of the partial derivatives of $Q^k_\phi(x)$ as:
+
+$$
+\begin{aligned}
+\|\nabla^2_\phi Q^k_\phi(x)\| &= \sup_v \frac{1}{v^\top v} \Bigg( \sum_{u=0}^{k-1} \sum_{i=0}^{k-1} \sum_{j=0}^{d-1} v_{m_{i,j}} \partial_{w_u} \partial_{m_{i,j}} Q^k_\phi(x) v_{w_u} \\
+&\quad + \sum_{i=0}^{k-1} \sum_{j=0}^{d-1} \sum_{s=0}^{k-1} \sum_{t=0}^{d-1} v_{m_{i,j}} \partial_{m_{s,t}} \partial_{m_{i,j}} Q^k_\phi(x) v_{m_{s,t}} \Bigg).
+\end{aligned}
+$$
+
+We now bound the partial derivatives using:
+
+$$
+\begin{aligned}
+\partial_{w_u} \partial_{m_{i,j}} Q^k_\phi(x) &= \mathcal{O}\left( k^{-\frac{1}{2}} \right) \left( \mathbb{1}(u=i) + \mathcal{O}\left( \frac{1}{k} \right) \right), \\
+\partial_{m_{s,t}} \partial_{m_{i,j}} Q^k_\phi(x) &= \mathcal{O}\left( k^{-\frac{1}{2}} \right) \left( \mathbb{1}(i=s) + \mathcal{O}\left( \frac{1}{k} \right) \right),
+\end{aligned}
+$$
+
+33
+
+
+
+Published as a conference paper at ICLR 2025
+
+from Eq. (23) and Eq. (24), yielding:
+
+$$
+\begin{aligned}
+\|\nabla_{\phi}^2 Q_{\phi}^k(x)\| =& \mathcal{O}\left(k^{-\frac{1}{2}}\right) \sup_v \frac{1}{v^\top v} \left( \sum_{u=0}^{k-1} \sum_{i=0}^{k-1} \sum_{j=0}^{d-1} v_{m_{i,j}} v_{w_u} \left( \mathbb{1}(u=i) + \mathcal{O}\left(\frac{1}{k}\right) \right) \right. \\
+& \left. + \sum_{i=0}^{k-1} \sum_{j=0}^{d-1} \sum_{s=0}^{k-1} \sum_{t=0}^{d-1} v_{m_{i,j}} v_{m_{s,t}} \left( \mathbb{1}(i=s) + \mathcal{O}\left(\frac{1}{k}\right) \right) \right), \\
+=& \mathcal{O}\left(k^{-\frac{1}{2}}\right) \sup_v \frac{1}{v^\top v} \left( \sum_{u=0}^{k-1} v_{w_u} \sum_{j=0}^{d-1} \sum_{i=0}^{k-1} v_{m_{i,j}} \left( \mathbb{1}(u=i) + \mathcal{O}\left(\frac{1}{k}\right) \right) \right. \\
+& \left. + \sum_{i=0}^{k-1} \sum_{j=0}^{d-1} v_{m_{i,j}} \sum_{s=0}^{k-1} \sum_{t=0}^{d-1} v_{m_{s,t}} \left( \mathbb{1}(i=s) + \mathcal{O}\left(\frac{1}{k}\right) \right) \right), \\
+=& \mathcal{O}\left(k^{-\frac{1}{2}}\right) \sup_v \frac{1}{v^\top v} \left( \sum_{u=0}^{k-1} v_{w_u} \mathcal{O}(1) + \sum_{i=0}^{k-1} \sum_{j=0}^{d-1} v_{m_{i,j}} \mathcal{O}(1) \right), \\
+=& \mathcal{O}\left(k^{-\frac{1}{2}}\right) \sup_v \frac{1}{v^\top v} \mathcal{O} \left( \sum_{u=0}^{k-1} v_{w_u}^2 + \sum_{i=0}^{k-1} \sum_{j=0}^{d-1} v_{m_{i,j}}^2 \right).
+\end{aligned}
+$$
+
+Using the definition $v^\top v := \sum_{u=0}^{k-1} v_{w_u}^2 + \sum_{i=0}^{k-1} \sum_{j=0}^{d-1} v_{m_{i,j}}^2$ yields our desired result:
+
+$$
+\begin{aligned}
+\|\nabla_{\phi}^2 Q_{\phi}^k(x)\| =& \mathcal{O}\left(k^{-\frac{1}{2}}\right) \sup_v \frac{1}{v^\top v} \mathcal{O}\left(v^\top v\right), \\
+=& \mathcal{O}\left(k^{-\frac{1}{2}}\right) \sup_v \mathcal{O}(1), \\
+=& \mathcal{O}\left(k^{-\frac{1}{2}}\right).
+\end{aligned}
+$$
+
+$\square$
+
+34
+
+
+
+Published as a conference paper at ICLR 2025
+
+### B.4 DERIVATION OF RECURSIVE $\lambda$-RETURNS.
+
+The original derivation can be found in Daley & Amato (2019, Appendix D), which we repeat and adapt here for convenience. We wish to write $R_t^\lambda$ as a function of $R_{t+1}^\lambda$. First, note the general recursive relationship between $n$-step returns:
+
+$$R_k^{(n)} = r_k + \gamma R_{k+1}^{(n-1)} \quad (25)$$
+
+Let $N = T - t$. Starting with the definition of the $\lambda$-return,
+
+$$
+\begin{aligned}
+R_t^\lambda &= \left[ (1-\lambda) \sum_{n=1}^{N-1} \lambda^{n-1} R_t^{(n)} + \lambda^{N-1} R_t^{(N)} \right] \\
+&= (1-\lambda) R_t^{(1)} + \left[ (1-\lambda) \sum_{n=2}^{N-1} \lambda^{n-1} R_t^{(n)} + \lambda^{N-1} R_t^{(N)} \right] \\
+&= (1-\lambda) R_t^{(1)} + \left[ (1-\lambda) \sum_{n=2}^{N-1} \lambda^{n-1} (r_t + \gamma R_{t+1}^{(n-1)}) + \lambda^{N-1} (r_t + \gamma R_{t+1}^{(N-1)}) \right] \\
+&= (1-\lambda) R_t^{(1)} + \lambda r_t + \gamma \lambda \left[ (1-\lambda) \sum_{n=2}^{N-1} \lambda^{n-2} R_{t+1}^{(n-1)} + \lambda^{N-2} R_{t+1}^{(N-1)} \right] \\
+&= (1-\lambda) R_t^{(1)} + \lambda r_t + \gamma \lambda \left[ (1-\lambda) \sum_{n'=1}^{N-2} \lambda^{n'-1} R_{t+1}^{(n')} + \lambda^{N-2} R_{t+1}^{(N-1)} \right] \\
+&= (1-\lambda) R_t^{(1)} + \lambda r_t + \gamma \lambda R_{t+1}^\lambda \\
+&= R_t^{(1)} - \lambda R_t^{(1)} + \lambda r_t + \gamma \lambda R_{t+1}^\lambda \\
+&= r_t + \gamma \max_{a'} Q(s', a') - \lambda (r_t + \gamma \max_{a'} Q(s', a')) + \lambda r_t + \gamma \lambda R_{t+1}^\lambda \\
+&= r_t + \gamma \max_{a'} Q(s', a') + \gamma \lambda R_{t+1}^\lambda - \gamma \lambda \max_{a'} Q(s', a') \\
+&= r_t + \gamma [\lambda R_{t+1}^\lambda + (1-\lambda) \max_{a'} Q(s', a')],
+\end{aligned}
+$$
+
+where we used the recursive relationship for $R_t^{(n)}$ in Equation (25) and the substitution $R_t^{(1)} = r_t + \gamma \max_{a'} Q(s', a')$. Finally, we note that in our implementation, we replace the true value function with a function approximator.
+
+### C EXPERIMENTAL SETUP
+
+All experimental results are shown as mean of 10 seeds, except in Atari Learning Environment (ALE) where we followed a common practice of reporting 3 seeds. They were performed on a single NVIDIA A40 by jit-compiling the entire pipeline with Jax in the GPU, except for the Atari experiments where the environments run on an AMD 7513 32-Core Processor. Hyperparameters for all experiments can be found in Appendix E. We used the algorithm proposed in Algorithm 1. All experiments used Rectified Adam optimiser Liu et al. (2019). We didn't find any improvements in scores by using RAdam instead of Adam, but we found it more robust in respect to the epsilon parameter, simplifying the tuning of the optimiser.
+
+**Baird's Counterexample** For these experiments, we use the code provided as solutions to the problems of (Sutton & Barto, 2018b) $^2$. We use a single-layer neural network with a hidden size of 16 neurons, with normalisation between the hidden layer and the output layer. To not include additional parameters and completely adhere to theory, we don't learn affine tranformation parameters in these experiments, which rescale the normalised output by a factor $\gamma$ and add a bias $\beta$. However, in more complex experiments we do learn these parameters.
+
+$^2$ https://github.com/vojtamolda/reinforcement-learning-an-introduction/tree/main
+
+35
+
+
+
+Published as a conference paper at ICLR 2025
+
+**DeepSea** For these experiments, we utilised a simplified version of Bootstrapped-DQN (Osband et al., 2016), featuring an ensemble of 20 randomly initialised policies, each represented by a two-layered MLP with middle-layer normalisation. We did not employ target networks and updated all policies in parallel by sampling from a shared replay buffer. We adhered to the same parameters for Bootstrapped-DQN as presented in Osband et al. (2019).
+
+**MinAtar** We used the vectorised version of MinAtar (Young & Tian, 2019) present in Gymnax and tested PQN against PPO in the 4 available tasks: Asterix, SpaceInvaders, Freeway and Breakout. PQN and PPO use both a Convolutional Network with 16 filters with a 3-sized kernel (same as reported in the original MinAtar paper) followed by a 128-sized feed-forward layer. Results in MinAtar are reported in Fig. 9. Hyperparameters were tuned for both PQN and PPO.
+
+**Atari** We use the vectorised version of ALE provided by Envpool for a preliminary evaluation of our method. Given that our main baseline is the CleanRL (Huang et al., 2022b) implementation of PPO (which also uses Envpool and Jax), we used its environment and neural network configuration. This configuration is also used in the results reported in the original Rainbow paper, allowing us to obtain additional baseline scores from there. Aitchison et al. (Aitchison et al., 2023) recently found that the scores obtained by algorithms in 5 of the Atari games have a high correlation with the scores obtained in the entire suite, and that 10 games can predict the final score with an error lower than 10%. This is due to the high level of correlation between many of the Atari games. The results we present for PQN are obtained by rolling out a greedy-policy in 8 separate parallel environments during training, which is more effective than stopping training to evaluate on entire episodes, since in Atari they can last hundreds of thousands of frames. We did not compare with distributed methods like Ape-X and R2D2 because they use an enormous time-budget (5 days of training per game) and frames (almost 40 Billions), which are outside our computational budget. We comment that these methods typically ignore concerns of sample efficiency. For example Ape-X (Horgan et al., 2018) takes more than 100M frames to solve Pong, the easiest game of the ALE, which can be solved in few million steps by traditional methods and PQN.
+
+**Craftax** We follow the same implementation details indicated in the original Craftax paper Matthews et al. (2024a). Our RNN implementation is the same as the MLP one, with an addtional LSTM layer before the last layer.
+
+**Hanabi** We used the Jax implementation of environments present in JaxMARL. Our model doesn’t use RNNs in this task. From all the elements present in the R2D2-VDN presented in Hu et al. (2021), we only used the duelling architecture Wang et al. (2016). Presented results of PQN are average across 100k test games.
+
+**Smax** We used the same RNN architecture of QMix present in JaxMARL, with the only difference that we don’t use a replay buffer, with added normalisation and $Q(\lambda)$. We evaluated with all the standard SMAX maps excluding the ones relative to more than 20 agents, because they could not be run with traditional QMix due to memory limitations.
+
+**Overcooked** We used the same CNN architecture of VDN present in JaxMARL, with the only difference that we don’t use a replay buffer, with added normalisation and $Q(\lambda)$.
+
+## D FURTHER RESULTS
+
+Figure 7: Results from theoretical analysis in Baird’s Counterexample and DeepSea.
+
+```jsonl
+{"x": 0, "y": 10, "series": "LayerNorm", "chart": "Baird's C.example"}
+{"x": 1000, "y": 100000000000000000, "series": "LayerNorm", "chart": "Baird's C.example"}
+{"x": 2000, "y": 100000000000000000, "series": "LayerNorm", "chart": "Baird's C.example"}
+{"x": 3000, "y": 100000000000000000, "series": "LayerNorm", "chart": "Baird's C.example"}
+{"x": 4000, "y": 100000000000000000, "series": "LayerNorm", "chart": "Baird's C.example"}
+{"x": 5000, "y": 100000000000000000, "series": "LayerNorm", "chart": "Baird's C.example"}
+{"x": 0, "y": 10, "series": "LayerNorm+L2", "chart": "Baird's C.example"}
+{"x": 1000, "y": 100000000000000000, "series": "LayerNorm+L2", "chart": "Baird's C.example"}
+{"x": 2000, "y": 100000000000000000, "series": "LayerNorm+L2", "chart": "Baird's C.example"}
+{"x": 3000, "y": 100000000000000000, "series": "LayerNorm+L2", "chart": "Baird's C.example"}
+{"x": 4000, "y": 100000000000000000, "series": "LayerNorm+L2", "chart": "Baird's C.example"}
+{"x": 5000, "y": 100000000000000000, "series": "LayerNorm+L2", "chart": "Baird's C.example"}
+{"x": 0, "y": 10, "series": "LayerNorm+High+L2", "chart": "Baird's C.example"}
+{"x": 1000, "y": 100000000000000000, "series": "LayerNorm+High+L2", "chart": "Baird's C.example"}
+{"x": 2000, "y": 100000000000000000, "series": "LayerNorm+High+L2", "chart": "Baird's C.example"}
+{"x": 3000, "y": 100000000000000000, "series": "LayerNorm+High+L2", "chart": "Baird's C.example"}
+{"x": 4000, "y": 100000000000000000, "series": "LayerNorm+High+L2", "chart": "Baird's C.example"}
+{"x": 5000, "y": 100000000000000000, "series": "LayerNorm+High+L2", "chart": "Baird's C.example"}
+{"x": 0, "y": 10, "series": "No-Normalisation", "chart": "Baird's C.example"}
+{"x": 1000, "y": 100000000000000000, "series": "No-Normalisation", "chart": "Baird's C.example"}
+{"x": 2000, "y": 100000000000000000, "series": "No-Normalisation", "chart": "Baird's C.example"}
+{"x": 3000, "y": 100000000000000000, "series": "No-Normalisation", "chart": "Baird's C.example"}
+{"x": 4000, "y": 100000000000000000, "series": "No-Normalisation", "chart": "Baird's C.example"}
+{"x": 5000, "y": 100000000000000000, "series": "No-Normalisation", "chart": "Baird's C.example"}
+{"x": 0, "y": 10, "series": "No-Normalisation+L2", "chart": "Baird's C.example"}
+{"x": 1000, "y": 100000000000000000, "series": "No-Normalisation+L2", "chart": "Baird's C.example"}
+{"x": 2000, "y": 100000000000000000, "series": "No-Normalisation+L2", "chart": "Baird's C.example"}
+{"x": 3000, "y": 100000000000000000, "series": "No-Normalisation+L2", "chart": "Baird's C.example"}
+{"x": 4000, "y": 100000000000000000, "series": "No-Normalisation+L2", "chart": "Baird's C.example"}
+{"x": 5000, "y": 100000000000000000, "series": "No-Normalisation+L2", "chart": "Baird's C.example"}
+{"x": 0, "y": false, "series": "LayerNorm", "chart": "DeepSea, depth 20"}
+{"x": 2000, "y": true, "series": "LayerNorm", "chart": "DeepSea, depth 20"}
+{"x": 4000, "y": true, "series": "LayerNorm", "chart": "DeepSea, depth 20"}
+{"x": 6000, "y": true, "series": "LayerNorm", "chart": "DeepSea, depth 20"}
+{"x": 8000, "y": true, "series": "LayerNorm", "chart": "DeepSea, depth 20"}
+{"x": 10000, "y": true, "series": "LayerNorm", "chart": "DeepSea, depth 20"}
+{"x": 0, "y": false, "series": "BatchNorm", "chart": "DeepSea, depth 20"}
+{"x": 2000, "y": false, "series": "BatchNorm", "chart": "DeepSea, depth 20"}
+{"x": 4000, "y": true, "series": "BatchNorm", "chart": "DeepSea, depth 20"}
+{"x": 6000, "y": true, "series": "BatchNorm", "chart": "DeepSea, depth 20"}
+{"x": 8000, "y": true, "series": "BatchNorm", "chart": "DeepSea, depth 20"}
+{"x": 10000, "y": true, "series": "BatchNorm", "chart": "DeepSea, depth 20"}
+{"x": 0, "y": false, "series": "LayerNorm", "chart": "DeepSea, depth 30"}
+{"x": 2000, "y": false, "series": "LayerNorm", "chart": "DeepSea, depth 30"}
+{"x": 4000, "y": true, "series": "LayerNorm", "chart": "DeepSea, depth 30"}
+{"x": 6000, "y": true, "series": "LayerNorm", "chart": "DeepSea, depth 30"}
+{"x": 8000, "y": true, "series": "LayerNorm", "chart": "DeepSea, depth 30"}
+{"x": 10000, "y": true, "series": "LayerNorm", "chart": "DeepSea, depth 30"}
+{"x": 0, "y": false, "series": "BatchNorm", "chart": "DeepSea, depth 30"}
+{"x": 2000, "y": false, "series": "BatchNorm", "chart": "DeepSea, depth 30"}
+{"x": 4000, "y": false, "series": "BatchNorm", "chart": "DeepSea, depth 30"}
+{"x": 6000, "y": true, "series": "BatchNorm", "chart": "DeepSea,
+
+Published as a conference paper at ICLR 2025
+
+(a) CartPole:Training Time (b) CartPole: 10 Seeds (c) Acrobot: Training Time (d) Acrobot: 10 Seeds
+
+Figure 8: Results in classic control tasks. The goal of this comparison is to show the time boost of PQN relative to a traditional DQN agent running a single environment in the cpu. PQN is compiled to run entirely on gpu, achieving a 10x speed-up compared to the standard DQN pipeline.
+
+```jsonl
+{"subplot": "a", "title": "CartPole: Training Time", "x_axis": "Time (seconds)", "y_axis": "Returns"}
+{"subplot": "b", "title": "CartPole: 10 Seeds", "x_axis": "Timesteps", "y_axis": "Returns"}
+{"subplot": "c", "title": "Acrobot: Training Time", "x_axis": "Time (seconds)", "y_axis": "Returns"}
+{"subplot": "d", "title": "Acrobot: 10 Seeds", "x_axis": "Frames", "y_axis": "Returns"}
+```
+
+Asterix | SpaceInvaders | Freeway | Breakout
+---|---|---|---
+| | |
+
+Figure 9: Results in MinAtar
+
+```jsonl
+{"task": "Asterix", "x_axis": "Timestep", "y_axis": "Episode Returns", "series": ["PPO", "PQN"]}
+{"task": "SpaceInvaders", "x_axis": "Timestep", "y_axis": "Episode Returns", "series": ["PPO", "PQN"]}
+{"task": "Freeway", "x_axis": "Timestep", "y_axis": "Episode Returns", "series": ["PPO", "PQN"]}
+{"task": "Breakout", "x_axis": "Timestep", "y_axis": "Episode Returns", "series": ["PPO", "PQN"]}
+```
+
+(a) IQM sample effincency on MinAtar tasks varying the number of parallel environments.
+
+(b) IQM time effincency on MinAtar tasks varying the number of parallel environments.
+
+Figure 10: Ablation study varying the number of parallel environments in Minatar. PQN can learn even with a small number of environments but clearly benefits from collecting more experiences in parallel. PQN is also significantly more time-efficient when more environments are used in parallel (time is considered for running 10 seeds in parallel). For a fair comparison, we adjusted the number of minibatches and epochs so that PQN performs the same number of gradient steps with the same batch size (or, where not possible, with an adjusted learning rate) for every number of parallel environments considered.
+
+```jsonl
+{"chart": "Figure 10 (a)", "y_axis": "Max Normalised IQM", "x_axis": "Timesteps 1e7", "parallel_envs": 1}
+{"chart": "Figure 10 (a)", "y_axis": "Max Normalised IQM", "x_axis": "Timesteps 1e7", "parallel_envs": 4}
+{"chart": "Figure 10 (a)", "y_axis": "Max Normalised IQM", "x_axis": "Timesteps 1e7", "parallel_envs": 8}
+{"chart": "Figure 10 (a)", "y_axis": "Max Normalised IQM", "x_axis": "Timesteps 1e7", "parallel_envs": 16}
+{"chart": "Figure 10 (a)", "y_axis": "Max Normalised IQM", "x_axis": "Timesteps 1e7", "parallel_envs": 32}
+{"chart": "Figure 10 (a)", "y_axis": "Max Normalised IQM", "x_axis": "Timesteps 1e7", "parallel_envs": 64}
+{"chart": "Figure 10 (a)", "y_axis": "Max Normalised IQM", "x_axis": "Timesteps 1e7", "parallel_envs": 128}
+{"chart": "Figure 10 (a)", "y_axis": "Max Normalised IQM", "x_axis": "Timesteps 1e7", "parallel_envs": 256}
+{"chart": "Figure 10 (a)", "y_axis": "Max Normalised IQM", "x_axis": "Timesteps 1e7", "parallel_envs": 512}
+{"chart": "Figure 10 (b)", "y_axis": "Max Normalised IQM", "x_axis": "Average Time (s)", "metric": "Time efficiency"}
+```
+
+37
+
+
+
+Published as a conference paper at ICLR 2025
+
+Figure 11: Comparison between training a Q-Learning agent in Atari-Pong with PQN and the CleanRL implementation of DQN. PQN can solve the game by reaching a score of 20 in less than 4 minutes, while DQN requires almost 6 hours. As shown in the plot on the right, this doesn't result in a loss of sample efficiency, as traditional distributed systems like Ape-X need more than 100 million frames to solve this simple game.
+
+```jsonl
+{"figure_id": "11", "subplot_id": "(a)", "title": "Atari-Pong: PQN training", "x_axis": "Time (minutes)", "y_axis": "Returns", "series": "PQN"}
+{"figure_id": "11", "subplot_id": "(b)", "title": "Atari-Pong: Time Comparison", "x_axis": "Time (minutes)", "y_axis": "Returns", "series": "PQN"}
+{"figure_id": "11", "subplot_id": "(b)", "title": "Atari-Pong: Time Comparison", "x_axis": "Time (minutes)", "y_axis": "Returns", "series": "clean-DQNjax"}
+{"figure_id": "11", "subplot_id": "(c)", "title": "Atari-Pong: Performances", "x_axis": "Frames", "y_axis": "Returns", "series": "PQN"}
+{"figure_id": "11", "subplot_id": "(c)", "title": "Atari-Pong: Performances", "x_axis": "Frames", "y_axis": "Returns", "series": "clean-DQNjax"}
+```
+
+Table 3: Scores in ALE.
+
+```jsonl
+{"Method (Frames)": "PPO (200M)", "Time (hours)": 2.5, "Gradient Steps": 780000, "Atari-10 Score": 165, "Atari-57 Median": null, "Atari-57 Mean": null, "Atari-57 >Human": null}
+{"Method (Frames)": "PQN (200M)", "Time (hours)": 1, "Gradient Steps": 780000, "Atari-10 Score": 191, "Atari-57 Median": null, "Atari-57 Mean": null, "Atari-57 >Human": null}
+{"Method (Frames)": "PQN (400M)", "Time (hours)": 2, "Gradient Steps": 1400000, "Atari-10 Score": 243, "Atari-57 Median": 245, "Atari-57 Mean": 1440, "Atari-57 >Human": 40}
+{"Method (Frames)": "Rainbow (200M)", "Time (hours)": 100, "Gradient Steps": 12500000, "Atari-10 Score": 239, "Atari-57 Median": 230, "Atari-57 Mean": 1461, "Atari-57 >Human": 43}
+```
+
+```jsonl
+{"figure_id": "12", "x_axis": "Hours", "y_axis": "IQM", "series": "PQN"}
+{"figure_id": "12", "x_axis": "Hours", "y_axis": "IQM", "series": "Rainbow-Dopamine"}
+{"figure_id": "12", "x_axis": "Hours", "y_axis": "IQM", "series": "DQN-Dopamine
+
+
+
+# Published as a conference paper at ICLR 2025
+
+**Figure 13: Improvement of PQN over Rainbow. Results refer to PQN trained for 400M frames, i.e. 2 hours of GPU time.**
+
+```jsonl
+{"game": "Sidings", "improvement_percent": -3.0}
+{"game": "MontezumaRevenge", "improvement_percent": -1.0}
+{"game": "Frostbite", "improvement_percent": -0.8}
+{"game": "Alien", "improvement_percent": -0.8}
+{"game": "Amidar", "improvement_percent": -0.5}
+{"game": "Jamesbond", "improvement_percent": -0.5}
+{"game": "Seaquest", "improvement_percent": -0.5}
+{"game": "Skiing", "improvement_percent": -0.5}
+{"game": "Riverraid", "improvement_percent": -0.5}
+{"game": "Pitfall", "improvement_percent": -0.5}
+{"game": "PrivateEye", "improvement_percent": -0.5}
+{"game": "Assault", "improvement_percent": -0.5}
+{"game": "Freeway", "improvement_percent": -0.5}
+{"game": "KungFuMaster", "improvement_percent": -0.5}
+{"game": "Gravitar", "improvement_percent": -0.5}
+{"game": "Stern", "improvement_percent": -0.5}
+{"game": "Gopher", "improvement_percent": -0.5}
+{"game": "BattleZone", "improvement_percent": -0.5}
+{"game": "VideoPinball", "improvement_percent": -0.5}
+{"game": "Asterix", "improvement_percent": -0.5}
+{"game": "Qbert", "improvement_percent": -0.5}
+{"game": "Tennis", "improvement_percent": -0.5}
+{"game": "Kangaroo", "improvement_percent": -0.5}
+{"game": "DoubleDunk", "improvement_percent": -0.5}
+{"game": "Spacemarine", "improvement_percent": -0.5}
+{"game": "IceHockey", "improvement_percent": -0.5}
+{"game": "RoadRunner", "improvement_percent": -0.5}
+{"game": "Pong", "improvement_percent": -0.5}
+{"game": "CrazyClimber", "improvement_percent": 0.0}
+{"game": "MsPacman", "improvement_percent": 0.0}
+{"game": "Breakout", "improvement_percent": 0.0}
+{"game": "Zaxxon", "improvement_percent": 0.0}
+{"game": "TimePilot", "improvement_percent": 0.0}
+{"game": "BankHeist", "improvement_percent": 0.0}
+{"game": "JourneyEscape", "improvement_percent": 0.0}
+{"game": "YarsRevenge", "improvement_percent": 0.0}
+{"game": "Krull", "improvement_percent": 0.0}
+{"game": "BeamRider", "improvement_percent": 0.0}
+{"game": "NameThisGame", "improvement_percent": 0.0}
+{"game": "WizardOfWor", "improvement_percent": 0.0}
+{"game": "UpNDown", "improvement_percent": 2.0}
+{"game": "Berzerk", "improvement_percent": 6.0}
+{"game": "ChopperCommand", "improvement_percent": 7.0}
+{"game": "MsPacman", "improvement_percent": 13.0}
+{"game": "Asteroids", "improvement_percent": 22.0}
+```
+
+**Figure 14: Atari 10 Results**
+
+```jsonl
+{"game": "Amidar-v5", "timestep": 0, "episode_returns": 0, "algorithm": "PQN"}
+{"game": "Amidar-v5", "timestep": 200000000, "episode_returns": 2000, "algorithm": "PQN"}
+{"game": "Amidar-v5", "timestep": 0, "episode_returns": 0, "algorithm": "CrossQ"}
+{"game": "Amidar-v5", "timestep": 200000000, "episode_returns": 1500, "algorithm": "CrossQ"}
+{"game": "Amidar-v5", "timestep": 0, "episode_returns": 0, "algorithm": "PQN(BatchNorm)"}
+{"game": "Amidar-v5", "timestep": 200000000, "episode_returns": 1800, "algorithm": "PQN(BatchNorm)"}
+{"game": "Amidar-v5", "timestep": 0, "episode_returns": 0, "algorithm": "PPO"}
+{"game": "Amidar-v5", "timestep": 200000000, "episode_returns": 2200, "algorithm": "PPO"}
+{"game": "Bowling-v5", "timestep": 0, "episode_returns": 0, "algorithm": "PQN"}
+{"game": "Bowling-v5", "timestep": 200000000, "episode_returns": 40, "algorithm": "PQN"}
+{"game": "Bowling-v5", "timestep": 0, "episode_returns": 0, "algorithm": "CrossQ"}
+{"game": "Bowling-v5", "timestep": 200000000, "episode_returns": 20, "algorithm": "CrossQ"}
+{"game": "Bowling-v5", "timestep": 0, "episode_returns": 0, "algorithm": "PQN(BatchNorm)"}
+{"game": "Bowling-v5", "timestep": 200000000, "episode_returns": 30, "algorithm": "PQN(BatchNorm)"}
+{"game": "Bowling-v5", "timestep": 0, "episode_returns": 0, "algorithm": "PPO"}
+{"game": "Bowling-v5", "timestep": 200000000, "episode_returns": 50, "algorithm": "PPO"}
+{"game":
+
+Published as a conference paper at ICLR 2025
+
+(a) Craftax with MLP networks
+(b) Craftax with RNN networks
+(c) Craftax with MLP and Buffer
+
+Figure 16: Left: comparison between PPO and PQN in Craftax. Center: comparison with RNN versions of the two algorithms. Right: time to learn for 1e9 timesteps keeping a replay buffer in GPU.
+
+```jsonl
+{"subplot": "(a)", "title": "Craftax with MLP networks", "x_axis": "Timesteps 1e9", "y_axis": "Returns (% of Max)", "series": "PQN"}
+{"subplot": "(a)", "title": "Craftax with MLP networks", "x_axis": "Timesteps 1e9", "y_axis": "Returns (% of Max)", "series": "PPO"}
+{"subplot": "(b)", "title": "Craftax with RNN networks", "x_axis": "Timesteps 1e9", "y_axis": "Returns (% of Max)", "series": "PQN-RNN"}
+{"subplot": "(b)", "title": "Craftax with RNN networks", "x_axis": "Timesteps 1e9", "y_axis": "Returns (% of Max)", "series": "PPO-RNN"}
+{"subplot": "(c)", "title": "Craftax with MLP and Buffer", "x_axis": "Time (Hours)", "y_axis": "Returns (% of Max)", "series": "PQN"}
+{"subplot": "(c)", "title": "Craftax with MLP and Buffer", "x_axis": "Time (Hours)", "y_axis": "Returns (% of Max)", "series": "PQN+buffer"}
+```
+
+Figure 17: Results in Smax
+
+```jsonl
+{"subplot": "2s3z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "IPPO"}
+{"subplot": "2s3z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "MAPPO"}
+{"subplot": "2s3z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "IQL"}
+{"subplot": "2s3z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "QMIX"}
+{"subplot": "2s3z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "VDN"}
+{"subplot": "2s3z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "PQN"}
+{"subplot": "3s_vs_5z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "IPPO"}
+{"subplot": "3s_vs_5z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "MAPPO"}
+{"subplot": "3s_vs_5z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "IQL"}
+{"subplot": "3s_vs_5z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "QMIX"}
+{"subplot": "3s_vs_5z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "VDN"}
+{"subplot": "3s_vs_5z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "PQN"}
+{"subplot": "3s5z_vs_3s6z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "IPPO"}
+{"subplot": "3s5z_vs_3s6z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "MAPPO"}
+{"subplot": "3s5z_vs_3s6z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "IQL"}
+{"subplot": "3s5z_vs_3s6z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "QMIX"}
+{"subplot": "3s5z_vs_3s6z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "VDN"}
+{"subplot": "3s5z_vs_3s6z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "PQN"}
+{"subplot": "5m_vs_6m", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "IPPO"}
+{"subplot": "5m_vs_6m", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "MAPPO"}
+{"subplot": "5m_vs_6m", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "IQL"}
+{"subplot": "5m_vs_6m", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "QMIX"}
+{"subplot": "5m_vs_6m", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "VDN"}
+{"subplot": "5m_vs_6m", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "PQN"}
+{"subplot": "3s5z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "IPPO"}
+{"subplot": "3s5z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "MAPPO"}
+{"subplot": "3s5z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "IQL"}
+{"subplot": "3s5z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "QMIX"}
+{"subplot": "3s5z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "VDN"}
+{"subplot": "3s5z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "PQN"}
+{"subplot": "6h_vs_8z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "IPPO"}
+{"subplot": "6h_vs_8z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "MAPPO"}
+{"subplot": "6h_vs_8z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "IQL"}
+{"subplot": "6h_vs_8z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "QMIX"}
+{"subplot": "6h_vs_8z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "VDN"}
+{"subplot": "6h_vs_8z", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "PQN"}
+{"subplot": "10m_vs_11m", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "IPPO"}
+{"subplot": "10m_vs_11m", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "MAPPO"}
+{"subplot": "10m_vs_11m", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "IQL"}
+{"subplot": "10m_vs_11m", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "QMIX"}
+{"subplot": "10m_vs_11m", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "VDN"}
+{"subplot": "10m_vs_11m", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "PQN"}
+{"subplot": "smacv2_5_units", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "IPPO"}
+{"subplot": "smacv2_5_units", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "MAPPO"}
+{"subplot": "smacv2_5_units", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "IQL"}
+{"subplot": "smacv2_5_units", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "QMIX"}
+{"subplot": "smacv2_5_units", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "VDN"}
+{"subplot": "smacv2_5_units", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "PQN"}
+{"subplot": "smacv2_10_units", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "IPPO"}
+{"subplot": "smacv2_10_units", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "MAPPO"}
+{"subplot": "smacv2_10_units", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "IQL"}
+{"subplot": "smacv2_10_units", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "QMIX"}
+{"subplot": "smacv2_10_units", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "VDN"}
+{"subplot": "smacv2_10_units", "x_axis": "Timestep 1e7", "y_axis": "Win Rate", "series": "PQN"}
+```
+
+40
+
+
+
+Published as a conference paper at ICLR 2025
+
+Figure 18: The buffer size scales quadratically in respect to the number of agents in SMAX.
+
+```jsonl
+{"x": 0, "y": 0, "series": "SMAX-QMDX Buffer"}
+{"x": 50, "y": 40, "series": "SMAX-QMDX Buffer"}
+{"x": 100, "y": 160, "series": "SMAX-QMDX Buffer"}
+{"x": 150, "y": 350, "series": "SMAX-QMDX Buffer"}
+{"x": 0, "y": 100, "series": "NVIDIA H100 Memory"}
+{"x": 150, "y": 100, "series": "NVIDIA H100 Memory"}
+```
+
+Figure 19: Results in Overcooked
+
+```jsonl
+{"environment": "Cramped Room", "algorithm": "IPPO", "timestep": 0, "returns": 0}
+{"environment": "Cramped Room", "algorithm": "IPPO", "timestep": 250000, "returns": 220}
+{"environment": "Cramped Room", "algorithm": "IPPO", "timestep": 500000, "returns": 240}
+{"environment": "Cramped Room", "algorithm": "IQL", "timestep": 0, "returns": 0}
+{"environment": "Cramped Room", "algorithm": "IQL", "timestep": 250000, "returns": 230}
+{"environment": "Cramped Room", "algorithm": "IQL", "timestep": 500000, "returns": 240}
+{"environment": "Cramped Room", "algorithm": "VDN", "timestep": 0, "returns": 0}
+{"environment": "Cramped Room", "algorithm": "VDN", "timestep": 250000, "returns": 240}
+{"environment": "Cramped Room", "algorithm": "VDN", "timestep": 500000, "returns": 250}
+{"environment": "Cramped Room", "algorithm": "PQN", "timestep": 0, "returns": 0}
+{"environment": "Cramped Room", "algorithm": "PQN", "timestep": 250000, "returns": 240}
+{"environment": "Cramped Room", "algorithm": "PQN", "timestep": 500000, "returns": 250}
+{"environment": "Asymm Advantages", "algorithm": "IPPO", "timestep": 0, "returns": 0}
+{"environment": "Asymm Advantages", "algorithm": "IPPO", "timestep": 250000, "returns": 300}
+{"environment": "Asymm Advantages", "algorithm": "IPPO", "timestep": 500000, "returns": 350}
+{"environment": "Asymm Advantages", "algorithm": "IQL", "timestep": 0, "returns": 0}
+{"environment": "Asymm Advantages", "algorithm": "IQL", "timestep": 250000, "returns": 280}
+{"environment": "Asymm Advantages", "algorithm": "IQL", "timestep": 500000, "returns": 320}
+{"environment": "Asymm Advantages", "algorithm": "VDN", "timestep": 0, "returns": 0}
+{"environment": "Asymm Advantages", "algorithm": "VDN", "timestep": 250000, "returns": 250}
+{"environment": "Asymm Advantages", "algorithm": "VDN", "timestep": 500000, "returns": 300}
+{"environment": "Asymm Advantages", "algorithm": "PQN", "timestep": 0, "returns": 0}
+{"environment": "Asymm Advantages", "algorithm": "PQN", "timestep": 250000, "returns": 400}
+{"environment": "Asymm Advantages", "algorithm": "PQN", "timestep": 500000, "returns": 450}
+{"environment": "Coord Ring", "algorithm": "IPPO", "timestep": 0, "returns": 0}
+{"environment": "Coord Ring", "algorithm": "IPPO", "timestep": 250000, "returns": 250}
+{"environment": "Coord Ring", "algorithm": "IPPO", "timestep": 500000, "returns": 280}
+{"environment": "Coord Ring", "algorithm": "IQL", "timestep": 0, "returns": 0}
+{"environment": "Coord Ring", "algorithm": "IQL", "timestep": 250000, "returns": 200}
+{"environment": "Coord Ring", "algorithm": "IQL", "timestep": 500000, "returns": 220}
+{"environment": "Coord Ring", "algorithm": "VDN", "timestep": 0, "returns": 0}
+{"environment": "Coord Ring", "algorithm": "VDN", "timestep": 250000, "returns": 220}
+{"environment": "Coord Ring", "algorithm": "VDN", "timestep": 500000, "returns": 240}
+{"environment": "Coord Ring", "algorithm": "PQN", "timestep": 0, "returns": 0}
+{"environment": "Coord Ring", "algorithm": "PQN", "timestep": 250000, "returns": 280}
+{"environment": "Coord Ring", "algorithm": "PQN", "timestep": 500000, "returns": 300}
+{"environment": "Forced Coord", "algorithm": "IPPO", "timestep": 0, "returns": 0}
+{"environment": "Forced Coord", "algorithm": "IPPO", "timestep": 250000, "returns": 220}
+{"environment": "Forced Coord", "algorithm": "IPPO", "timestep": 500000, "returns": 250}
+{"environment": "Forced Coord", "algorithm": "IQL", "timestep": 0, "returns": 0}
+{"environment": "Forced Coord", "algorithm": "IQL", "timestep": 250000, "returns": 180}
+{"environment": "Forced Coord", "algorithm": "IQL", "timestep": 500000, "returns": 200}
+{"environment": "Forced Coord", "algorithm": "VDN", "timestep": 0, "returns": 0}
+{"environment": "Forced Coord", "algorithm": "VDN", "timestep": 250000, "returns": 240}
+{"environment": "Forced Coord", "algorithm": "VDN", "timestep": 500000, "returns": 260}
+{"environment": "Forced Coord", "algorithm": "PQN", "timestep": 0, "returns": 0}
+{"environment": "Forced Coord", "algorithm": "PQN", "timestep": 250000, "returns": 260}
+{"environment": "Forced Coord", "algorithm": "PQN", "timestep": 500000, "returns": 280}
+{"environment": "Counter Circuit", "algorithm": "IPPO", "timestep": 0, "returns": 0}
+{"environment": "Counter Circuit", "algorithm": "IPPO", "timestep": 250000, "returns": 120}
+{"environment": "Counter Circuit", "algorithm": "IPPO", "timestep": 500000, "returns": 150}
+{"environment": "Counter Circuit", "algorithm": "IQL", "timestep": 0, "returns": 0}
+{"environment": "Counter Circuit", "algorithm": "IQL", "timestep": 250000, "returns": 100}
+{"environment": "Counter Circuit", "algorithm": "IQL", "timestep": 500000, "returns": 140}
+{"environment": "Counter Circuit", "algorithm": "VDN", "timestep": 0, "returns": 0}
+{"environment": "Counter Circuit", "algorithm": "VDN", "timestep": 250000, "returns": 180}
+{"environment": "Counter Circuit", "algorithm": "VDN", "timestep": 500000, "returns": 200}
+{"environment": "Counter Circuit", "algorithm": "PQN", "timestep": 0, "returns": 0}
+{"environment": "Counter Circuit", "algorithm": "PQN", "timestep": 250000, "returns": 140}
+{"environment": "Counter Circuit", "algorithm": "PQN", "timestep": 500000, "returns": 160}
+```
+
+# E HYPERPARAMETERS
+
+Table 4: Craftax RNN Hyperparameters
+
+```jsonl
+{"Parameter": "NUM_ENVs", "Value": 1024}
+{"Parameter": "NUM_STEPS", "Value": 128}
+{"Parameter": "EPS_START", "Value": 1.0}
+{"Parameter": "EPS_FINISH", "Value": 0.005}
+{"Parameter": "EPS_DECAY", "Value": 0.1}
+{"Parameter": "NUM_MINIBATCHES", "Value": 4}
+{"Parameter": "NUM_EPOCHS", "Value": 4}
+{"Parameter": "NORM_INPUT
+
+
+
+Published as a conference paper at ICLR 2025
+
+Table 5: Atari Hyperparameters
+```jsonl
+{"Parameter": "NUM_ENVs", "Value": 128}
+{"Parameter": "NUM_STEPS", "Value": 32}
+{"Parameter": "EPS_START", "Value": 1.0}
+{"Parameter": "EPS_FINISH", "Value": 0.001}
+{"Parameter": "EPS_DECAY", "Value": 0.1}
+{"Parameter": "NUM_EPOCHS", "Value": 2}
+{"Parameter": "NUM_MINIBATCHES", "Value": 32}
+{"Parameter": "NORM_INPUT", "Value": false}
+{"Parameter": "NORM_TYPE", "Value": "layer_norm"}
+{"Parameter": "LR", "Value": 0.00025}
+{"Parameter": "MAX_GRAD_NORM", "Value": 10}
+{"Parameter": "LR_LINEAR_DECAY", "Value": false}
+{"Parameter": "GAMMA", "Value": 0.99}
+{"Parameter": "LAMBDA", "Value": 0.65}
+```
+
+Table 6: SMAX Hyperparameters
+```jsonl
+{"Parameter": "NUM_ENVs", "Value": 128}
+{"Parameter": "MEMORY_WINDOW", "Value": 4}
+{"Parameter": "NUM_STEPS", "Value": 128}
+{"Parameter": "HIDDEN_SIZE", "Value": 512}
+{"Parameter": "NUM_LAYERS", "Value": 2}
+{"Parameter": "NORM_INPUT", "Value": true}
+{"Parameter": "NORM_TYPE", "Value": "batch_norm"}
+{"Parameter": "EPS_START", "Value": 1.0}
+{"Parameter": "EPS_FINISH", "Value": 0.01}
+{"Parameter": "EPS_DECAY", "Value": 0.1}
+{"Parameter": "MAX_GRAD_NORM", "Value": 1}
+{"Parameter": "NUM_MINIBATCHES", "Value": 16}
+{"Parameter": "NUM_EPOCHS", "Value": 4}
+{"Parameter": "LR", "Value": 0.00025}
+{"Parameter": "LR_LINEAR_DECAY", "Value": true}
+{"Parameter": "GAMMA", "Value": 0.99}
+{"Parameter": "LAMBDA", "Value": 0.85}
+```
+
+42
+
+
+
+Published as a conference paper at ICLR 2025
+
+Table 7: Overcooked Hyperparameters
+
+```json
+{"Parameter": "NUM_ENVs", "Value": 64}
+{"Parameter": "NUM_STEPS", "Value": 16}
+{"Parameter": "HIDDEN_SIZE", "Value": 512}
+{"Parameter": "NUM_LAYERS", "Value": 2}
+{"Parameter": "NORM_INPUT", "Value": false}
+{"Parameter": "NORM_TYPE", "Value": "layer_norm"}
+{"Parameter": "EPS_START", "Value": 1.0}
+{"Parameter": "EPS_FINISH", "Value": 0.2}
+{"Parameter": "EPS_DECAY", "Value": 0.2}
+{"Parameter": "MAX_GRAD_NORM", "Value": 10}
+{"Parameter": "NUM_MINIBATCHES", "Value": 16}
+{"Parameter": "NUM_EPOCHS", "Value": 4}
+{"Parameter": "LR", "Value": 0.000075}
+{"Parameter": "LR_LINEAR_DECAY", "Value": true}
+{"Parameter": "GAMMA", "Value": 0.99}
+{"Parameter": "LAMBDA", "Value": 0.5}
+```
+
+Table 8: Hanabi Hyperparameters
+
+```json
+{"Parameter": "NUM_ENVS", "Value": 1024}
+{"Parameter": "NUM_STEPS", "Value": 1}
+{"Parameter": "TOTAL_TIMESTEPS", "Value": 10000000000}
+{"Parameter": "HIDDEN_SIZE", "Value": 512}
+{"Parameter": "N_LAYERS", "Value": 3}
+{"Parameter": "NORM_TYPE", "Value": "layer_norm"}
+{"Parameter": "DUELING", "Value": true}
+{"Parameter": "EPS_START", "Value": 0.01}
+{"Parameter": "EPS_FINISH", "Value": 0.001}
+{"Parameter": "EPS_DECAY", "Value": 0.1}
+{"Parameter": "MAX_GRAD_NORM", "Value": 0.5}
+{"Parameter": "NUM_MINIBATCHES", "Value": 1}
+{"Parameter": "NUM_EPOCHS", "Value": 1}
+{"Parameter": "LR", "Value": 0.0003}
+{"Parameter": "LR_LINEAR_DECAY", "Value": false}
+{"Parameter": "GAMMA", "Value": 0.99}
+```
+
+43
+
+
+
+Published as a conference paper at ICLR 2025
+
+Table 9: ALE Scores: Rainbow vs PQN (400M frames)
+
+```jsonl
+{"Game": "Alien", "Rainbow": 9491.7, "PQN": 6970.42}
+{"Game": "Amidar", "Rainbow": 5131.2, "PQN": 1408.15}
+{"Game": "Assault", "Rainbow": 14198.5, "PQN": 20089.42}
+{"Game": "Asterix", "Rainbow": 428200.3, "PQN": 38708.98}
+{"Game": "Asteroids", "Rainbow": 2712.8, "PQN": 45573.75}
+{"Game": "Atlantis", "Rainbow": 826659.5, "PQN": 845520.83}
+{"Game": "BankHeist", "Rainbow": 1358.0, "PQN": 1431.25}
+{"Game": "BattleZone", "Rainbow": 62010.0, "PQN": 54791.67}
+{"Game": "BeamRider", "Rainbow": 16850.2, "PQN": 23338.83}
+{"Game": "Berzerk", "Rainbow": 2545.6, "PQN": 18542.2}
+{"Game": "Bowling", "Rainbow": 30.0, "PQN": 28.71}
+{"Game": "Boxing", "Rainbow": 99.6, "PQN": 99.63}
+{"Game": "Breakout", "Rainbow": 417.5, "PQN": 515.08}
+{"Game": "Centipede", "Rainbow": 8167.3, "PQN": 11347.98}
+{"Game": "ChopperCommand", "Rainbow": 16654.0, "PQN": 129962.5}
+{"Game": "CrazyClimber", "Rainbow": 168788.5, "PQN": 171579.17}
+{"Game": "Defender", "Rainbow": 55105.0, "PQN": 140741.67}
+{"Game": "DemonAttack", "Rainbow": 111185.2, "PQN": 133075.21}
+{"Game": "DoubleDunk", "Rainbow": -0.3, "PQN": -0.92}
+{"Game": "Enduro", "Rainbow": 2125.9, "PQN": 2349.17}
+{"Game": "FishingDerby", "Rainbow": 31.3, "PQN": 46.17}
+{"Game": "Freeway", "Rainbow": 34.0, "PQN": 33.75}
+{"Game": "Frostbite", "Rainbow": 9590.5, "PQN": 7313.54}
+{"Game": "Gopher", "Rainbow": 70354.6, "PQN": 60259.17}
+{"Game": "Gravitar", "Rainbow": 1419.3, "PQN": 1158.33}
+{"Game": "Hero", "Rainbow": 55887.4, "PQN": 26099.17}
+{"Game": "IceHockey", "Rainbow": 1.1, "PQN": 0.17}
+{"Game": "Jamesbond", "Rainbow": 20000.0, "PQN": 3254.17}
+{"Game": "Kangaroo", "Rainbow": 14637.5, "PQN": 14116.67}
+{"Game": "Krull", "Rainbow": 8741.5, "PQN": 10853.33}
+{"Game": "KungFuMaster", "Rainbow": 52181.0, "PQN": 41033.33}
+{"Game": "MontezumaRevenge", "Rainbow": 384.0, "PQN": 0.0}
+{"Game": "MsPacman", "Rainbow": 5380.4, "PQN": 5567.5}
+{"Game": "NameThisGame", "Rainbow": 13136.0, "PQN": 20603.33}
+{"Game": "Phoenix", "Rainbow": 108528.6, "PQN": 252173.33}
+{"Game": "Pitfall", "Rainbow": 0.0, "PQN": -89.21}
+{"Game": "Pong", "Rainbow": 20.9, "PQN": 20.92}
+{"Game": "PrivateEye", "Rainbow": 4234.0, "PQN": 100.0}
+{"Game": "Qbert", "Rainbow": 33817.5, "PQN": 31716.67}
+{"Game": "Riverraid", "Rainbow": 20000.0, "PQN": 28764.27}
+{"Game": "RoadRunner", "Rainbow": 62041.0, "PQN": 109742.71}
+{"Game": "Robotank", "Rainbow": 61.4, "PQN": 73.96}
+{"Game": "Seaquest", "Rainbow": 15898.9, "PQN": 11345.0}
+{"Game": "Skiing", "Rainbow": -12957.8, "PQN": -29975.31}
+{"Game": "Solaris", "Rainbow": 3560.3, "PQN": 2607.5}
+{"Game": "SpaceInvaders", "Rainbow": 18789.0, "PQN": 18450.83}
+{"Game": "StarGunner", "Rainbow": 127029.0, "PQN": 331300.0}
+{"Game": "Surround", "Rainbow": 9.7, "PQN": 5.88}
+{"Game": "Tennis", "Rainbow": 0.0, "PQN": -1.04}
+{"Game": "TimePilot", "Rainbow": 12926.0, "PQN": 21950.0}
+{"Game": "Tutankham", "Rainbow": 241.0, "PQN": 264.71}
+{"Game": "UpNDown", "Rainbow": 100000.0, "PQN": 308327.92}
+{"Game": "Venture", "Rainbow": 5.5, "PQN": 76.04}
+{"Game": "VideoPinball", "Rainbow": 533936.5, "PQN": 489716.33}
+{"Game": "WizardOfWor", "Rain
+
+Finished /Users/ubuntu/.cache/qvl_downloaded_2ca26a97.pdf in 74.13s
+OCR OF /Users/ubuntu/.cache/qvl_downloaded_2ca26a97.pdf SAVED TO ./.pdfmds/https-arxiv-org-pdf-2407-04811-pdf-26c62d2.txt
+end https://arxiv.org/pdf/2407.04811.pdf
+

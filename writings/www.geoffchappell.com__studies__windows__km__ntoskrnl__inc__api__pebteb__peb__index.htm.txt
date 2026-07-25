@@ -1,4 +1,3 @@
-begin https://www.geoffchappell.com/studies/windows/km/ntoskrnl/inc/api/pebteb/peb/index.htm
 PEB
 
 The Process Environment Block (PEB) is a process’s user-mode representation. It has the highest-level knowledge of a process in kernel mode and the lowest-level in user mode. The PEB is created by the kernel but is mostly operated on from user mode. If a (system) process has no user-mode footprint, it has no PEB. If only in principle, if anything about a process is shared with kernel mode but can be properly managed in user mode without needing a transition to kernel mode, it goes in the PEB. If anything about a process might usefully be shared between user-mode modules, then it’s at least a candidate for going in the PEB for easy access. Very much more in principle than in practice, data may go into the PEB for sharing between processes more easily than by any formal inter-process communication.
@@ -560,9 +559,3 @@ https://www.geoffchappell.com/studies/windows/km/ntoskrnl/inc/api/pebteb/peb/tra
 https://techcommunity.microsoft.com/t5/networking/blog/leap-seconds-for-the-it-pro-what-you-need-to-know/ba-p/339811
 https://www.geoffchappell.com/new/16/04.htm
 https://www.geoffchappell.com/about/terms.htm
-
-IMAGES
-https://www.geoffchappell.com/_images/external.gif
-end https://www.geoffchappell.com/studies/windows/km/ntoskrnl/inc/api/pebteb/peb/index.htm
-
-FULL TEXT FOR URL https://www.geoffchappell.com/studies/windows/km/ntoskrnl/inc/api/pebteb/peb/index.htm SAVED TO ./.webcats/https-www-geoffchappell-c--api-pebteb-peb-index-htm-d4fb5a9.txt

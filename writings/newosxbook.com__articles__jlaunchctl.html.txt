@@ -1,4 +1,3 @@
-begin https://newosxbook.com/articles/jlaunchctl.html
 launchd, I'm coming for you
 Force open sourcing launchd and libxpc, one binary at a time
 Jonathan Levin, @Technologeeks, https://newosxbook.com/ - 10/07/15
@@ -640,9 +639,3 @@ https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_getprogname
 https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_fprintf
 https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::__os_assert_log
 https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::__os_crash
-
-IMAGES
-https://newosxbook.com/articles/matador.jpg
-end https://newosxbook.com/articles/jlaunchctl.html
-
-FULL TEXT FOR URL https://newosxbook.com/articles/jlaunchctl.html SAVED TO ./.webcats/https-newosxbook-com-articles-jlaunchctl-html-16c98e6.txt

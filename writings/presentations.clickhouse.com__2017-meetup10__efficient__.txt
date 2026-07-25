@@ -1,4 +1,3 @@
-begin https://presentations.clickhouse.com/2017-meetup10/efficient/
 Effective Use of ClickHouse
 
 Author: Alexey Milovidov, 2017-12-06.
@@ -650,6 +649,3 @@ https://telegram.me/clickhouse_en
 https://telegram.me/clickhouse_ru
 https://github.com/ClickHouse/ClickHouse/
 https://presentations.clickhouse.com/
-end https://presentations.clickhouse.com/2017-meetup10/efficient/
-
-FULL TEXT FOR URL https://presentations.clickhouse.com/2017-meetup10/efficient/ SAVED TO ./.webcats/https-presentations-click-m-2017-meetup10-efficient-c6b59aa.txt

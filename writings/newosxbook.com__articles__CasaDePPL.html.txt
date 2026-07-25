@@ -1,0 +1,814 @@
+Casa De P(a)P(e)L
+Explaining Apple's Page Protection Layer in A12 CPUs
+Jonathan Levin, (@Morpheus______), http://newosxbook.com/ - 03/02/2019
+About
+
+Apple's A12 kernelcaches, aside from being "1469"-style (monolithic and stripped), also have additional segments marked PPL. These pertain to a new memory protection mechanism introduced in those chips - of clear importance to system security (and, conversely, JailBreaking). Yet up till now there is scarcely any mention of what PPL is, and/or what it does.
+
+I cover pmap and PPL in the upcoming Volume II, but seeing as it's taking me a while, and I haven't written any articles in just about a year (and fresh off binge watching the article's title inspiration :-) I figured that some detail in how to reverse engineer PPL would be of benefit to my readers. So here goes.
+
+You might want to grab a copy of the iPhone 11 (whichever variant, doesn't matter) iOS 12 kernelcache before reading this, since this is basically a step by step tutorial. Since I'm using jtool2, you probably want to grab the nightly build so you can follow along. This also makes for an informal jtool2 tutorial, because anyone not reading the WhatsNew.txt might not be aware of the really powerful features I put into it.
+
+Kernelcache differences
+
+As previously mentioned, A12 kernelcaches have new PPL* segments, as visible with jtool2 -l:
+
+morpheus@Chimera (~) % jtool2 -l ~/Downloads/kernelcache.release.iphone11  | grep PPL
+opened companion file ./kernelcache.release.iphone11.ARM64.AD091625-3D05-3841-A1B6-AF60B4D43F35
+LC 03: LC_SEGMENT_64             Mem: 0xfffffff008f44000-0xfffffff008f58000     __PPLTEXT
+        Mem: 0xfffffff008f44000-0xfffffff008f572e4              __PPLTEXT.__text   
+LC 04: LC_SEGMENT_64             Mem: 0xfffffff008f58000-0xfffffff008f68000     __PPLTRAMP
+        Mem: 0xfffffff008f58000-0xfffffff008f640c0              __PPLTRAMP.__text  
+LC 05: LC_SEGMENT_64             Mem: 0xfffffff008f68000-0xfffffff008f6c000     __PPLDATA_CONST
+        Mem: 0xfffffff008f68000-0xfffffff008f680c0              __PPLDATA_CONST.__const    
+LC 07: LC_SEGMENT_64             Mem: 0xfffffff008f70000-0xfffffff008f74000     __PPLDATA
+        Mem: 0xfffffff008f70000-0xfffffff008f70de0              __PPLDATA.__data 
+
+These segments each contain one section, and thankfully are pretty self explanatory. We have:
+
+__PPLTEXT.__text: The code of the PPL layer.
+__PPLTRAMP.__text: containing "trampoline" code to jump into the __PPLTEXT.__text
+__PPLDATA.__data: r/w data
+__PPLDATA_CONST.__const: r/o data.
+
+The separation of PPLDATA from PPLDATA_CONST.__const is similar to the kernelcache using __DATA and __DATA_CONST, so KTRR can kick in and protect the constant data from being patched. The PPLTRAMP hints that there is a special code path which must be taken in order for PPL to be active. Presumably, the chip can detect those "well known" segment names and ensure PPL code isn't just invoked arbitrarily somewhere else in kernel space.
+
+PPL trampoline
+
+Starting with the trampoline code, we jtool2 -d - working on the kernelcache when it's compressed is entirely fine :-) So we try, only to find out the text section is full of DCD 0x0. jtool2 doesn't filter - I delegate that to grep(1), so we try:
+
+morpheus@Chimera (~) % jtool2 -d __PPLTRAMP.__text ~/Downloads/kernelcache.release.iphone11 | grep -v DCD
+Disassembling 49344 bytes from address 0xfffffff008f58000 (offset 0x1f54000):
+fffffff008f5bfe0        0xd53b4234  MRS         X20, DAIF                ; 
+fffffff008f5bfe4        0xd50347df  MSR         DAIFSet, #7              ; X -  0 0x0
+fffffff008f5bfe8        ---------- *MOVKKKK     X14, 0x4455445564666677  ;
+fffffff008f5bff8        0xd51cf22e  MSR         ARM64_REG_APRR_EL1, X14  ; X -  14 0x0
+fffffff008f5bffc        0xd5033fdf  ISB                                  ; 
+fffffff008f5c000        0xd50347df  MSR         DAIFSet, #7              ; X -  0 0x0
+fffffff008f5c004        ---------- *MOVKKKK     X14, 0x4455445564666677  ;
+fffffff008f5c014        0xd53cf235  MRS         X21, ARM64_REG_APRR_EL1  ; 
+fffffff008f5c018        0xeb1501df  CMP         X14, X21, ...            ; 
+fffffff008f5c01c        0x540005e1  B.NE        0xfffffff008f5c0d8       ; 
+fffffff008f5c020        0xf10111ff  CMP         X15, #68                 ; 
+fffffff008f5c024        0x540005a2  B.CS        0xfffffff008f5c0d8       ; 
+fffffff008f5c028        0xd53800ac  MRS         X12, MPIDR_EL1           ; 
+fffffff008f5c02c        0x92781d8d  AND         X13, X12, #0xff00        ; 
+fffffff008f5c030        0xd348fdad  UBFX        X13, X13#63              ; 
+fffffff008f5c034        0xf10009bf  CMP         X13, #2                  ; 
+fffffff008f5c038        0x54000002  B.CS        0xfffffff008f5c038       ; 
+fffffff008f5c03c        0xd0ff054e  ADRP        X14, 2089130             ; R14 = 0xfffffff007006000
+fffffff008f5c040        0x9107c1ce  ADD         X14, X14, #496           ; R14 = R14 + 0x1f0 = 0xfffffff0070061f0
+fffffff008f5c044        0xf86d79cd  -LDR        X13, [X14, X13 ...]      ; R0 = 0x0
+fffffff008f5c048        0x92401d8c  AND         X12, X12, #0xff          ; 
+fffffff008f5c04c        0x8b0d018c  ADD         X12, X12, X13            ; R12 = R12 + 0x0 = 0x0
+fffffff008f5c050        0x900000ad  ADRP        X13, 20                  ; R13 = 0xfffffff008f70000
+fffffff008f5c054        0x910c01ad  ADD         X13, X13, #768           ; R13 = R13 + 0x300 = 0xfffffff008f70300
+fffffff008f5c058        0xf100199f  CMP         X12, #6                  ; 
+fffffff008f5c05c        0x54000002  B.CS        0xfffffff008f5c05c       ; 
+fffffff008f5c060        0xd280300e  MOVZ        X14, 0x180               ; R14 = 0x180
+fffffff008f5c064        0x9b0e358c  MADD        X12, X12, X14, X13       ; 
+fffffff008f5c068        0xb9402189  LDR         W9, [X12, #32]           ; ...R9 = *(R12 + 32) = *0x20
+fffffff008f5c06c        0x7100013f  CMP         W9, #0                   ; 
+fffffff008f5c070        0x54000180  B.EQ        0xfffffff008f5c0a0       ; 
+fffffff008f5c074        0x7100053f  CMP         W9, #1                   ; 
+fffffff008f5c078        0x540002c0  B.EQ        0xfffffff008f5c0d0       ; 
+fffffff008f5c07c        0x71000d3f  CMP         W9, #3                   ; 
+fffffff008f5c080        0x540002c1  B.NE        0xfffffff008f5c0d8       ; 
+fffffff008f5c084        0x71000d5f  CMP         W10, #3                  ; 
+fffffff008f5c088        0x54000281  B.NE        0xfffffff008f5c0d8       ; 
+fffffff008f5c08c        0x52800029  MOVZ        W9, 0x1                  ; R9 = 0x1
+fffffff008f5c090        0xb9002189  STR         W9, [X12, #32]           ; *0x20 = R9
+fffffff008f5c094        0xf9400d80  LDR         X0, [X12, #24]           ; ...R0 = *(R12 + 24) = *0x18
+fffffff008f5c098        0x9100001f  ADD         X31, X0, #0              ; R31 = R0 + 0x0 = 0x18
+fffffff008f5c09c        0x17aa1e6e  B           0xfffffff0079e3a54       ; 
+fffffff008f5c0a0        0x7100015f  CMP         W10, #0                  ; 
+fffffff008f5c0a4        0x540001a1  B.NE        0xfffffff008f5c0d8       ; 
+fffffff008f5c0a8        0x5280002d  MOVZ        W13, 0x1                 ; R13 = 0x1
+fffffff008f5c0ac        0xb900218d  STR         W13, [X12, #32]          ; *0x20 = R13
+fffffff008f5c0b0        0xb0ff4329  ADRP        X9, 2091109              ; R9 = 0xfffffff0077c1000
+fffffff008f5c0b4        0x913c8129  ADD         X9, X9, #3872            ; R9 = R9 + 0xf20 = 0xfffffff0077c1f20
+fffffff008f5c0b8        0xf86f792a  -LDR        X10, [X9, X15 ...]       ; R0 = 0x0
+fffffff008f5c0bc        0xf9400989  LDR         X9, [X12, #16]           ; ...R9 = *(R12 + 16) 
+fffffff008f5c0c0        0x910003f5  ADD         X21, SP, #0              ; R21 = R31 + 0x0
+fffffff008f5c0c4        0x9100013f  ADD         X31, X9, #0              ; R31 = R9 + 0x0 = 0x10971a008
+fffffff008f5c0c8        0xf9000595  STR         X21, [X12, #8]           ; *0x8 = R21
+fffffff008f5c0cc        0x17aa210f  B           0xfffffff0079e4508       ; 
+fffffff008f5c0d0        0xf940058a  LDR         X10, [X12, #8]           ; ...R10 = *(R12 + 8) = *0x8
+fffffff008f5c0d4        0x9100015f  ADD         X31, X10, #0             ; R31 = R10 + 0x0 = 0x8
+fffffff008f5c0d8        0xd280004f  MOVZ        X15, 0x2                 ; R15 = 0x2
+fffffff008f5c0dc        0xaa1403ea  MOV         X10, X20                 ; 
+fffffff008f5c0e0        0x14001fc3  B           0xfffffff008f63fec       ; 
+fffffff008f5c0e4        0xd280000f  MOVZ        X15, 0x0                 ; R15 = 0x0
+fffffff008f5c0e8        0x910002bf  ADD         X31, X21, #0             ; R31 = R21 + 0x0 = 0x18
+fffffff008f5c0ec        0xaa1403ea  MOV         X10, X20                 ; 
+fffffff008f5c0f0        0xf900059f  STR         XZR, [X12, #8]           ; *0x8 = R31
+fffffff008f5c0f4        0xb9402189  LDR         W9, [X12, #32]           ; ...R9 = *(R12 + 32) = *0x20
+fffffff008f5c0f8        0x7100053f  CMP         W9, #1                   ; 
+fffffff008f5c0fc        0x54000001  B.NE        0xfffffff008f5c0fc       ; 
+fffffff008f5c100        0x52800009  MOVZ        W9, 0x0                  ; R9 = 0x0
+fffffff008f5c104        0xb9002189  STR         W9, [X12, #32]           ; *0x20 = R9
+fffffff008f5c108        0x14001fb9  B           0xfffffff008f63fec       ; 
+--------------
+fffffff008f63fec        ---------- *MOVKKKK     X14, 0x4455445464666477  ;
+fffffff008f63ffc        0xd51cf22e  MSR         ARM64_REG_APRR_EL1, X14  ; X -  14 0x44554454646665f7
+fffffff008f64000        0xd5033fdf  ISB                                  ; 
+fffffff008f64004        0xf1000dff  CMP         X15, #3                  ; 
+fffffff008f64008        0x54000520  B.EQ        0xfffffff008f640ac       ; 
+fffffff008f6400c        0xf27a095f  TST         X10, #448                ; 
+fffffff008f64010        0x54000140  B.EQ        0xfffffff008f64038       ; 
+fffffff008f64014        0xf27a055f  TST         X10, #192                ; 
+fffffff008f64018        0x540000c0  B.EQ        0xfffffff008f64030       ; 
+fffffff008f6401c        0xf278015f  TST         X10, #256                ; 
+fffffff008f64020        0x54000040  B.EQ        0xfffffff008f64028       ; 
+fffffff008f64024        0x14000006  B           0xfffffff008f6403c       ; 
+fffffff008f64028        0xd50344ff  MSR         DAIFClr, #4              ; X -  0 0x0
+fffffff008f6402c        0x14000004  B           0xfffffff008f6403c       ; 
+fffffff008f64030        0xd50343ff  MSR         DAIFClr, #3              ; X -  0 0x0
+fffffff008f64034        0x14000002  B           0xfffffff008f6403c       ; 
+fffffff008f64038        0xd50347ff  MSR         DAIFClr, #7              ; X -  0 0x0
+fffffff008f6403c        0xf10005ff  CMP         X15, #1                  ; 
+fffffff008f64040        0x54000380  B.EQ        0xfffffff008f640b0       ; 
+fffffff008f64044        0xd538d08a  MRS         X10, TPIDR_EL1           ; 
+fffffff008f64048        0xb944714c  LDR         W12, [X10, #1136]        ; ...R12 = *(R10 + 1136) = *0x470
+fffffff008f6404c        0x3500004c  CBNZ        X12, 0xfffffff008f64054  ; 
+fffffff008f64050        0x17a9fedb  B           0xfffffff0079e3bbc       ; 
+fffffff008f64054        0x5100058c  SUB         W12, W12, #1             ; 
+fffffff008f64058        0xb904714c  STR         W12, [X10, #1136]        ; *0x470 = R12
+fffffff008f6405c        0xd53b4221  MRS         X1, DAIF                 ; 
+fffffff008f64060        0xf279003f  TST         X1, #128                 ; 
+fffffff008f64064        0x540001a1  B.NE        0xfffffff008f64098       ; 
+fffffff008f64068        0xb500018c  CBNZ        X12, 0xfffffff008f64098  ; 
+fffffff008f6406c        0xd50343df  MSR         DAIFSet, #3              ; X -  0 0x0
+fffffff008f64070        0xf942354c  LDR         X12, [X10, #1128]        ; ...R12 = *(R10 + 1128) = *0x468
+fffffff008f64074        0xf940318e  LDR         X14, [X12, #96]          ; ...R14 = *(R12 + 96) = *0x4c8
+fffffff008f64078        0xf27e01df  TST         X14, #4                  ; 
+fffffff008f6407c        0x540000c0  B.EQ        0xfffffff008f64094       ; 
+fffffff008f64080        0xaa0003f4  MOV         X20, X0                  ; 
+fffffff008f64084        0xaa0f03f5  MOV         X21, X15                 ; 
+fffffff008f64088        0x97aae7de  BL          0xfffffff007a1e000       ; _func_fffffff007a1e000
+        _func_fffffff007a1e000(ARG0);
+fffffff008f6408c        0xaa1503ef  MOV         X15, X21                 ; 
+fffffff008f64090        0xaa1403e0  MOV         X0, X20                  ; 
+fffffff008f64094        0xd50343ff  MSR         DAIFClr, #3              ; X -  0 0x0
+fffffff008f64098        0xa9417bfd  LDP         X29, X30, [SP, #0x10]    ; 
+fffffff008f6409c        0xa8c257f4  LDP         X20, X21, [SP], #0x20    ; 
+fffffff008f640a0        0xf10009ff  CMP         X15, #2                  ; 
+fffffff008f640a4        0x54000080  B.EQ        0xfffffff008f640b4       ; 
+fffffff008f640a8        0xd65f0fff  RETAB                                ; 
+fffffff008f640ac        0xd61f0320  BR          X25                      ; 
+fffffff008f640b0        0x17ab113a  B           0xfffffff007a28598       ; _panic_trap_to_debugger
+fffffff008f640b4        0xb0000100  ADRP        X0, 33                   ; R0 = 0xfffffff008f85000
+fffffff008f640b8        0x91102000  ADD         X0, X0, #1032            ; R0 = R0 + 0x408 = 0xfffffff008f85408
+fffffff008f640bc        0x17ab1126  B           0xfffffff007a28554       ; _panic
+
+We see that the code in the PPLTRAMP is pretty sparse (lots of DCD 0x0s have been weeded out). But it's not entirely clear how and where we get to this code. We'll get to that soon. Observe, that the code is seemingly dependent on X15, which must be less than 68 (per the check in 0xfffffff008f5c020). A bit further down, we see an LDR X10, [X9, X15 ...], which is a classic switch()/table style statement, using 0xfffffff0077c1f20 as a base:
+
+fffffff008f5c020        0xf10111ff  CMP         X15, #68                 ; 
+fffffff008f5c024        0x540005a2  B.CS        0xfffffff008f5c0d8       ; 
+...
+fffffff008f5c0b0        0xb0ff4329  ADRP        X9, 2091109              ; R9 = 0xfffffff0077c1000
+fffffff008f5c0b4        0x913c8129  ADD         X9, X9, #3872            ; R9 = R9 + 0xf20 = 0xfffffff0077c1f20
+fffffff008f5c0b8        0xf86f792a  -LDR        X10, [X9, X15 ...]       ; R0 = 0x0
+
+Peeking at that address, we see:
+
+morpheus@Chimera (~/) % jtool2 -d 0xfffffff0077c1f20 ~/Downloads/kernelcache.release.iphone11  | head -69
+Dumping 2200392 bytes from 0xfffffff0077c1f20 (Offset 0x7bdf20, __DATA_CONST.__const):
+0xfffffff0077c1f20: 0xfffffff008f52ee4          __func_0xfffffff008f52ee4
+0xfffffff0077c1f28: 0xfffffff008f51e4c          __func_0xfffffff008f51e4c
+0xfffffff0077c1f30: 0xfffffff008f52a30          __func_0xfffffff008f52a30
+0xfffffff0077c1f38: 0xfffffff008f525dc          __func_0xfffffff008f525dc
+0xfffffff0077c1f40: 0xfffffff008f51c4c          __func_0xfffffff008f51c4c
+0xfffffff0077c1f48: 0xfffffff008f51ba0          __func_0xfffffff008f51ba0
+0xfffffff0077c1f50: 0xfffffff008f518f4          __func_0xfffffff008f518f4
+0xfffffff0077c1f58: 0xfffffff008f5150c          __func_0xfffffff008f5150c
+0xfffffff0077c1f60: 0xfffffff008f50994          __func_0xfffffff008f50994
+0xfffffff0077c1f68: 0xfffffff008f4f59c          __func_0xfffffff008f4f59c
+0xfffffff0077c1f70: 0xfffffff008f4de6c          __func_0xfffffff008f4de6c
+0xfffffff0077c1f78: 0xfffffff008f4dcac          __func_0xfffffff008f4dcac
+0xfffffff0077c1f80: 0xfffffff008f4dae4          __func_0xfffffff008f4dae4
+0xfffffff0077c1f88: 0xfffffff008f4d7e8          __func_0xfffffff008f4d7e8
+0xfffffff0077c1f90: 0xfffffff008f4d58c          __func_0xfffffff008f4d58c
+0xfffffff0077c1f98: 0xfffffff008f4d1ec          __func_0xfffffff008f4d1ec
+0xfffffff0077c1fa0: 0xfffffff008f4cef8          __func_0xfffffff008f4cef8
+0xfffffff0077c1fa8: 0xfffffff008f4c038          __func_0xfffffff008f4c038
+0xfffffff0077c1fb0: 0xfffffff008f48420          __func_0xfffffff008f48420
+0xfffffff0077c1fb8: 0xfffffff008f4bacc          __func_0xfffffff008f4bacc
+0xfffffff0077c1fc0: 0xfffffff008f4b754          __func_0xfffffff008f4b754
+0xfffffff0077c1fc8: 0xfffffff008f4b458          __func_0xfffffff008f4b458
+0xfffffff0077c1fd0: 0xfffffff008f4b3a0          __func_0xfffffff008f4b3a0
+0xfffffff0077c1fd8: 0xfffffff008f4afc4          __func_0xfffffff008f4afc4
+0xfffffff0077c1fe0: 0xfffffff008f4afbc          __func_0xfffffff008f4afbc
+0xfffffff0077c1fe8: 0xfffffff008f4acec          __func_0xfffffff008f4acec
+0xfffffff0077c1ff0: 0xfffffff008f4ac38          __func_0xfffffff008f4ac38
+0xfffffff0077c1ff8: 0xfffffff008f4ac34          __func_0xfffffff008f4ac34
+0xfffffff0077c2000: 0xfffffff008f4aa78          __func_0xfffffff008f4aa78
+0xfffffff0077c2008: 0xfffffff008f4a8b0          __func_0xfffffff008f4a8b0
+0xfffffff0077c2010: 0xfffffff008f4a8a0          __func_0xfffffff008f4a8a0
+0xfffffff0077c2018: 0xfffffff008f4a730          __func_0xfffffff008f4a730
+0xfffffff0077c2020: 0xfffffff008f4a09c          __func_0xfffffff008f4a09c
+0xfffffff0077c2028: 0xfffffff008f4a098          __func_0xfffffff008f4a098
+0xfffffff0077c2030: 0xfffffff008f49fbc          __func_0xfffffff008f49fbc
+0xfffffff0077c2038: 0xfffffff008f49d0c          __func_0xfffffff008f49d0c
+0xfffffff0077c2040: 0xfffffff008f49c08          __func_0xfffffff008f49c08
+0xfffffff0077c2048: 0xfffffff008f49940          __func_0xfffffff008f49940
+0xfffffff0077c2050: 0xfffffff008f494c0          __func_0xfffffff008f494c0
+0xfffffff0077c2058: 0xfffffff008f492e8          __func_0xfffffff008f492e8
+0xfffffff0077c2060: 0xfffffff008f47d54          __func_0xfffffff008f47d54
+0xfffffff0077c2068: 0xfffffff008f47d58          __func_0xfffffff008f47d58
+0xfffffff0077c2070: 0xfffffff008f46ea0          __func_0xfffffff008f46ea0
+0xfffffff0077c2078: 0xfffffff008f46a50          __func_0xfffffff008f46a50
+0xfffffff0077c2080: 0xfffffff008f45ef8          __func_0xfffffff008f45ef8
+0xfffffff0077c2088: 0xfffffff008f45ca0          __func_0xfffffff008f45ca0
+0xfffffff0077c2090: 0xfffffff008f45a80          __func_0xfffffff008f45a80
+0xfffffff0077c2098: 00 00 00 00 00 00 00 00    ........
+0xfffffff0077c20a0: 00 00 00 00 00 00 00 00    ........
+0xfffffff0077c20a8: 00 00 00 00 00 00 00 00    ........
+0xfffffff0077c20b0: 00 00 00 00 00 00 00 00    ........
+0xfffffff0077c20b8: 00 00 00 00 00 00 00 00    ........
+0xfffffff0077c20c0: 00 00 00 00 00 00 00 00    ........
+0xfffffff0077c20c8: 00 00 00 00 00 00 00 00    ........
+0xfffffff0077c20d0: 00 00 00 00 00 00 00 00    ........
+0xfffffff0077c20d8: 00 00 00 00 00 00 00 00    ........
+0xfffffff0077c20e0: 00 00 00 00 00 00 00 00    ........
+0xfffffff0077c20e8: 00 00 00 00 00 00 00 00    ........
+0xfffffff0077c20f0: 0xfffffff008f457b8          __func_0xfffffff008f457b8
+0xfffffff0077c20f8: 0xfffffff008f456e4          __func_0xfffffff008f456e4
+0xfffffff0077c2100: 0xfffffff008f455c8          __func_0xfffffff008f455c8
+0xfffffff0077c2108: 0xfffffff008f454bc          __func_0xfffffff008f454bc
+0xfffffff0077c2110: 0xfffffff008f45404          __func_0xfffffff008f45404
+0xfffffff0077c2118: 0xfffffff008f45274          __func_0xfffffff008f45274
+0xfffffff0077c2120: 0xfffffff008f446c0          __func_0xfffffff008f446c0
+0xfffffff0077c2128: 0xfffffff008f445b0          __func_0xfffffff008f445b0
+0xfffffff0077c2130: 0xfffffff008f441dc          __func_0xfffffff008f441dc
+0xfffffff0077c2138: 0xfffffff008f44010          __func_0xfffffff008f44010
+0xfffffff0077c2140: 00 00 00 00 00 00 00 00    ........
+
+Clearly, a dispatch table - function pointers aplenty. Where do these lie? Taking any one of them and subjecting to jtool2 -a will locate it:
+
+morpheus@Chimera (~) %jtool2 -a 0xfffffff008f457b8 ~/Downloads/kernelcache.release.iphone11     
+Address 0xfffffff008f457b8 (offset 0x1f417b8) is in __PPLTEXT.__text
+
+This enables us to locate functions in __PPLTEXT.__text, whose addresses are not exported by LC_FUNCTION_STARTS. So that's already pretty useful. The __PPLTEXT.__text is pretty big, but we can use a very rudimentary decompilation feature, thanks to jtool2's ability to follow arguments:
+
+morpheus@Chimera (~) %jtool2 -d __PPLTEXT.__text ~/Downloads/kernelcache.release.iphone11 |
+                  grep -v ^ff |  # Ignore disassembly lines
+		  grep \"     |  # get strings
+Disassembling 78564 bytes from address 0xfffffff008f44000 (offset 0x1f40000):
+        _func_fffffff007a28554(""%s: ledger %p array index invalid, index was %#llx"", "pmap_ledger_validate" );
+        _func_fffffff007a28554(""%s: ledger still referenced, " "ledger=%p"", "pmap_ledger_free_internal");
+        _func_fffffff007a28554(""%s: invalid ledger ptr %p"", "pmap_ledger_validate");
+...
+
+These are obvious panic strings, and _func_fffffff007a28554 is indeed _panic (jtool2 could have immediately symbolicated vast swaths of the kernel if we had used --analyze - I'm deliberately walking step by step here). Note that the panic strings also give us the panicking function. That can get us the symbol names for 30 something of all them functions we found! They're all "pmap...internal", and jtool2 can just dump the strings (thanks for not redacting, AAPL!):
+
+morpheus@Chimera (~)% jtool2 -d __TEXT.__cstring ~/Downloads/kernelcache.release.iphone11 | grep pmap_.*internal
+Dumping 2853442 bytes from 0xfffffff0074677ec (Offset 0x4637ec, __TEXT.__cstring):
+0xfffffff00747027e: pmap_ledger_free_internal
+0xfffffff0074702c8: pmap_ledger_alloc_internal
+0xfffffff0074706e2: pmap_ledger_alloc_init_internal
+0xfffffff007470789: pmap_trim_internal
+0xfffffff007470b95: pmap_iommu_ioctl_internal
+0xfffffff007470d30: pmap_iommu_unmap_internal
+0xfffffff007470d4a: pmap_iommu_map_internal
+0xfffffff007470d7f: pmap_iommu_init_internal
+0xfffffff007470e3e: pmap_cs_check_overlap_internal
+0xfffffff007470e5d: pmap_cs_lookup_internal
+0xfffffff007470e75: pmap_cs_associate_internal_options
+0xfffffff00747188d: pmap_set_jit_entitled_internal
+0xfffffff0074719ba: pmap_cpu_data_init_internal
+0xfffffff007471a03: pmap_unnest_options_internal
+0xfffffff007471ad7: pmap_switch_user_ttb_internal
+0xfffffff007471af5: pmap_switch_internal
+0xfffffff007471b0a: pmap_set_nested_internal
+0xfffffff007471bcd: pmap_remove_options_internal
+0xfffffff007471d61: pmap_reference_internal
+0xfffffff007471d79: pmap_query_resident_internal
+0xfffffff007471dc2: pmap_query_page_info_internal
+0xfffffff007471e05: pmap_protect_options_internal
+0xfffffff007471ebd: pmap_nest_internal
+0xfffffff007472247: pmap_mark_page_as_ppl_page_internal
+0xfffffff007472336: pmap_map_cpu_windows_copy_internal
+0xfffffff007472386: pmap_is_empty_internal
+0xfffffff00747239d: pmap_insert_sharedpage_internal
+0xfffffff007472422: pmap_find_phys_internal
+0xfffffff00747243a: pmap_extract_internal
+0xfffffff007472450: pmap_enter_options_internal
+0xfffffff0074727ee: pmap_destroy_internal
+0xfffffff0074729c4: pmap_create_internal
+0xfffffff0074729fc: pmap_change_wiring_internal
+0xfffffff007472a53: pmap_batch_set_cache_attributes_internal
+
+The few functions we do not have, can be figured out by the context of calling them from the non-PPL pmap_* wrappers.
+
+But we still don't know how we get into PPL. Let's go to the __TEXT_EXEC.__text then.
+
+__TEXT_EXEC.__text
+
+The kernel's __TEXT_EXEC.__text is already pretty large, but adding all the Kext code into it makes it darn huge. AAPL has also stripped the kernel clean in 1469 kernelcaches - but not before leaving a farewell present in iOS 12 β 1 - a fully symbolicated (86,000+) kernel. Don't bother looking for that IPSW - In an unusual admittal of mistake this is the only beta IPSW in history that has been eradicated.
+
+Thankfully, researchers were on to this "move to help researchers", and grabbed a copy when they still could. I did the same, and based jtool2's kernel cache analysis on it. This is the tool formerly known as joker - which, if you're still using - forget about. I no longer maintain that, because now it's built into jtool2, xn00p (my kernel debugger) and soon QiLin - as fully self contained and portable library code.
+
+Running an analysis on the kernelcache is blazing fast - on order of 8 seconds or so on my MBP2018. Try this:
+
+morpheus@Chimera (~) %time jtool2 --analyze ~/Downloads/kernelcache.release.iphone11           
+Analyzing kernelcache..
+This is an A12 kernelcache (Darwin Kernel Version 18.2.0: Wed Dec 19 20:28:53 PST 2018; root:xnu-4903.242.2~1/RELEASE_ARM64_T8020)
+-- Processing __TEXT_EXEC.__text..
+Disassembling 22433272 bytes from address 0xfffffff0079dc000 (offset 0x9d8000):
+__ZN11OSMetaClassC2EPKcPKS_j is 0xfffffff007fedc64 (OSMetaClass)
+Analyzing __DATA_CONST..
+processing flows...
+Analyzing __DATA.__data..
+Analyzing __DATA.__sysctl_set..
+Analyzing fuctions...
+FOUND at 0xfffffff007a2c8e4!
+Analyzing __PPLTEXT.__text..
+Got 1881 IOKit Classes
+opened companion file ./kernelcache.release.iphone11.ARM64.AD091625-3D05-3841-A1B6-AF60B4D43F35
+Dumping symbol cache to file
+Symbolicated 5070 symbols to ./kernelcache.release.iphone11.ARM64.AD091625-3D05-3841-A1B6-AF60B4D43F35
+jtool2 --analyze ~/Downloads/kernelcache.release.iphone11  6.07s user 0.32s system 99% cpu 6.447 total
+
+Let's ignore the __PPLTEXT autoanalysis for the moment (TL;DR - stop reading, all the symbols you need are auto symbolicated by jtool2's jokerlib. And let's look at code which happens to be a PPL client - the despicable AMFI. I'll spare you wandering out and get directly to the function in question:
+
+morpheus@Chimera (~) % JCOLOR=1 jtool2 -d __Z31AMFIIsCodeDirectoryInTrustCachePKh ~/Downloads/kernelcache.release.iphone11 
+opened companion file ./kernelcache.release.iphone11.ARM64.AD091625-3D05-3841-A1B6-AF60B4D43F35
+Disassembling 13991556 bytes from address 0xfffffff0081e8f74 (offset 0x11e4f74):
+__Z31AMFIIsCodeDirectoryInTrustCachePKh:
+fffffff0081e8f74        0xd503237f  PACIBSP                              ; 
+fffffff0081e8f78        0xa9bf7bfd  STP         X29, X30, [SP, #-16]!    ; 
+fffffff0081e8f7c        0x910003fd  ADD         X29, SP, #0              ; R29 = R31 + 0x0
+fffffff0081e8f80        0x97e65da4  BL          0xfffffff007b80610       ; _func_0xfffffff007b80610
+        _func_0xfffffff007b80610()
+fffffff0081e8f84        0x12000000  AND         W0, W0, #0x1             ; 
+fffffff0081e8f88        0xa8c17bfd  LDP         X29, X30, [SP], #0x10    ; 
+fffffff0081e8f8c        0xd65f0fff  RETAB                                ; 
+
+When used on a function name, jtool2 automatically disassembles to the end of the function. We see that this is merely a wrapper over _func_0xfffffff007b80610. So we inspect what's there:
+
+morpheus@Chimera (~) %jtool2 -d _func_0xfffffff007b80610 ~/Downloads/kernelcache.release.iphone11
+_func_0xfffffff007b80610:
+fffffff007b80610        0x17f9ba10  B           0xfffffff0079eee50       
+
+So...:
+
+_func_fffffff0079eee50:
+fffffff0079eee50        0xd280050f  MOVZ        X15, 0x28                ; R15 = 0x28
+fffffff0079eee54        0x17ffd59e  B           0xfffffff0079e44cc       ; _ppl_enter
+_func_fffffff0079eee58:
+fffffff0079eee58        0xd280052f  MOVZ        X15, 0x29                ; R15 = 0x29
+fffffff0079eee5c        0x17ffd59c  B           0xfffffff0079e44cc       ; _ppl_enter
+_func_fffffff0079eee60:
+fffffff0079eee60        0xd280042f  MOVZ        X15, 0x21                ; R15 = 0x21
+fffffff0079eee64        0x17ffd59a  B           0xfffffff0079e44cc       ; _ppl_enter
+_func_fffffff0079eee68:
+fffffff0079eee68        0xd280082f  MOVZ        X15, 0x41                ; R15 = 0x41
+fffffff0079eee6c        0x17ffd598  B           0xfffffff0079e44cc       ; _ppl_enter
+_func_fffffff0079eee70:
+fffffff0079eee70        0xd280084f  MOVZ        X15, 0x42                ; R15 = 0x42
+fffffff0079eee74        0x17ffd596  B           0xfffffff0079e44cc       ; _ppl_enter
+
+And, as we can see, here is the X15 we saw back in __PPLTRAMP! Its value gets loaded and then a common jump to a function at 0xfffffff0079e44cc (already symbolicated as _ppl_enter in the above example). Disassembling a bit before and after will reveal a whole slew of these MOVZ,B,MOVZ,B,MOVZ,B... Using jtool2's new Gadget Finder (which I just imported from disarm):
+
+morpheus@Chimera (~) % jtool2 -G MOVZ,B,MOVZ,B,MOVZ,B,MOVZ,B ~/Downloads/kernelcache.release.iphone11 | grep X15
+0x9eacb8: MOVZ X15, 0x0
+0x9eacb8: MOVZ X15, 0x1
+0x9eacb8: MOVZ X15, 0x2
+0x9eacb8: MOVZ X15, 0x3
+0x9eacd8: MOVZ X15, 0x6
+0x9eacd8: MOVZ X15, 0x7
+0x9eacd8: MOVZ X15, 0x8
+0x9eacd8: MOVZ X15, 0x9
+0x9eacf8: MOVZ X15, 0xa
+0x9eacf8: MOVZ X15, 0xb
+0x9eacf8: MOVZ X15, 0xc
+0x9eacf8: MOVZ X15, 0xd
+0x9ead18: MOVZ X15, 0xe
+0x9ead18: MOVZ X15, 0xf
+0x9ead18: MOVZ X15, 0x11
+0x9ead18: MOVZ X15, 0x12
+0x9ead38: MOVZ X15, 0x13
+0x9ead38: MOVZ X15, 0x14
+0x9ead38: MOVZ X15, 0x15
+0x9ead38: MOVZ X15, 0x16
+0x9ead58: MOVZ X15, 0x17
+0x9ead58: MOVZ X15, 0x18
+0x9ead58: MOVZ X15, 0x19
+0x9ead58: MOVZ X15, 0x1a
+0x9ead78: MOVZ X15, 0x1b
+0x9ead78: MOVZ X15, 0x1f
+0x9ead78: MOVZ X15, 0x20
+0x9ead78: MOVZ X15, 0x22
+0x9ead98: MOVZ X15, 0x5
+0x9ead98: MOVZ X15, 0x10
+0x9ead98: MOVZ X15, 0x4
+0x9ead98: MOVZ X15, 0x1c
+0x9eadb8: MOVZ X15, 0x1d
+0x9eadb8: MOVZ X15, 0x1e
+0x9eadb8: MOVZ X15, 0x23
+0x9eadb8: MOVZ X15, 0x24
+0x9eadd8: MOVZ X15, 0x40
+0x9eadd8: MOVZ X15, 0x3a
+0x9eadd8: MOVZ X15, 0x3b
+0x9eadd8: MOVZ X15, 0x3c
+0x9eadf8: MOVZ X15, 0x3d
+0x9eadf8: MOVZ X15, 0x3e
+0x9eadf8: MOVZ X15, 0x3f
+0x9eadf8: MOVZ X15, 0x2a
+0x9eae18: MOVZ X15, 0x2b
+0x9eae18: MOVZ X15, 0x2c
+0x9eae18: MOVZ X15, 0x2d
+0x9eae18: MOVZ X15, 0x2e
+0x9eae38: MOVZ X15, 0x25
+0x9eae38: MOVZ X15, 0x26
+0x9eae38: MOVZ X15, 0x27
+0x9eae38: MOVZ X15, 0x28
+0x9eae58: MOVZ X15, 0x29
+0x9eae58: MOVZ X15, 0x21
+0x9eae58: MOVZ X15, 0x41
+0x9eae58: MOVZ X15, 0x42
+
+Naturally, a pattern as obvious as this cannot go unnoticed by the joker module, so if you did run jtool2 --analyze all these MOVZ,B snippets will be properly symbolicated. But now let's look at the common code, _ppl_enter:
+
+_ppl_enter:
+fffffff0079e44cc        0xd503237f  PACIBSP                              ; 
+fffffff0079e44d0        0xa9be57f4  STP         X20, X21, [SP, #-32]!    ; 
+fffffff0079e44d4        0xa9017bfd  STP         X29, X30, [SP, #16]      ; 
+fffffff0079e44d8        0x910043fd  ADD         X29, SP, #16             ; R29 = R31 + 0x10
+fffffff0079e44dc        0xd538d08a  MRS         X10, TPIDR_EL1           ; 
+fffffff0079e44e0        0xb944714c  LDR         W12, [X10, #1136]        ; ...R12 = *(R10 + 1136) = *0x470
+fffffff0079e44e4        0x1100058c  ADD         W12, W12, #1             ; R12 = R12 + 0x1 = 0x471
+fffffff0079e44e8        0xb904714c  STR         W12, [X10, #1136]        ; *0x470 = R12
+fffffff0079e44ec        0x9000ac6d  ADRP        X13, 5516                ; R13 = 0xfffffff008f70000
+fffffff0079e44f0        0x9101c1ad  ADD         X13, X13, #112           ; R13 = R13 + 0x70 = 0xfffffff008f70070
+fffffff0079e44f4        0xb94001ae  LDR         W14, [X13, #0]           ; ...R14 = *(R13 + 0) = *0xfffffff008f70070
+fffffff0079e44f8        0x6b1f01df  CMP         W14, WZR, ...            ; 
+fffffff0079e44fc        0x54000280  B.EQ        0xfffffff0079e454c       ; 
+fffffff0079e4500        0x5280000a  MOVZ        W10, 0x0                 ; R10 = 0x0
+fffffff0079e4504        0x1455deb7  B           0xfffffff008f5bfe0       ; 
+morpheus@Chimera (~) %jtool2 -a 0xfffffff008f70070 ~/Downloads/kernelcache.release.iphone11      
+opened companion file ./kernelcache.release.iphone11.ARM64.AD091625-3D05-3841-A1B6-AF60B4D43F35
+Address 0xfffffff008f70070 (offset 0x1f6c070) is in __PPLDATA.__data
+morpheus@Chimera (~) %jtool2 -d 0xfffffff008f70070,4 ~/Downloads/kernelcache.release.iphone11  | head -5
+opened companion file ./kernelcache.release.iphone11.ARM64.AD091625-3D05-3841-A1B6-AF60B4D43F35
+Dumping 4 bytes from 0xfffffff008f70070 (Offset 0x1f6c070, __PPLDATA.__data):
+0xfffffff008f70070: 00 00 00 00                .....
+
+Hmm. all zeros. Note there was a check for that (in fffffff0079e44fc), which redirected us to 0xfffffff0079e454c. There, we find:
+
+_func_fffffff0079e454c:
+fffffff0079e454c        0xf10111ff  CMP         X15, #68                 ; 
+fffffff0079e4550        0x54000162  B.CS        0xfffffff0079e457c       ; 
+fffffff0079e4554        0xb0ffeee9  ADRP        X9, 2096605              ; R9 = 0xfffffff0077c1000
+fffffff0079e4558        0x913c8129  ADD         X9, X9, #3872            ; R9 = R9 + 0xf20 = 0xfffffff0077c1f20
+fffffff0079e455c        0xf86f792a  -LDR        X10, [X9, X15 ...]       ; R0 = 0x0
+fffffff0079e4560        0xd63f095f  BLRAA       X10                      ; 
+fffffff0079e4564        0xaa0003f4  MOV         X20, X0                  ; 
+fffffff0079e4568        0x94069378  BL          0xfffffff007b89348       ; __enable_preemption
+        __enable_preemption(ARG0);
+fffffff0079e456c        0xaa1403e0  MOV         X0, X20                  ; 
+fffffff0079e4570        0xa9417bfd  LDP         X29, X30, [SP, #0x10]    ; 
+fffffff0079e4574        0xa8c257f4  LDP         X20, X21, [SP], #0x20    ; 
+fffffff0079e4578        0xd65f0fff  RETAB                                ; 
+fffffff0079e457c        0xa9417bfd  LDP         X29, X30, [SP, #0x10]    ; 
+fffffff0079e4580        0xa8c257f4  LDP         X20, X21, [SP], #0x20    ; 
+fffffff0079e4584        0xd50323ff  AUTIBSP                              ; 
+fffffff0079e4588        0xb000ad00  ADRP        X0, 5537                 ; R0 = 0xfffffff008f85000
+fffffff0079e458c        0x91102000  ADD         X0, X0, #1032            ; R0 = R0 + 0x408 = 0xfffffff008f85408
+fffffff0079e4590        0x14010ff1  B           0xfffffff007a28554       ; _panic
+  _panic ("ppl_dispatch: failed due to bad argument/state.");
+
+So, again, a check for > 68, on which we'd panic (and we know this function is ppl_dispatch!). Otherwise, a switch style jump (BLRAA X10 = Branch and Link Authenticated with Key A) to 0xfffffff0077c1f20 - the table we just discussed above.
+
+So what is this 0xfffffff008f70070? An integer, which is likely a boolean, since it gets STR'ed with one. We can call this one _ppl_initialized, or possible _ppl_locked. You'll have to ask AAPL for the symbol (or wait for iOS 13 β ;-). But I would go for _ppl_locked since there is a clear setting of this value to '1' in _machine_lockdown() (which I have yet to symbolicate in jtool2:
+
+_func_fffffff007b90664:
+fffffff007b90664        0xd503237f  PACIBSP                              ; 
+fffffff007b90668        0xa9bf7bfd  STP         X29, X30, [SP, #-16]!    ; 
+fffffff007b9066c        0x910003fd  ADD         X29, SP, #0              ; R29 = R31 + 0x0
+fffffff007b90670        0x90009f08  ADRP        X8, 5088                 ; R8 = 0xfffffff008f70000
+fffffff007b90674        0x320003e9  ORR         W9, WZR, #0x1            ; R9 = 0x1
+fffffff007b90678        0xb9007109  STR         W9, [X8, #112]           ; *0xfffffff008f70070 = R9 = 1
+fffffff007b9067c        0x52800000  MOVZ        W0, 0x0                  ; R0 = 0x0
+fffffff007b90680        0x52800001  MOVZ        W1, 0x0                  ; R1 = 0x0
+fffffff007b90684        0x97f979b7  BL          0xfffffff0079eed60       ; _ppl_pmap_return
+        _ppl_pmap_return(0,0);
+fffffff007b90688        0xa8c17bfd  LDP         X29, X30, [SP], #0x10    ; 
+fffffff007b9068c        0xd50323ff  AUTIBSP                              ; 
+fffffff007b90690        0x17fffed6  B           0xfffffff007b901e8       ; 
+
+Therefore, PPL will have been locked by the time _ppl_enter does anything. Meaning it will jump to 0xfffffff008f5bfe0. That's in _PPLTRAMP - right where we started. To save you scrolling up, let's look at this code, piece by piece:
+
+fffffff008f5bfe0        0xd53b4234  MRS         X20, DAIF                ;
+fffffff008f5bfe4        0xd50347df  MSR         DAIFSet, #7		 ; #(DAIFSC_ASYNC | DAIFSC_IRQF | DAIFSC_FIQF)
+fffffff008f5bfe8        ---------- *MOVKKKK     X14, 0x4455445564666677  ;
+fffffff008f5bff8        0xd51cf22e  MSR         ARM64_REG_APRR_EL1, X14  ; S3_4_C15_C2_1
+fffffff008f5bffc        0xd5033fdf  ISB                                  ;
+fffffff008f5c000        0xd50347df  MSR         DAIFSet, #7              ; X -  0 0x0
+fffffff008f5c004        ---------- *MOVKKKK     X14, 0x4455445564666677 
+fffffff008f5c014        0xd53cf235  MRS         X21, ARM64_REG_APRR_EL1  ; S3_4_C15_C2_1 
+fffffff008f5c018        0xeb1501df  CMP         X14, X21, ...            ;
+fffffff008f5c01c        0x540005e1  B.NE        0xfffffff008f5c0d8       ;
+fffffff008f5c020        0xf10111ff  CMP         X15, #68                 ;
+fffffff008f5c024        0x540005a2  B.CS        0xfffffff008f5c0d8       ;
+...
+fffffff008f5c0d8        0xd280004f  MOVZ        X15, 0x2                 ; R15 = 0x2
+fffffff008f5c0dc        0xaa1403ea  MOV         X10, X20                 ; 
+fffffff008f5c0e0        0x14001fc3  B           0xfffffff008f63fec       ; 
+
+We start by reading the DAIF, which is the set of SPSR flags holding interrupt state. We then block all interrupts. Next, a load of a rather odd value into S3_4_C15_C2_1, which jtool2 (unlike *cough* certain Rubenesque disassemblers) can correctly identify as a special register - ARM64_REG_APRR_EL1. An Instruction Sync Barrier (ISB) follows, and then a check is made that the setting of the register "stuck". If it didn't, or if X15 is over 68 - we go to fffffff008f5c0d8. And you know where that's going, since X15 greater than 68 is an invalid operation.
+
+fffffff008f63fec        ---------- *MOVKKKK     X14, 0x4455445464666477
+fffffff008f63ffc        0xd51cf22e  MSR         ARM64_REG_APRR_EL1, X14  
+fffffff008f64000        0xd5033fdf  ISB                                  ; 
+fffffff008f64004        0xf1000dff  CMP         X15, #3                  ; 
+fffffff008f64008        0x54000520  B.EQ        0xfffffff008f640ac       ; 
+fffffff008f6400c        0xf27a095f  TST         X10, #448                ; 
+fffffff008f64010        0x54000140  B.EQ        0xfffffff008f64038       ; 
+fffffff008f64014        0xf27a055f  TST         X10, #192                ; 
+fffffff008f64018        0x540000c0  B.EQ        0xfffffff008f64030       ; 
+fffffff008f6401c        0xf278015f  TST         X10, #256                ; 
+fffffff008f64020        0x54000040  B.EQ        0xfffffff008f64028       ; 
+fffffff008f64024        0x14000006  B           0xfffffff008f6403c       ; 
+fffffff008f64028        0xd50344ff  MSR         DAIFClr, #4              ; (DAIF_ASYNC)
+fffffff008f6402c        0x14000004  B           0xfffffff008f6403c       ; 
+fffffff008f64030        0xd50343ff  MSR         DAIFClr, #3              ; (DAIF_IRQF)
+fffffff008f64034        0x14000002  B           0xfffffff008f6403c       ; 
+fffffff008f64038        0xd50347ff  MSR         DAIFClr, #7              ; (DAIF_FIQF)
+
+fffffff008f6403c        0xf10005ff  CMP         X15, #1                  ; 
+fffffff008f64040        0x54000380  B.EQ        0xfffffff008f640b0       ; 
+fffffff008f64044        0xd538d08a  MRS         X10, TPIDR_EL1           ; 
+fffffff008f64048        0xb944714c  LDR         W12, [X10, #1136]        ; ...R12 = *(R10 + 1136) = *0x470
+fffffff008f6404c        0x3500004c  CBNZ        X12, 0xfffffff008f64054  ; 
+fffffff008f64050        0x17a9fedb  B           0xfffffff0079e3bbc       ; 
+
+The register will be set to another odd value (6477), and then a check will be performed on X15, which won't pass, since we know it was set to 2 back in fffffff008f5c0d8. X10, if you look back, holds the DAIF, because it was moved from X20 (holding the DAIF from back in fffffff008f5bfe0), where X15 was set. This is corroborated by the TST/B.EQ which jump to clear the corresponding DAIF_.. flags.
+
+Then, at 0xfffffff008f6403c, another check on X15 - but remember it's 2. So no go. There is a check on the current thread_t (held in TPIDR_EL1) at offset 1136, and if not zero - We'll end up at 0x...79e3bbc which is:
+
+_func_fffffff0079e3bbc:
+fffffff0079e3bbc        0xd538d080  MRS         X0, TPIDR_EL1            ; 
+fffffff0079e3bc0        0xf81f0fe0  STR         X0, [SP, #496]!          ; *0xf80 = R0
+fffffff0079e3bc4        0x10000040  ADR         X0, #8                   ; R0 = 0xfffffff0079e3bcc
+fffffff0079e3bc8        0x94011263  BL          0xfffffff007a28554       ; _panic
+        _panic(0xfffffff0079e3bcc);
+fffffff0079e3bcc        0x65657250  DCD         0x65657250               ; 
+fffffff0079e3bd0        0x6974706d  LDP         W13, W28, [X3, #0x1a0]   ; 
+fffffff0079e3bd4        0x63206e6f  DCD         0x63206e6f               ; 
+fffffff0079e3bd8        0x746e756f  __2DO       0x746e756f               ; 
+fffffff0079e3bdc        0x67656e20  DCD         0x67656e20               ; 
+fffffff0079e3be0        0x76697461  __2DO       0x76697461               ; 
+fffffff0079e3be4        0x6e6f2065  DCD         0x6e6f2065               ; 
+fffffff0079e3be8        0x72687420  ANDS        W0, W1, #50159344557     ; 
+fffffff0079e3bec        0x20646165  DCD         0x20646165               ; 
+fffffff0079e3bf0        0x00007025  DCD         0x7025                   ; 
+
+A call to panic, and funny enough though jtool v1 could show the string, jtool2 can't yet because it's embedded as data in code. JTOOL2 ISN'T PERFECT, AND, YES, PEDRO, IT MIGHT CRASH ON MALICIOUS BINARIES. But it works superbly well on AAPL binaries, and I don't see Hopper/IDA types getting this far without resorting to scripting and/or Internet symbol databases.. With that disclaimer aside, the panic is:
+
+# jtool v1 cannot do compressed kernel cache, so first you need jtool2
+morpheus@Chimera (~) %jtool2 -dec ~/Downloads/kernelcache.release.iphone11                       
+Decompressed kernel written to /tmp/kernel
+# Note the use of jtool v1's -dD, forcing dump as data. This will
+# eventually make it to jtool2. I just have other things to handle first..
+morpheus@Chimera (~) %jtool  -dD  0xfffffff0079e3bcc,100 /tmp/kernel
+Dumping from address 0xfffffff0079e3bcc (Segment: __TEXT_EXEC.__text) 
+Address : 0xfffffff0079e3bcc = Offset 0x9dfbcc
+0xfffffff0079e3bcc: 50 72 65 65 6d 70 74 69    Preemption count
+0xfffffff0079e3bd4: 6f 6e 20 63 6f 75 6e 74     negative on thr
+0xfffffff0079e3bdc: 20 6e 65 67 61 74 69 76    ead %p....8.....
+
+Which is the code of _preempt_underflow (from osfmk/arm64/locore.s) so it makes perfect sense. Else, we branch, go through ast_taken_kernel() (func_fffffff007a1e000, and AST are irrelevant for this discussion, and covered in Volume II anyway), and then to the very last snippet of code, which is the familiar error message we had encountered earlier:
+
+fffffff008f640a0        0xf10009ff  CMP         X15, #2               
+fffffff008f640a4        0x54000080  B.EQ        0xfffffff008f640b4       ; 
+fffffff008f640a8        0xd65f0fff  RETAB                                ; 
+fffffff008f640ac        0xd61f0320  BR          X25                      ; 
+fffffff008f640b0        0x17ab113a  B           0xfffffff007a28598       ; _panic_trap_to_debugger
+fffffff008f640b4        0xb0000100  ADRP        X0, 33                   ; R0 = 0xfffffff008f85000
+fffffff008f640b8        0x91102000  ADD         X0, X0, #1032            ; R0 = R0 + 0x408 = 0xfffffff008f85408
+fffffff008f640bc        0x17ab1126  B           0xfffffff007a28554       ; _panic
+morpheus@Chimera (~) %jtool2 -d 0xfffffff008f85408  ~/Downloads/kernelcache.release.iphone11
+0xfffffff008f85408: 70 70 6C 5F 64 69 73 70    ppl_disp
+0xfffffff008f85410: 61 74 63 68 3A 20 66 61    atch: fa
+0xfffffff008f85418: 69 6C 65 64 20 64 75 65    iled due
+0xfffffff008f85420: 20 74 6F 20 62 61 64 20     to bad 
+0xfffffff008f85428: 61 72 67 75 6D 65 6E 74    argument
+0xfffffff008f85430: 73 2F 73 74 61 74 65 00    s/state.
+
+...
+
+The APRR Register
+
+So what are the references to S3_4_C15_C2_1, a.k.a ARM64_REG_APRR_EL1 ? The following disassembly offers a clue.
+
+fffffff0079e30fc        0xd53cf220  MRS         X0, ARM64_REG_APRR_EL1   ; 
+fffffff0079e3100        ---------- *MOVKKKK     X1, 0x4455445464666477   ; 
+fffffff0079e310c        0xf28c8ee1  MOVK        X1, 0x6477               ; R1 += 0x6477 = 0x445544446c049bfb
+fffffff0079e3110        0xeb01001f  CMP         X0, X1, ...              ; 
+fffffff0079e3114        0x540067e1  B.NE        0xfffffff0079e3e10       ; 
+..
+_func_fffffff0079e3e10 
+fffffff0079e3e10        0xa9018fe2  STP         X2, X3, [SP, #24]        ; 
+fffffff0079e3e14        0xb000ac61  ADRP        X1, 5517                 ; R1 = 0xfffffff008f70000
+fffffff0079e3e18        0xb9407021  LDR         W1, [X1, #112]           ; ...R1 = *(R1 + 112) = *0xfffffff008f70070
+fffffff0079e3e1c        0xb4000e21  CBZ         X1, 0xfffffff0079e3fe0   ; 
+fffffff0079e3e20        ---------- *MOVKKKK     X1, 0x4455445564666677   ;
+fffffff0079e3e30        0xeb01001f  CMP         X0, X1, ...              ; 
+fffffff0079e3e34        0x54000001  B.NE        0xfffffff0079e3e34       ; 
+
+We see that the value of the register is read into X0, and compared to 0x4455445464666477. If it doesn't match, a call is made to ..fffffff0079e3e10, which checks the value of our global at 0xfffffff008f70070. If it's 0, we move elsewhere. Otherwise, we check that the register value is 0x4455445564666677 - and if not, we hang (fffffff0079e3e34 branches to itself on not equal).
+
+In other words, the value of the 0xfffffff008f70070 global correlates with 0x4455445564666477 and 4455445564666677 (I know, confusing, blame AAPL, not me) in ARM64_REG_APRR_EL1 - implying that the register provides the hardware level lockdown, whereas the global tracks the state.
+
+DARTs, etc
+
+We still haven't looked at the __PPLDATA_CONST.__const. Let's see what it has (Removing the companion file so jtool2 doesn't symbolicate and blow the suspense just yet):
+
+minor note: I had to switch to another machine since my 2016 MBP's keyboard just spontaneously DIED ON ME while doing this. $#%$#%$# device won't boot from a bluetooth keyboard, so after I had to reboot it, I can't get in past the EFI screen till I get a USB keyboard (and hope that works). I'm using a slightly different kernel, but addresses are largely the same)
+morpheus@BifrÃ¶st (~) % jtool2 -d __PPLDATA_CONST.__const ~/Downloads/kernelcache.release.iphone11
+Dumping 192 bytes from 0xfffffff008f68000 (Offset 0x1f64000, __PPLDATA_CONST.__const):
+0xfffffff008f68000: 0xfffffff00747542d       	"ans2_sart"
+0xfffffff008f68008: 03 00 01 00 b7 da ad de   
+0xfffffff008f68010: 0xfffffff008f541cc       	__func_0xfffffff008f541cc
+0xfffffff008f68018: 0xfffffff008f5455c       	__func_0xfffffff008f5455c
+0xfffffff008f68020: 0xfffffff008f54568       	__func_0xfffffff008f54568
+0xfffffff008f68028: 0xfffffff008f5479c       	__func_0xfffffff008f5479c
+0xfffffff008f68030: 0xfffffff008f54564       	__func_0xfffffff008f54564
+0xfffffff008f68038: 0xfffffff008f5430c       	__func_0xfffffff008f5430c
+0xfffffff008f68040: 0xfffffff007475813       	"t8020dart"
+0xfffffff008f68048: 03 00 01 00 b7 da ad de  
+0xfffffff008f68050: 0xfffffff008f54a14       	__func_0xfffffff008f54a14
+0xfffffff008f68058: 0xfffffff008f559c8       	__func_0xfffffff008f559c8
+0xfffffff008f68060: 0xfffffff008f55df0       	__func_0xfffffff008f55df0
+0xfffffff008f68068: 0xfffffff008f56858       	__func_0xfffffff008f56858
+0xfffffff008f68070: 0xfffffff008f55dec       	__func_0xfffffff008f55dec
+0xfffffff008f68078: 0xfffffff008f55280       	__func_0xfffffff008f55280
+0xfffffff008f68080: 0xfffffff007475931       	"nvme_ppl"
+0xfffffff008f68088: 03 00 01 00 b7 da ad de
+0xfffffff008f68090: 0xfffffff008f56978       	__func_0xfffffff008f56978
+0xfffffff008f68098: 0xfffffff008f5708c       	__func_0xfffffff008f5708c
+0xfffffff008f680a0: 0xfffffff008f57098       	__func_0xfffffff008f57098
+0xfffffff008f680a8: 0xfffffff008f572e0       	__func_0xfffffff008f572e0
+0xfffffff008f680b0: 0xfffffff008f57094       	__func_0xfffffff008f57094
+0xfffffff008f680b8: 0xfffffff008f56df8       	__func_0xfffffff008f56df8
+
+We see what appears to be three distinct structs here, identified as "ans2_sart", "t8020dart" and "nvme_ppl". (DART = Device Address Resolution Table). There are also six function pointers in each, and (right after the structure name) what appears to be three fields - two 16-bit shorts (0x0003, 0x0001) and some magic (0xdeaddab7).
+
+It's safe to assume, then, that if we find the symbol names for a function at slot x, corresponding functions for the other structures at the same slot will be similarly named. Looking through panic()s again, we find error messages which show us that 0xfffffff008f541cc is an init(), 0xffffff008f54568 is a map() operation, and 0xfffffff008f5479c is an unmap(). Some of these calls appear to be noop in some cases, and fffffff008f55280 has a switch, which implies it's likely an ioctl() style. Putting it all together, we have:
+
+0xfffffff008f68010: 0xfffffff008f541cc       	_ans2_sart_init
+0xfffffff008f68018: 0xfffffff008f5455c       	_ans2_unknown1_ret0
+0xfffffff008f68020: 0xfffffff008f54568       	_ans2_map
+0xfffffff008f68028: 0xfffffff008f5479c       	_ans2_unmap
+0xfffffff008f68030: 0xfffffff008f54564       	_ans2_sart_unknown2_ret
+0xfffffff008f68038: 0xfffffff008f5430c       	_ans2_sart_ioctl_maybe
+
+which we can then apply to the NVMe and T8020DART. Note these look exactly like the ppl_map_iommu_ioctl* symbols we could obtain from the __TEXT.__cstring, with two unknowns remaining, possibly for allocating and freeing memory.
+
+However, looking at __PPLTEXT we find no references to our structures. So we have to look through the kernel's __TEXT__EXEC.__text instead. Using jtool2's disassembly with grep(1) once more, this is easy and quick:
+
+# grep only the prefix fffffff008f680... since we know that anything with that range
+# falls in the __PPL_CONST.__const
+BifrÃ¶st:Downloads morpheus$ jtool2 -d ~/Downloads/kernelcache.release.iphone11 | grep fffffff008f680
+Disassembling 22431976 bytes from address 0xfffffff0079dc000 (offset 0x9d8000):
+fffffff007b9e028	0xd0009e40  ADRP  	X0, 5066               	 ; R0 = 0xfffffff008f68000
+fffffff007b9e02c	0x91000000  ADD   	X0, X0, #0             	 ; R0 = R0 + 0x0 = 0xfffffff008f68000
+fffffff007b9e034	0xd0009e40  ADRP  	X0, 5066               	 ; R0 = 0xfffffff008f68000
+fffffff007b9e038	0x91010000  ADD   	X0, X0, #64            	 ; R0 = R0 + 0x40 = 0xfffffff008f68040
+fffffff007b9e0f0	0xd0009e40  ADRP  	X0, 5066               	 ; R0 = 0xfffffff008f68000
+fffffff007b9e0f4	0x91020000  ADD   	X0, X0, #128           	 ; R0 = R0 + 0x80 = 0xfffffff008f68080
+
+It's safe to assume, then, that the corresponding functions are "...art_get_struct" or something, so I added them to jokerlib as well, though I couldn't off hand find any references to these getters.
+
+Other observations
+
+Pages get locked down by PPL at the Page Table Entry level. There are a few occurrences of code similar to this:
+
+fffffff008f485c4        0xb6d800f3  TBZ         X19, #59, 0xfffffff008f485e0     ; 
+fffffff008f485c8        0x927dfb28  AND         X8, X25, #0xfffffffffffffff8     ; 
+fffffff008f485cc        0xa900efe8  STP         X8, X27, [SP, #8]        ; 
+fffffff008f485d0        0xf90003f6  STR         X22, [SP, #0]            ; *0x0 = R22
+fffffff008f485d4        0xb0ff2940  ADRP        X0, 2090281              ; R0 = 0xfffffff007471000
+fffffff008f485d8        0x910e3800  ADD         X0, X0, #910             ; R0 = R0 + 0x38e = 0xfffffff00747138e
+fffffff008f485dc        0x97ab7fda  BL          0xfffffff007a28544       ; _panic
+        _panic(""pmap_page_protect: ppnum 0x%x locked down, cannot be owned by iommu 0x%llx, pve_p=%p"");
+
+And this:
+
+fffffff008f482e8        0xf245051f  TST         X8, #0x180000000000000         ; 
+fffffff008f482ec        0x540000c0  B.EQ        0xfffffff008f48304       ; 
+fffffff008f482f0        0x92450d08  AND         X8, X8, 0x7800000000000000     ; 
+fffffff008f482f4        0xa90023f5  STP         X21, X8, [SP, #0]        ; 
+fffffff008f482f8        0xb0ff2940  ADRP        X0, 2090281              ; R0 = 0xfffffff007471000
+fffffff008f482fc        0x910bf400  ADD         X0, X0, #765             ; R0 = R0 + 0x2fd = 0xfffffff0074712fd
+fffffff008f48300        0x97ab8091  BL          0xfffffff007a28544       ; _panic
+        _panic(""%#lx: already locked down/executable (%#llx)"");
+
+Which suggests that two bits are used: 59 and 60 - 59 is likely locked down, 60 is executable. @S1guza (who meticulously reviewed this article) notes that these are the PBHA fields - Page based Hardware Attribute bits, and they can be IMPLEMENTATION DEFINED:
+
+Takeaways (or TL;DR)
+
+Most people will just run jtool2 --analyze on the kernelcache, then take the symbols and upload them to IDA. This writeup shows you the behind-the-scenes of the analysis, as well as explains the various PPL facility services.
+
+PPL Protected pages are marked using otherwise unused PTE bits (#59 - PPL, #60 - executable).
+PPL likely extends to IOMMU/T8020 DART and the NVMe (to foil Ramtin Amin style attacks, no doubt).
+The special APRR register locks down at the hardware level, similar to KTRR's special registers.
+Access to these PPL protected pages can only be performed from when the APRR register is locked down (0x4455445564666677). This happens on entry to the Trampoline. On exit from the Trampoline code the register is set to 0x4455445464666477. i.e. ...6677 locks, ...6477 unlocks
+Why AAPL chose these values, I have no idea (DUDU? Dah Dah?). But TURNS OUT The values are just permissions! r--r--r-xr-x... etc. Thanks, @S1guza! Checking for the magic (by MRSing) will tell you if the system is PPL locked down or not.
+For those of you who use IDA, get them to update their special registers already. And add jtool2's/disarm's :-). The APRR_EL1 is S3_4_C15_C2_1. There's APRR_EL0 (S3_4_C15_C2_0) and some mask register in S3_4_C15_C2_6. There may be more.
+A global in kernel memory is used as an indication that PPL has been locked down
+The PPL service table (entered through _ppl_enter and with functions all in the __PPLTRAMP.__text) can be found and its services are enumerable, as follows:
+0xfffffff0077c1f20: 0xfffffff008f52ee4          _ppl_pmap_arm_fast_fault_maybe
+0xfffffff0077c1f28: 0xfffffff008f51e4c          _ppl_pmap_arm_fast_fault2_maybe
+0xfffffff0077c1f30: 0xfffffff008f52a30          _ppl_mapping_free_prime_internal
+0xfffffff0077c1f38: 0xfffffff008f525dc          _ppl_mapping_replenish_internal
+0xfffffff0077c1f40: 0xfffffff008f51c4c          _ppl_phys_attribute_clear_internal
+0xfffffff0077c1f48: 0xfffffff008f51ba0          _ppl_phys_attribute_set_internal
+0xfffffff0077c1f50: 0xfffffff008f518f4          _ppl_batch_set_cache_attributes_internal
+0xfffffff0077c1f58: 0xfffffff008f5150c          _ppl_pmap_change_wiring_internal
+0xfffffff0077c1f60: 0xfffffff008f50994          _ppl_pmap_create_internal
+0xfffffff0077c1f68: 0xfffffff008f4f59c          _ppl_pmap_destroy_internal
+0xfffffff0077c1f70: 0xfffffff008f4de6c          _ppl_pmap_enter_options_internal
+0xfffffff0077c1f78: 0xfffffff008f4dcac          _ppl_pmap_extract_internal
+0xfffffff0077c1f80: 0xfffffff008f4dae4          _ppl_pmap_find_phys_internal
+0xfffffff0077c1f88: 0xfffffff008f4d7e8          _ppl_pmap_insert_shared_page_internal
+0xfffffff0077c1f90: 0xfffffff008f4d58c          _ppl_pmap_is_empty_internal
+0xfffffff0077c1f98: 0xfffffff008f4d1ec          _ppl_map_cpu_windows_copy_internal
+0xfffffff0077c1fa0: 0xfffffff008f4cef8          _ppl_pmap_mark_page_as_ppl_page_internal
+0xfffffff0077c1fa8: 0xfffffff008f4c038          _ppl_pmap_nest_internal
+0xfffffff0077c1fb0: 0xfffffff008f48420          _ppl_pmap_page_protect_options_internal
+0xfffffff0077c1fb8: 0xfffffff008f4bacc          _ppl_pmap_protect_options_internal
+0xfffffff0077c1fc0: 0xfffffff008f4b754          _ppl_pmap_query_page_info_internal
+0xfffffff0077c1fc8: 0xfffffff008f4b458          _ppl_pmap_query_resident_internal
+0xfffffff0077c1fd0: 0xfffffff008f4b3a0          _ppl_pmap_reference_internal
+0xfffffff0077c1fd8: 0xfffffff008f4afc4          _ppl_pmap_remove_options_internal
+0xfffffff0077c1fe0: 0xfffffff008f4afbc          _ppl_pmap_return_internal
+0xfffffff0077c1fe8: 0xfffffff008f4acec          _ppl_pmap_set_cache_attributes_internal
+0xfffffff0077c1ff0: 0xfffffff008f4ac38          _ppl_pmap_set_nested_internal
+0xfffffff0077c1ff8: 0xfffffff008f4ac34          _ppl_pmap_0x1b_internal
+0xfffffff0077c2000: 0xfffffff008f4aa78          _ppl_pmap_switch_internal
+0xfffffff0077c2008: 0xfffffff008f4a8b0          _ppl_pmap_switch_user_ttb_internal
+0xfffffff0077c2010: 0xfffffff008f4a8a0          _ppl_pmap_clear_user_ttb_internal
+0xfffffff0077c2018: 0xfffffff008f4a730          _ppl_pmap_unmap_cpu_windows_copy_internal
+0xfffffff0077c2020: 0xfffffff008f4a09c          _ppl_pmap_unnest_options_internal
+0xfffffff0077c2028: 0xfffffff008f4a098          _ppl_pmap_0x21_internal
+0xfffffff0077c2030: 0xfffffff008f49fbc          _ppl_pmap_cpu_data_init_internal
+0xfffffff0077c2038: 0xfffffff008f49d0c          _ppl_pmap_0x23_internal
+0xfffffff0077c2040: 0xfffffff008f49c08          _ppl_pmap_set_jit_entitled_internal
+0xfffffff0077c2048: 0xfffffff008f49940          _ppl_pmap_initialize_trust_cache
+0xfffffff0077c2050: 0xfffffff008f494c0          _ppl_pmap_load_trust_cache_internal
+0xfffffff0077c2058: 0xfffffff008f492e8          _ppl_pmap_is_trust_cache_loaded
+0xfffffff0077c2060: 0xfffffff008f47d54          _ppl_pmap_check_static_trust_cache
+0xfffffff0077c2068: 0xfffffff008f47d58          _ppl_pmap_check_loaded_trust_cache
+0xfffffff0077c2070: 0xfffffff008f46ea0          _ppl_pmap_cs_register_cdhash_internal
+0xfffffff0077c2078: 0xfffffff008f46a50          _ppl_pmap_cs_unregister_cdhash_internal
+0xfffffff0077c2080: 0xfffffff008f45ef8          _ppl_pmap_cs_associate_internal_options
+0xfffffff0077c2088: 0xfffffff008f45ca0          _ppl_pmap_cs_lookup_internal
+0xfffffff0077c2090: 0xfffffff008f45a80          _ppl_pmap_cs_check_overlap_internal
+0xfffffff0077c2098: 00 00 00 00 00 00 00 00    ........
+0xfffffff0077c20a0: 00 00 00 00 00 00 00 00    ........
+0xfffffff0077c20a8: 00 00 00 00 00 00 00 00    ........
+0xfffffff0077c20b0: 00 00 00 00 00 00 00 00    ........
+0xfffffff0077c20b8: 00 00 00 00 00 00 00 00    ........
+0xfffffff0077c20c0: 00 00 00 00 00 00 00 00    ........
+0xfffffff0077c20c8: 00 00 00 00 00 00 00 00    ........
+0xfffffff0077c20d0: 00 00 00 00 00 00 00 00    ........
+0xfffffff0077c20d8: 00 00 00 00 00 00 00 00    ........
+0xfffffff0077c20e0: 00 00 00 00 00 00 00 00    ........
+0xfffffff0077c20e8: 00 00 00 00 00 00 00 00    ........
+0xfffffff0077c20f0: 0xfffffff008f457b8          _ppl_pmap_iommu_init_internal
+0xfffffff0077c20f8: 0xfffffff008f456e4          _ppl_pmap_iommu_unknown1_internal
+0xfffffff0077c2100: 0xfffffff008f455c8          _ppl_pmap_iommu_map_internal
+0xfffffff0077c2108: 0xfffffff008f454bc          _ppl_pmap_iommu_unmap_internal
+0xfffffff0077c2110: 0xfffffff008f45404          _ppl_pmap_iommu_unknown_internal
+0xfffffff0077c2118: 0xfffffff008f45274          _ppl_pmap_iommu_ioctl_internal
+0xfffffff0077c2120: 0xfffffff008f446c0          _ppl_pmap_trim_internal
+0xfffffff0077c2128: 0xfffffff008f445b0          _ppl_pmap_ledger_alloc_init_internal
+0xfffffff0077c2130: 0xfffffff008f441dc          _ppl_pmap_ledger_alloc_internal
+0xfffffff0077c2138: 0xfffffff008f44010          _ppl_pmap_ledger_free_internal
+0xfffffff0077c2140: 00 00 00 00 00 00 00 00    ........
+
+To get these (~150) PPL symbols yourself, on any kernelcache.release.iphone11, simply use the jtool2 binary, and export PPL=1. This is a special build for this article - in the next nightly this will be default.
+
+Q&A
+When is Volume II coming out? In a matter of weeks, I hope
+Advertisement
+
+There's another MOXiI training set for March 11th-15th in NYC again. Right after is the followup to MOXiI - applied *OS Security/Insecurity - in which I discuss PPL, KTRR, APRR, KPP, AMFI, and other acronyms :-)
+
+Greets
+@S1guza - for a thorough review of the article, and reading the ARM64 specs like few have or ever will.
+Luca - for reviewing and redacting the reason why the article's namesake applies in more than one way :-).. and pointing out he gave a talk on this at Tensec and BlueHat.il which is well worth reading.
+
+LINKS
+http://twitter.com/Morpheus______
+http://newosxbook.com/tools/jtool2.tgz
+https://newosxbook.com/articles/CasaDePPL.html#tldr
+https://newosxbook.com/tools/disarm.html
+https://twitter.com/osxreverser/status/1101295926520528896
+http://ramtin-amin.fr/#nvmepcie
+http://technologeeks.com/OSXRE
+http://technologeeks.com/xOSSec
+http://iokit.racing/bluehatil.pdf
