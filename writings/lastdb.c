@@ -858,6 +858,19 @@ static void term_lens(int argc, char **argv, size_t *lens)
     for (int i = 4; i < argc; i++) {
         lens[i] = strlen(argv[i]);
     }
+    for (int i = 4; i + 1 < argc; i++) {
+        for (int j = i + 1; j < argc; j++) {
+            if (lens[j] <= lens[i]) {
+                continue;
+            }
+            size_t nl = lens[i];
+            lens[i] = lens[j];
+            lens[j] = nl;
+            char *na = argv[i];
+            argv[i] = argv[j];
+            argv[j] = na;
+        }
+    }
 }
 
 static int rec_has_terms(Record *r, int argc, char **argv, size_t *lens)
