@@ -1304,6 +1304,13 @@ static BufCache checkout_rx(BufCache iou) {
     return old;
 }
 
+static void return_rx(BufCache c) {
+    c = checkout_rx(c);
+    if (c.buf) {
+        free(c.buf);
+    }
+}
+
 static void do_serve(const char *db_path, int port, int32_t cipherkey) {
     int srv = socket(AF_INET, SOCK_STREAM, 0);
     if (srv < 0) die("socket");
@@ -1333,15 +1340,20 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             if (len > 64 * 1024 * 1024) break;
 
                             BufCache c = checkout_rx((BufCache){NULL, 0});
-                            if (c.cap < len) { c.buf = realloc(c.buf, len); c.cap = len; }
+                            if (c.cap < len) {
+                                uint8_t *next = realloc(c.buf, len);
+                                if (!next) die("realloc request");
+                                c.buf = next;
+                                c.cap = len;
+                            }
                             uint8_t *buf = c.buf;
 
-                            if (!buf || !read_full(fd, buf, len)) { checkout_rx(c); break; }
+                            if (!buf || !read_full(fd, buf, len)) { return_rx(c); break; }
                             crypt_buf(buf, len, cipherkey);
 
-                            if (len < 32) { free(buf); break; }
+                            if (len < 32) { return_rx(c); break; }
                             uint32_t magic = ntohl(*(uint32_t*)(buf + 0));
-                            if (magic != 0x4c444231) { free(buf); break; }
+                            if (magic != 0x4c444231) { return_rx(c); break; }
                             int32_t op = ntohl(*(uint32_t*)(buf + 4));
                             int32_t user = ntohl(*(uint32_t*)(buf + 8));
                             int32_t pass = ntohl(*(uint32_t*)(buf + 12));
@@ -1350,7 +1362,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             uint32_t kl = ntohl(*(uint32_t*)(buf + 24));
                             uint32_t vl = ntohl(*(uint32_t*)(buf + 28));
 
-                            if (32 + tl + kl + vl > len) { free(buf); break; }
+                            if (32 + tl + kl + vl > len) { return_rx(c); break; }
 
                             char *t = (char*)buf + 32;
                             char *k = (char*)buf + 32 + tl;
@@ -1383,7 +1395,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             full_tenant[ft_len] = 0;
 
                             if (op == 1) {
-                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); free(buf); continue; }
+                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); return_rx(c); continue; }
                                 #pragma omp critical (db)
                                 {
                                     load_db(db_path);
@@ -1396,7 +1408,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 }
                             }
                             else if (op == 4 || op == 5) {
-                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); free(buf); continue; }
+                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); return_rx(c); continue; }
                                 uint8_t *out = NULL; size_t out_len = 0, out_cap = 0;
                                 #define APP(ptr, lll) do { size_t app_n = (lll); if (out_len < 60u * 1024u * 1024u) { if (app_n > 60u * 1024u * 1024u - out_len) app_n = 60u * 1024u * 1024u - out_len; while (out_len + app_n > out_cap) { size_t next_cap = out_cap ? out_cap * 2 : 4096; out_cap = next_cap > 60u * 1024u * 1024u ? 60u * 1024u * 1024u : next_cap; void *next_out = realloc(out, out_cap); if (!next_out) die("realloc response"); out = next_out; } memcpy(out + out_len, ptr, app_n); out_len += app_n; } } while(0)
                                 #pragma omp critical (db)
@@ -1431,7 +1443,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             }
                             else if (op == 2 || op == 3) {
                                 int req = op == 2 ? 2 : 4;
-                                if (!(perms & req)) { send_response(fd, cipherkey, 1, "denied", 6); free(buf); continue; }
+                                if (!(perms & req)) { send_response(fd, cipherkey, 1, "denied", 6); return_rx(c); continue; }
                                 #pragma omp critical (db)
                                 {
                                     int lockfd = open_lockfile(db_path);
@@ -1445,7 +1457,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 send_response(fd, cipherkey, 0, "ok", 2);
                             }
                             else if (op == 6) {
-                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); free(buf); continue; }
+                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); return_rx(c); continue; }
                                 uint8_t *out = NULL; size_t out_len = 0, out_cap = 0;
                                 char v_null[64]; size_t vln = vl > 63 ? 63 : vl; memcpy(v_null, v, vln); v_null[vln] = 0;
                                 uint64_t off = strtoull(v_null, NULL, 10);
@@ -1477,8 +1489,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             } else {
                                 send_response(fd, cipherkey, 1, "bad op", 6);
                             }
-                            c = checkout_rx(c);
-                            if (c.buf) free(c.buf); // handle slot contention collisions by freeing
+                            return_rx(c);
                         }
                         close(fd);
                     }
