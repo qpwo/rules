@@ -1,11 +1,43 @@
 Font Configuration and Customization for Open Source Systems
+Keith Packard
+Research Staff
+Compaq Computer Corporation
+Cambridge Research Laboratory
+keithp@keithp.com
 
 Font configuration and customization has traditionally been left to each application. Fontconfig is a library designed to provide a common system that can serve to ease application development and provide users with the ability to confidently install new fonts with the expectation that they will be used by most applications. Fontconfig provides the ability for multiple configuration interfaces to affect a wide range of systems without requiring custom code for each new system. Fontconfig provides a range of services to allow applications to pick those appropriate without being forced to use the entire interface. Wide acceptance of the Fontconfig mechanisms will improve system consistency without requiring a radical redesign of existing applications.
 
-HTML
+Table of Contents
+1. Introduction
+2. Design
+3. Configuring Fonts
+3.1. Configuration Files
+3.2. Font Directories
+4. Patterns and Fontnames
+5. Font Information
+6. Listing Available Fonts
+7. Matching Names and Fonts
+8. User and System Customization
+8.1. Font Family Aliases
+8.2. General Match/Edit Rules
+9. Fontconfig and Xft
+10. Experiences Using Fontconfig
+10.1. Mozilla 0.9.9
+10.2. The Qt Toolkit, Version 3
+10.3. Gtk+ 2.0 and Pango 1.0
+11. Future Work
+11.1. Glyph substitution
+11.2. Cascading Style Sheets Matching
+12. Conclusions
+Bibliography
+1. Introduction
+The original ideas for Fontconfig came about during the design and deployment of the Xft library[xft]. Xft was originally designed to connect fonts rasterized with the FreeType[freetype] library with the X Render Extension[render] to the X window system[x]. As FreeType provided no font configuration or customization mechanisms, Xft included its own. Extending the problem of font configuration by creating yet another incompatible configuration file format.
 
-PostScript
+During a subsequent redesign of Xft, the configuration and customization portions of the library were extracted and moved into a separate library with the idea that they would be more useful if shared with other applications. The development of Xft-based desktop environments included the ability to configure Xft font selection. The need to embed the parser for the custom Xft configuration language made it evident that a standard configuration file format was required. Even though popular, it seemed that XML[xml] would be a good fit for this task.
 
-PDF
+Development of Mozilla[mozilla] and Pango[pango] on top of Xft demanded additional information about fonts during the selection process. Fontconfig now collects a significant amount of information about every font in the system to aid in selecting appropriate fonts. The basic font matching mechanism inherited from Xft has proven effective and has characteristics similar to the font selection algorithm from the second version of the W3C Cascading Style Sheets Specification[css2]. Modest changes in Fontconfig will yield a matching system that can easily be adapted to provide full CSS2 semantics for Mozilla or other web browsers.
 
-Gnome Users And Developer European Conference, 2002
+While Fontconfig continues to be under development, the API has stabilized enough for active application development. It is time to plan the migration of existing applications to this new font configuration mechanisms and to add the ability to modify this font configuration to the desktop environment.
+
+ 	 	Next
+ 	 	Design
