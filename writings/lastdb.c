@@ -2293,6 +2293,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
         {
             #pragma omp task
             {
+                uint64_t last_compact_size = 0;
                 while (1) {
                     usleep(1000000);
                     int need_compact = 0;
@@ -2307,9 +2308,11 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                 }
                 sfd = srv_db_fd;
             }
+            if (!last_compact_size) last_compact_size = valid_size;
+            if (valid_size > 1073741824ULL && valid_size > last_compact_size * 3 / 2) need_compact = 1;
         }
         if (sfd >= 0) (void)fdatasync(sfd);
-                    if (need_compact) { SRV_WRITE_LOCK(db_path); do_compact(db_path); if (srv_db_fd >= 0) { close(srv_db_fd); srv_db_fd = -1; } }
+                    if (need_compact) { SRV_WRITE_LOCK(db_path); do_compact(db_path); if (srv_db_fd >= 0) { close(srv_db_fd); srv_db_fd = -1; } load_db(db_path); if (srv_db_fd < 0) srv_db_fd = open_append(db_path); last_compact_size = valid_size; }
                 }
             }
             while (1) {
