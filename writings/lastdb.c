@@ -442,9 +442,11 @@ static int append_raw(int fd, const char *t, size_t tl, const char *k, size_t kl
                 Node *n = ht_get(t, (uint16_t)tl, k, (uint16_t)kl);
                 if (n && rec_at(n->off1 - 1)->op != OP_DEL) exists = 1;
             }
-            if (!exists && gate > keep) return 0;
-            int wl = (int)(-50.0 * (avail - 0.2));
-            r.weight_log = wl > 31 ? 31 : wl;
+            if (!exists) {
+                if (gate > keep) return 0;
+                int wl = (int)(-50.0 * (avail - 0.2));
+                r.weight_log = wl > 31 ? 31 : wl;
+            }
         }
     }
 
@@ -1456,8 +1458,8 @@ static int batch_put(int fd, char *buf, size_t *used, const char *t, const char 
         if (!exists) {
             double gate = (double)(key_hash(t, r.t_len, k, r.k_len) >> 32) * 0x1.0p-32;
             if (gate > keep) return 1;
+            r.weight_log = weight_log;
         }
-        r.weight_log = weight_log;
     }
 
     r.bf = compute_bf(k, kl) | compute_bf(v, vl);
@@ -1607,18 +1609,27 @@ static void send_response(int fd, int32_t cipherkey, int32_t status, const void 
     if (resp_c) chunk_push(resp_c);
 }
 
-static __thread Chunk *chunk_freelist;
+typedef struct {
+    Chunk *chunk;
+    char pad[64 - sizeof(Chunk *)];
+} __attribute__((aligned(64))) CacheLine;
+static CacheLine cpu_chunks[1024];
 
 static inline void chunk_push(Chunk *chunk) {
-    *(Chunk **)chunk = chunk_freelist;
-    chunk_freelist = chunk;
+    int cpu = sched_getcpu();
+    if (cpu >= 0 && cpu < 1024) {
+        Chunk *old = __atomic_exchange_n(&cpu_chunks[cpu].chunk, chunk, __ATOMIC_ACQ_REL);
+        if (!old) return;
+        chunk = old;
+    }
+    munmap(chunk, sizeof(*chunk));
 }
 
 static inline Chunk *chunk_pop(void) {
-    Chunk *chunk = chunk_freelist;
-    if (chunk) {
-        chunk_freelist = *(Chunk **)chunk;
-        return chunk;
+    int cpu = sched_getcpu();
+    if (cpu >= 0 && cpu < 1024) {
+        Chunk *chunk = __atomic_exchange_n(&cpu_chunks[cpu].chunk, NULL, __ATOMIC_ACQ_REL);
+        if (chunk) return chunk;
     }
 
     struct sysinfo si;
