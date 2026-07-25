@@ -432,9 +432,9 @@ static uint64_t ht_lower_bound(uint64_t hash) {
 static void ht_tenant_range(const char *t, size_t tl, uint64_t *start, uint64_t *end) {
     uint64_t th = fnv_bytes(FNV0, t, tl);
     uint64_t tenant_bits = th << 32;
+    uint32_t upper32 = (uint32_t)(tenant_bits >> 32) + 1;
     *start = ht_lower_bound(tenant_bits);
-    *end = *start;
-    while (*end < ht_sorted_len && (ht[*end].hash >> 32) == (tenant_bits >> 32)) (*end)++;
+    *end = upper32 ? ht_lower_bound((uint64_t)upper32 << 32) : ht_sorted_len;
 }
 
 static Node *ht_get(const char *t, uint16_t tl, const char *k, uint16_t kl)
