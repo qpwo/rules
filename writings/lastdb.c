@@ -1195,33 +1195,9 @@ static int rec_has_terms(Record *r, int num_words, char **words, size_t *lens, u
     }
 
     for (int j = 0; j < num_words; j++) {
-        int negate = (words[j][0] == '-');
-        char *w = negate ? words[j] + 1 : words[j];
-        size_t wl = negate ? lens[j] - 1 : lens[j];
-        if (wl == 0) continue;
-        if (w[0] == '>' || w[0] == '<' || w[0] == '^') {
-            char num_buf[64] = {0};
-            size_t wl_copy = wl - 1 < 63 ? wl - 1 : 63;
-            memcpy(num_buf, w + 1, wl_copy);
-            if (w[0] == '^') {
-                int max_w = atoi(num_buf);
-                int cmp = r->weight_log <= max_w;
-                if (negate ? cmp : !cmp) return 0;
-                continue;
-            }
-            double thresh = strtod(num_buf, NULL);
-            char v_buf[256];
-            size_t cl = r->v_len < 255 ? r->v_len : 255;
-            memcpy(v_buf, rec_v(r), cl);
-            v_buf[cl] = 0;
-            double val_to_check = is_decay_val ? decay_cur : strtod(v_buf, NULL);
-            int cmp = w[0] == '>' ? (val_to_check > thresh) : (val_to_check < thresh);
-            if (negate ? cmp : !cmp) return 0;
-            continue;
-        }
-        if (!negate && (r->bf & term_bfs[j]) != term_bfs[j]) return 0;
-        int found = (!is_decay_val && memmem_pivot(rec_v(r), r->v_len, w, wl)) || memmem_pivot(rec_k(r), r->k_len, w, wl);
-        if (negate ? found : !found) return 0;
+        if ((r->bf & term_bfs[j]) != term_bfs[j]) return 0;
+        int found = (!is_decay_val && memmem_pivot(rec_v(r), r->v_len, words[j], lens[j])) || memmem_pivot(rec_k(r), r->k_len, words[j], lens[j]);
+        if (!found) return 0;
     }
     return 1;
 }
@@ -1236,16 +1212,12 @@ static int do_search(const char *t, int num_words, char **words)
     size_t lens[num_words];
     term_lens(num_words, words, lens);
     for (int i = 0; i < num_words; i++) {
-        char *w = words[i][0] == '-' ? words[i] + 1 : words[i];
-        size_t wl = words[i][0] == '-' ? lens[i] - 1 : lens[i];
-        if (wl < 3 && w[0] != '>' && w[0] != '<' && w[0] != '^') diex("search terms need at least 3 bytes");
-        if (wl < 2) diex("search operators need a number");
+        if (lens[i] < 3) diex("search terms need at least 3 bytes");
     }
 
     uint64_t term_bfs[num_words];
     for (int i = 0; i < num_words; i++) {
-        if (words[i][0] == '-') term_bfs[i] = compute_bf(words[i] + 1, lens[i] - 1);
-        else term_bfs[i] = compute_bf(words[i], lens[i]);
+        term_bfs[i] = compute_bf(words[i], lens[i]);
     }
 
     double now = (double)time(NULL);
@@ -2134,11 +2106,21 @@ static inline Chunk *chunk_pop(void) {
     Chunk *chunk = chunk_swap(NULL);
     if (chunk) return chunk;
 
-    uint64_t total = 0;
-    uint64_t freeish = get_mem_avail(&total);
-    if (total && freeish < total / 10 + sizeof(Chunk)) return NULL;
-    double load[1];
-    if (getloadavg(load, 1) == 1 && load[0] > omp_get_num_procs() * 0.9) return NULL;
+    static _Atomic uint64_t last_check = 0;
+    static _Atomic int last_res = 1;
+    uint64_t now = time(NULL);
+    int res = __atomic_load_n(&last_res, __ATOMIC_RELAXED);
+    if (now != __atomic_load_n(&last_check, __ATOMIC_RELAXED)) {
+        uint64_t total = 0;
+        uint64_t freeish = get_mem_avail(&total);
+        res = 1;
+        if (total && freeish < total / 10 + sizeof(Chunk)) res = 0;
+        double load[1];
+        if (res && getloadavg(load, 1) == 1 && load[0] > omp_get_num_procs() * 0.9) res = 0;
+        __atomic_store_n(&last_res, res, __ATOMIC_RELAXED);
+        __atomic_store_n(&last_check, now, __ATOMIC_RELAXED);
+    }
+    if (!res) return NULL;
     chunk = mmap(NULL, sizeof(*chunk), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (chunk == MAP_FAILED) return NULL;
     madvise(chunk, sizeof(*chunk), MADV_HUGEPAGE);
@@ -2396,7 +2378,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 while (w < end && num_words < 64) {
                                     char *tab = memchr(w, '\t', end - w);
                                     size_t wl = tab ? tab - w : end - w;
-                                    if (wl > 0) query_bfs[num_words++] = compute_bf(w[0] == '-' ? w + 1 : w, w[0] == '-' ? wl - 1 : wl);
+                                    if (wl > 0) query_bfs[num_words++] = compute_bf(w, wl);
                                     w += wl + 1;
                                 }
 
@@ -2453,37 +2435,10 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         char *tab = memchr(w_iter, '\t', end - w_iter);
                                         size_t wl = tab ? tab - w_iter : end - w_iter;
                                         if (wl > 0) {
-                                            int negate = (w_iter[0] == '-');
-                                            char *kw = negate ? w_iter + 1 : w_iter;
-                                            size_t kwl = negate ? wl - 1 : wl;
-                                            if (kwl > 0) {
-                                                if (kw[0] == '>' || kw[0] == '<' || kw[0] == '^') {
-                                                    char num_buf[64] = {0};
-                                                    size_t cl = kwl - 1 < 63 ? kwl - 1 : 63;
-                                                    memcpy(num_buf, kw + 1, cl);
-                                                    if (kw[0] == '^') {
-                                                        int max_w2 = atoi(num_buf);
-                                                        int cmp = r->weight_log <= max_w2;
-                                                        if (negate ? cmp : !cmp) match = 0;
-                                                    } else {
-                                                        double thresh_val = strtod(num_buf, NULL);
-                                                        double val_to_check = cur;
-                                                        if (!is_decay) {
-                                                            char v_buf[256] = {0};
-                                                            size_t vcl = out_vl < 255 ? out_vl : 255;
-                                                            memcpy(v_buf, out_val, vcl);
-                                                            val_to_check = strtod(v_buf, NULL);
-                                                        }
-                                                        int cmp = kw[0] == '>' ? (val_to_check > thresh_val) : (val_to_check < thresh_val);
-                                                        if (negate ? cmp : !cmp) match = 0;
-                                                    }
-                                                } else {
-                                                    if (word_idx < 64 && !negate && (r->bf & query_bfs[word_idx]) != query_bfs[word_idx]) match = 0;
-                                                    else {
-                                                        int found = (!is_decay && memmem_pivot(out_val, out_vl, kw, kwl)) || memmem_pivot(rec_k(r), r->k_len, kw, kwl);
-                                                        if (negate ? found : !found) match = 0;
-                                                    }
-                                                }
+                                            if (word_idx < 64 && (r->bf & query_bfs[word_idx]) != query_bfs[word_idx]) match = 0;
+                                            else {
+                                                int found = (!is_decay && memmem_pivot(out_val, out_vl, w_iter, wl)) || memmem_pivot(rec_k(r), r->k_len, w_iter, wl);
+                                                if (!found) match = 0;
                                             }
                                             word_idx++;
                                         }
@@ -2494,6 +2449,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
                                         double w_weight = db_w > qw ? db_w : qw;
                                         if (is_decay) w_weight *= cur;
+                                        if (w_weight < 0.5) continue;
                                         if (op == 4 || op == 5) {
                                             char weight[32];
                                             int wlen = snprintf(weight, sizeof(weight), "%.5g\t", w_weight);
