@@ -1633,6 +1633,9 @@ static inline Chunk *chunk_pop(void) {
 static int srv_db_fd = -1;
 #include <sys/resource.h>
 static void do_serve(const char *db_path, int port, int32_t cipherkey) {
+    omp_set_dynamic(0);
+    omp_set_max_active_levels(2);
+
     struct rlimit rl;
     if (getrlimit(RLIMIT_NOFILE, &rl)) die("getrlimit");
     int max_conn = (rl.rlim_cur > 100 ? rl.rlim_cur : 100) * 9 / 10;
