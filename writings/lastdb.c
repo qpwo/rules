@@ -1214,7 +1214,7 @@ static int do_search(const char *t, int argc, char **argv)
 
     uint64_t start_idx, end_idx;
     ht_tenant_range(t, tl, &start_idx, &end_idx);
-    #pragma omp parallel for schedule(dynamic, 1024) num_threads(worker_threads())
+    #pragma omp parallel for schedule(static, 4096) num_threads(worker_threads())
     for (uint64_t i = start_idx; i < end_idx; i++) {
         Record *r = rec_at(ht[i].off1 - 1);
         if (r->op == OP_DEL || r->t_len != tl) {
@@ -1565,7 +1565,7 @@ static int do_closest(const char *path, const char *type, const char *t, const c
         const char *local_k = NULL;
         uint16_t local_k_len = 0;
 
-        #pragma omp for schedule(dynamic, 1024)
+        #pragma omp for schedule(static, 4096)
         for (uint64_t i = start_idx; i < end_idx; i++) {
             Record *c = rec_at(ht[i].off1 - 1);
             if (c->op == OP_DEL || c->t_len != r->t_len || c->v_len != r->v_len) continue;
@@ -2217,7 +2217,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             uint64_t start_idx, end_idx;
                             ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
                             uint64_t count = end_idx - start_idx;
-                            #pragma omp parallel for schedule(dynamic, 1024) num_threads(worker_threads())
+                            #pragma omp parallel for schedule(static, 4096) num_threads(worker_threads())
                             for (uint64_t i = 0; i < count; i++) {
                                 Record *r = rec_at(ht[start_idx + i].off1 - 1);
                                 if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
@@ -2393,7 +2393,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                             float local_best = -1e30f;
                                             const char *local_k = NULL;
                                             uint16_t local_k_len = 0;
-                                            #pragma omp for schedule(dynamic, 1024)
+                                            #pragma omp for schedule(static, 4096)
                                             for (uint64_t i = 0; i < count; i++) {
                                                 uint64_t c_off1 = ht[start_idx + i].off1;
                                                 Record *c_rec = rec_at(c_off1 - 1);
