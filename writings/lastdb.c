@@ -865,7 +865,7 @@ static int decay_value_at(const char *s, size_t n, double now, double *out)
     }
 
     if (now < last) {
-        *out = 0;
+        *out = val;
         return 1;
     }
     double age = now - last;
