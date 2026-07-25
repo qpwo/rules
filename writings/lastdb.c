@@ -44,8 +44,8 @@ typedef struct __attribute__((packed)) {
 static uint64_t compute_bf(const char *data, size_t len) {
     uint64_t bf = 0;
     const unsigned char *p = (const unsigned char *)data;
-    for (size_t i = 0; i + 3 < len; i++) {
-        uint64_t gram = p[i] | ((uint64_t)p[i+1] << 8) | ((uint64_t)p[i+2] << 16) | ((uint64_t)p[i+3] << 24);
+    for (size_t i = 0; i + 2 < len; i++) {
+        uint64_t gram = p[i] | ((uint64_t)p[i+1] << 8) | ((uint64_t)p[i+2] << 16);
         gram ^= FNV0;
         gram *= 0xff51afd7ed558ccdULL;
         gram ^= gram >> 33;
@@ -1041,22 +1041,14 @@ static int do_tail(const char *path, const char *start, int follow)
     return 0;
 }
 
-static void term_lens(int argc, char **argv, size_t *lens)
+static void term_lens(int n, char **words, size_t *lens)
 {
-    for (int i = 4; i < argc; i++) {
-        lens[i] = strlen(argv[i]);
-    }
-    for (int i = 4; i + 1 < argc; i++) {
-        for (int j = i + 1; j < argc; j++) {
-            if (lens[j] <= lens[i]) {
-                continue;
-            }
-            size_t nl = lens[i];
-            lens[i] = lens[j];
-            lens[j] = nl;
-            char *na = argv[i];
-            argv[i] = argv[j];
-            argv[j] = na;
+    for (int i = 0; i < n; i++) lens[i] = strlen(words[i]);
+    for (int i = 0; i + 1 < n; i++) {
+        for (int j = i + 1; j < n; j++) {
+            if (lens[j] <= lens[i]) continue;
+            size_t nl = lens[i]; lens[i] = lens[j]; lens[j] = nl;
+            char *na = words[i]; words[i] = words[j]; words[j] = na;
         }
     }
 }
@@ -1169,23 +1161,19 @@ static const void *memmem_pivot(const void *haystack, size_t hay_len, const void
     return memmem_pivot_scan_avx2(hay, hay_len, need, needle_len, pivot);
 }
 
-static int rec_has_terms(Record *r, int argc, char **argv, size_t *lens, uint64_t *term_bfs, double now)
+static int rec_has_terms(Record *r, int num_words, char **words, size_t *lens, uint64_t *term_bfs, double now)
 {
     int is_decay_val = 0;
     double decay_cur = 1;
     if (r->v_len > 0 && r->v_len < 192) {
         is_decay_val = decay_value_at(rec_v(r), r->v_len, now, &decay_cur);
-        if (is_decay_val && decay_cur == 0) {
-            return 0;
-        }
+        if (is_decay_val && decay_cur == 0) return 0;
     }
 
-    for (int j = 4; j < argc; j++) {
-        if ((r->bf & term_bfs[j]) != term_bfs[j]) {
-            return 0;
-        }
-        if ((is_decay_val || !memmem_pivot(rec_v(r), r->v_len, argv[j], lens[j])) &&
-            !memmem_pivot(rec_k(r), r->k_len, argv[j], lens[j])) {
+    for (int j = 0; j < num_words; j++) {
+        if ((r->bf & term_bfs[j]) != term_bfs[j]) return 0;
+        if ((is_decay_val || !memmem_pivot(rec_v(r), r->v_len, words[j], lens[j])) &&
+            !memmem_pivot(rec_k(r), r->k_len, words[j], lens[j])) {
             return 0;
         }
     }
@@ -1194,23 +1182,19 @@ static int rec_has_terms(Record *r, int argc, char **argv, size_t *lens, uint64_
 
 static void write_weighted_record(Record *r);
 
-static int do_search(const char *t, int argc, char **argv)
+static int do_search(const char *t, int num_words, char **words)
 {
     size_t tl = strlen(t);
-    if (tl > UINT16_MAX || !ht_cap) {
-        return 0;
+    if (tl > UINT16_MAX || !ht_cap) return 0;
+
+    size_t lens[num_words];
+    term_lens(num_words, words, lens);
+    for (int i = 0; i < num_words; i++) {
+        if (lens[i] < 3) diex("search terms need at least 3 bytes");
     }
 
-    size_t lens[argc];
-    term_lens(argc, argv, lens);
-    for (int i = 4; i < argc; i++) {
-        if (lens[i] < 3) {
-            diex("search terms need at least 3 bytes");
-        }
-    }
-
-    uint64_t term_bfs[argc];
-    for (int i = 4; i < argc; i++) term_bfs[i] = compute_bf(argv[i], lens[i]);
+    uint64_t term_bfs[num_words];
+    for (int i = 0; i < num_words; i++) term_bfs[i] = compute_bf(words[i], lens[i]);
 
     double now = (double)time(NULL);
     uint64_t start_idx, end_idx;
@@ -1218,16 +1202,8 @@ static int do_search(const char *t, int argc, char **argv)
     #pragma omp parallel for schedule(static, 4096) num_threads(worker_threads())
     for (uint64_t i = start_idx; i < end_idx; i++) {
         Record *r = rec_at(ht[i].off1 - 1);
-        if (r->op == OP_DEL || r->t_len != tl) {
-            continue;
-        }
-        if (memcmp(rec_t(r), t, tl)) {
-            continue;
-        }
-        if (!rec_has_terms(r, argc, argv, lens, term_bfs, now)) {
-            continue;
-        }
-
+        if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), t, tl)) continue;
+        if (!rec_has_terms(r, num_words, words, lens, term_bfs, now)) continue;
         #pragma omp critical
         {
             write_weighted_record(r);
@@ -2801,7 +2777,7 @@ int main(int argc, char **argv)
             else if (!strcmp(args[0], "put") && n == 4) { append_fd(write_fd, args[1], args[2], args[3], OP_PUT); puts("ok"); }
             else if (!strcmp(args[0], "del") && n == 3) { append_fd(write_fd, args[1], args[2], NULL, OP_DEL); puts("ok"); }
             else if (!strcmp(args[0], "scan") && n >= 2) do_scan(args[1], n == 3 ? args[2] : NULL);
-            else if (!strcmp(args[0], "search") && n >= 3) do_search(args[1], n, args);
+            else if (!strcmp(args[0], "search") && n >= 3) do_search(args[1], n - 2, args + 2);
             else if (!strcmp(args[0], "closest") && n == 4) do_closest(db, args[1], args[2], args[3]);
             else if (!strcmp(args[0], "count") && n >= 2) {
                 double count_est = 0; uint64_t raw_c = 0;
@@ -2918,7 +2894,7 @@ int main(int argc, char **argv)
     }
     if (!strcmp(cmd, "search") && argc >= 5) {
         load_db(db);
-        return do_search(argv[3], argc, argv);
+        return do_search(argv[3], argc - 4, argv + 4);
     }
     if (!strcmp(cmd, "tail") && (argc >= 3 && argc <= 5)) {
         int follow = (argc > 3 && !strcmp(argv[3], "-f"));
