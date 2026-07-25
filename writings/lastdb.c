@@ -15,6 +15,7 @@
 #include <sys/sysinfo.h>
 #include <sys/uio.h>
 #include <unistd.h>
+#include <time.h>
 #include <immintrin.h>
 #include <omp.h>
 #include <sched.h>
@@ -1403,6 +1404,12 @@ static int do_compact(const char *path)
                 new_wl = twl;
             }
             if (keep) {
+                double cur = 0;
+                if (r->v_len > 0 && r->v_len < 192 && decay_value_at(rec_v(r), r->v_len, (double)time(NULL), &cur) && cur == 0) {
+                    keep = 0;
+                }
+            }
+            if (keep) {
                 if (COMPACT_WRITE_BYTES - used < r->len) {
                     write_all(fd, buf, used);
                     used = 0;
@@ -2104,17 +2111,17 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             }
                             #define OUT_CAP (60u * 1024u * 1024u)
                             #define APP(ptr, lll) do { size_t app_n = (lll); if (out_len <= OUT_CAP && app_n <= OUT_CAP - out_len) { memcpy(out + out_len, ptr, app_n); out_len += app_n; } else { out_len = OUT_CAP + 1; } } while(0)
-                            double threshold = 1.0; double eval_now = 0; int has_now = 0;
+                            double threshold = 1.0; double eval_now = (double)time(NULL); int evaluate_decay = 1;
                             if (op == 4 && vl > 0) {
                                 char th_buf[128]={0}; memcpy(th_buf, v, vl < 127 ? vl : 127);
                                 char *tab = strchr(th_buf, '\t');
-                                if (tab) { *tab = 0; eval_now = strtod(tab + 1, NULL); has_now = 1; }
+                                if (tab) { *tab = 0; eval_now = strtod(tab + 1, NULL); }
                                 threshold = strtod(th_buf, NULL);
                             }
                             if (op == 5 && kl > 0) {
                                 char th_buf[128]={0}; memcpy(th_buf, k, kl < 127 ? kl : 127);
                                 char *tab = strchr(th_buf, '\t');
-                                if (tab) { *tab = 0; eval_now = strtod(tab + 1, NULL); has_now = 1; }
+                                if (tab) { *tab = 0; eval_now = strtod(tab + 1, NULL); }
                                 threshold = strtod(th_buf, NULL);
                             }
                             if (threshold <= 0 || threshold > 1.0) threshold = 1.0;
@@ -2165,7 +2172,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                             const char *out_val = rec_v(r);
                                             size_t out_vl = r->v_len;
                                             char eval_buf[64];
-                                            if (has_now && out_vl > 0 && out_vl < 192) {
+                                            if (evaluate_decay && out_vl > 0 && out_vl < 192) {
                                                 double cur = 0;
                                                 if (decay_value_at(out_val, out_vl, eval_now, &cur)) {
                                                     if (cur == 0) continue;
@@ -2321,11 +2328,11 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 else send_response(fd, cipherkey, 2, "not found", 9);
                             } else if (op == 8 || op == 9) {
                                 if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
-                                double count_est = 0; uint64_t raw_count = 0; double sum = 0; double threshold = 1.0; double sum_now = 0; int has_now = 0;
+                                double count_est = 0; uint64_t raw_count = 0; double sum = 0; double threshold = 1.0; double sum_now = (double)time(NULL);
                                 if (vl > 0 && vl < 128) {
                                     char th_buf[128] = {0}; memcpy(th_buf, v, vl);
                                     char *tab = strchr(th_buf, '\t');
-                                    if (tab) { *tab = 0; sum_now = strtod(tab + 1, NULL); has_now = 1; }
+                                    if (tab) { *tab = 0; sum_now = strtod(tab + 1, NULL); }
                                     threshold = strtod(th_buf, NULL); if (threshold <= 0 || threshold > 1.0) threshold = 1.0;
                                 }
                                 { SRV_READ_LOCK(db_path);
@@ -2347,24 +2354,23 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 double db_w = (double)(1U << r->weight_log);
                                 double qw = 1.0 / threshold;
                                 double w = db_w > qw ? db_w : qw;
+                                double cur = 0;
+                                int is_decay = 0;
+                                if (r->v_len > 0 && r->v_len < 192) {
+                                    if (decay_value_at(rec_v(r), r->v_len, sum_now, &cur)) is_decay = 1;
+                                }
+                                if (is_decay && cur == 0) continue;
                                 count_est += w;
                                         raw_count++;
-                                        if (op == 9 && r->v_len > 0 && r->v_len < 192) {
-                                    double cur = 0;
-                                    if (has_now && decay_value_at(rec_v(r), r->v_len, sum_now, &cur)) {
+                                        if (op == 9 && r->v_len > 0) {
+                                    if (is_decay) {
                                         sum += cur * w;
-                                    } else {
+                                    } else if (r->v_len < 192) {
                                         char buf2[192] = {0};
                                         memcpy(buf2, rec_v(r), r->v_len);
-                                        char *t1 = strchr(buf2, '\t');
-                                        char *t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
-                                        if (t2) {
-                                            sum += strtod(t2 + 1, NULL) * w;
-                                        } else {
-                                            char *p_str = buf2;
-                                            while (*p_str && *p_str != '-' && *p_str != '.' && (*p_str < '0' || *p_str > '9')) p_str++;
-                                            sum += strtod(p_str, NULL) * w;
-                                        }
+                                        char *p_str = buf2;
+                                        while (*p_str && *p_str != '-' && *p_str != '.' && (*p_str < '0' || *p_str > '9')) p_str++;
+                                        sum += strtod(p_str, NULL) * w;
                                     }
                                         }
                                     }
