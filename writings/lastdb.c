@@ -1993,6 +1993,7 @@ static inline Chunk *chunk_swap(Chunk *in) {
 }
 
 static inline void chunk_push(Chunk *chunk) {
+    if (!chunk) return;
     Chunk *old = chunk_swap(chunk);
     if (old) munmap(old, sizeof(*old));
 }
@@ -2127,10 +2128,15 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             len = ntohl(len);
                             if (len > 64 * 1024 * 1024) break;
 
-                            Chunk *c = chunk_pop();
-                            if (!c) break;
-                            if (len > sizeof(c->data)) { chunk_push(c); break; }
-                            uint8_t *buf = c->data;
+                            uint8_t small_req[65536];
+                            Chunk *c = NULL;
+                            uint8_t *buf = small_req;
+                            if (len > sizeof(small_req)) {
+                                c = chunk_pop();
+                                if (!c) break;
+                                if (len > sizeof(c->data)) { chunk_push(c); break; }
+                                buf = c->data;
+                            }
 
                             if (!read_full(fd, buf, len)) { chunk_push(c); break; }
                             crypt_buf(buf, len, cipherkey);
