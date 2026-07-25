@@ -346,15 +346,6 @@ static void sync_fd(int fd)
 
 static void append_fd(int fd, const char *t, const char *k, const char *v, uint8_t op)
 {
-    struct statvfs st;
-    if (!fstatvfs(fd, &st) && st.f_blocks > 0) {
-        double avail = (double)st.f_bavail / st.f_blocks;
-        if (avail < 0.1) {
-            if ((rand() / (double)RAND_MAX) > exp2(100.0 * (avail - 0.1))) {
-                diex("disk reserve below 10 percent");
-            }
-        }
-    }
     size_t tl = strlen(t);
     size_t kl = strlen(k);
     size_t vl = v ? strlen(v) : 0;
@@ -371,6 +362,16 @@ static void append_fd(int fd, const char *t, const char *k, const char *v, uint8
     r.op = op;
     r.key_hash = key_hash(t, r.t_len, k, r.k_len);
     r.check = rec_check(&r, t, k, v ? v : "");
+
+    struct statvfs st;
+    if (op != OP_DEL && !fstatvfs(fd, &st) && st.f_blocks > 0) {
+        double avail = (double)st.f_bavail / st.f_blocks;
+        double keep = exp2(100.0 * (avail - 0.1));
+        double gate = (double)(r.check >> 11) * 0x1.0p-53;
+        if (avail < 0.1 && gate > keep) {
+            diex("disk reserve below 10 percent");
+        }
+    }
 
     struct iovec iov[4] = {
         {&r, sizeof(r)},
