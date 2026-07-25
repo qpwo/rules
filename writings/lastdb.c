@@ -1604,79 +1604,24 @@ static void send_response(int fd, int32_t cipherkey, int32_t status, const void 
     if (resp_c) chunk_push(resp_c);
 }
 
-extern __thread struct {
-    volatile uint32_t cpu_id_start;
-    volatile uint32_t cpu_id;
-    uint64_t rseq_cs;
-    uint32_t flags;
-} __rseq_abi __attribute__((tls_model("initial-exec"), weak));
-
-static struct {
-    __attribute__((aligned(64))) void *freelist;
-} chunk_heaps[1024];
-
+static Chunk *chunk_freelist = NULL;
 static inline void chunk_push(Chunk *chunk) {
-    if (&__rseq_abi && __rseq_abi.cpu_id_start != (uint32_t)-1) {
-        asm volatile(".pushsection .rodata.rseq,\"a\",@progbits\n"
-                     "    .balign    32\n"
-                     "300:    .long    0\n"
-                     "    .long    0\n"
-                     "    .quad    301f\n"
-                     "    .quad    302f-301f\n"
-                     "    .quad    303f\n"
-                     "    .popsection\n"
-                     "301:    lea    300b(%%rip),%%rcx\n"
-                     "    mov    %%rcx,8(%1)\n"
-                     "    mov    (%1),%%ecx\n"
-                     "    shl    $6,%%ecx\n"
-                     "    mov    (%2,%%rcx),%%rdx\n"
-                     "    mov    %%rdx,(%0)\n"
-                     "    mov    %0,(%2,%%rcx)\n"
-                     "302:    .pushsection .text.unlikely,\"ax\",@progbits\n"
-                     "    .byte    0x0f,0xb9,0x4d\n"
-                     "    .long    0x53053053\n"
-                     "303:    jmp    301b\n"
-                     "    .popsection"
-                     :
-                     : "r"(chunk), "r"(&__rseq_abi), "r"(chunk_heaps)
-                     : "rcx", "rdx", "memory");
-        return;
-    }
-    if (munmap(chunk, sizeof(*chunk))) {
-        die("munmap chunk");
+    #pragma omp critical (chunks)
+    {
+        *(Chunk **)chunk = chunk_freelist;
+        chunk_freelist = chunk;
     }
 }
-
 static inline Chunk *chunk_pop(void) {
     Chunk *chunk = NULL;
-    if (&__rseq_abi && __rseq_abi.cpu_id_start != (uint32_t)-1) {
-        asm volatile(".pushsection .rodata.rseq,\"a\",@progbits\n"
-                     "    .balign    32\n"
-                     "300:    .long    0\n"
-                     "    .long    0\n"
-                     "    .quad    301f\n"
-                     "    .quad    302f-301f\n"
-                     "    .quad    303f\n"
-                     "    .popsection\n"
-                     "301:    lea    300b(%%rip),%%rcx\n"
-                     "    mov    %%rcx,8(%1)\n"
-                     "    mov    (%1),%%ecx\n"
-                     "    shl    $6,%%ecx\n"
-                     "    mov    (%2,%%rcx),%0\n"
-                     "    test    %0,%0\n"
-                     "    jz    302f\n"
-                     "    mov    (%0),%%rdx\n"
-                     "    mov    %%rdx,(%2,%%rcx)\n"
-                     "302:    .pushsection .text.unlikely,\"ax\",@progbits\n"
-                     "    .byte    0x0f,0xb9,0x4d\n"
-                     "    .long    0x53053053\n"
-                     "303:    jmp    301b\n"
-                     "    .popsection"
-                     : "=&r"(chunk)
-                     : "r"(&__rseq_abi), "r"(chunk_heaps)
-                     : "rcx", "rdx", "memory");
-        if (chunk) return chunk;
+    #pragma omp critical (chunks)
+    {
+        if (chunk_freelist) {
+            chunk = chunk_freelist;
+            chunk_freelist = *(Chunk **)chunk;
+        }
     }
+    if (chunk) return chunk;
     struct sysinfo si;
     if (!sysinfo(&si)) {
         uint64_t total = (uint64_t)si.totalram * si.mem_unit;
@@ -1958,31 +1903,34 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 else send_response(fd, cipherkey, 2, "not found", 9);
                             } else if (op == 8 || op == 9) {
                                 if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
-                                uint64_t count = 0; uint64_t raw_count = 0; double sum = 0; double threshold = 1.0;
+                                double count_est = 0; uint64_t raw_count = 0; double sum = 0; double threshold = 1.0;
                                 if (vl > 0 && vl < 64) { char th_buf[64] = {0}; memcpy(th_buf, v, vl); threshold = strtod(th_buf, NULL); if (threshold <= 0 || threshold > 1.0) threshold = 1.0; }
                                 #pragma omp critical (db)
                                 {
                                     load_db(db_path);
                                     uint64_t start_idx, end_idx;
                                     ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
-                                    #pragma omp parallel for reduction(+:count,raw_count,sum) schedule(static, 4096) num_threads(worker_threads())
+                                    #pragma omp parallel for reduction(+:count_est,raw_count,sum) schedule(static, 4096) num_threads(worker_threads())
                                     for (uint64_t i = start_idx; i < end_idx; i++) {
                                         Record *r = rec_at(ht[i].off1 - 1);
                                         if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
                                         if (kl && (r->k_len < kl || memcmp(rec_k(r), k, kl))) continue;
                                         if (threshold < 1.0 && (double)(r->check >> 11) * 0x1.0p-53 > threshold) continue;
-                                        count += 1ULL << r->weight_log;
+                                        double keep_prob = 1.0 / (1ULL << r->weight_log);
+                                        double p = keep_prob < threshold ? keep_prob : threshold;
+                                        double w = 1.0 / p;
+                                        count_est += w;
                                         raw_count++;
                                         if (op == 9 && r->v_len > 0 && r->v_len < 64) {
                                             char buf2[64] = {0}; memcpy(buf2, rec_v(r), r->v_len);
-                                            char *p = buf2; while (*p && *p != '-' && *p != '.' && (*p < '0' || *p > '9')) p++;
-                                            sum += strtod(p, NULL) * (1ULL << r->weight_log);
+                                            char *p_str = buf2; while (*p_str && *p_str != '-' && *p_str != '.' && (*p_str < '0' || *p_str > '9')) p_str++;
+                                            sum += strtod(p_str, NULL) * w;
                                         }
                                     }
                                 }
                                 char val[64]; int vl_out = 0;
-                                if (op == 8) vl_out = threshold < 1.0 ? snprintf(val, sizeof(val), "%.0f\t%llu", count / threshold, (unsigned long long)raw_count) : snprintf(val, sizeof(val), "%llu\t%llu", (unsigned long long)count, (unsigned long long)raw_count);
-                                else vl_out = threshold < 1.0 ? snprintf(val, sizeof(val), "%.17g\t%llu", sum / threshold, (unsigned long long)raw_count) : snprintf(val, sizeof(val), "%.17g\t%llu", sum, (unsigned long long)raw_count);
+                                if (op == 8) vl_out = snprintf(val, sizeof(val), "%.0f\t%llu", count_est, (unsigned long long)raw_count);
+                                else vl_out = snprintf(val, sizeof(val), "%.17g\t%llu", sum, (unsigned long long)raw_count);
                                 send_response(fd, cipherkey, 0, val, vl_out);
                             } else if (op == 10) {
                                 if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
@@ -2096,22 +2044,23 @@ int main(int argc, char **argv)
             else if (!strcmp(args[0], "search") && n >= 3) do_search(args[1], n, args);
             else if (!strcmp(args[0], "closest") && n == 4) do_closest(db, args[1], args[2], args[3]);
             else if (!strcmp(args[0], "count") && n >= 2) {
-                uint64_t c = 0, raw_c = 0;
+                double count_est = 0; uint64_t raw_c = 0;
                 size_t tl = strlen(args[1]);
                 size_t pl = n >= 3 ? strlen(args[2]) : 0;
                 double threshold = n >= 4 ? strtod(args[3], NULL) : 1.0;
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
-            #pragma omp parallel for reduction(+:c,raw_c) schedule(static, 4096) num_threads(worker_threads())
+            #pragma omp parallel for reduction(+:count_est,raw_c) schedule(static, 4096) num_threads(worker_threads())
             for (uint64_t i = start_idx; i < end_idx; i++) {
                 Record *r = rec_at(ht[i].off1 - 1);
                 if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
                     if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
                     if (threshold < 1.0 && (double)(r->check >> 11) * 0x1.0p-53 > threshold) continue;
-                    c += 1ULL << r->weight_log;
+                    double keep_prob = 1.0 / (1ULL << r->weight_log);
+                    double p = keep_prob < threshold ? keep_prob : threshold;
+                    count_est += 1.0 / p;
                     raw_c++;
                 }
-                if (threshold < 1.0 && threshold > 0) printf("%.0f\t%llu\n", c / threshold, (unsigned long long)raw_c);
-                else printf("%llu\t%llu\n", (unsigned long long)c, (unsigned long long)raw_c);
+                printf("%.0f\t%llu\n", count_est, (unsigned long long)raw_c);
             }
             else if (!strcmp(args[0], "sum") && n >= 2) {
                 double s = 0; uint64_t raw_s = 0;
@@ -2125,16 +2074,18 @@ int main(int argc, char **argv)
                 if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
                     if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
                     if (threshold < 1.0 && (double)(r->check >> 11) * 0x1.0p-53 > threshold) continue;
+                    double keep_prob = 1.0 / (1ULL << r->weight_log);
+                    double p = keep_prob < threshold ? keep_prob : threshold;
+                    double w = 1.0 / p;
                     raw_s++;
                     if (r->v_len > 0 && r->v_len < 64) {
                         char buf[64] = {0};
                         memcpy(buf, rec_v(r), r->v_len);
-                        char *p = buf; while (*p && *p != '-' && *p != '.' && (*p < '0' || *p > '9')) p++;
-                        s += strtod(p, NULL) * (1ULL << r->weight_log);
+                        char *p_str = buf; while (*p_str && *p_str != '-' && *p_str != '.' && (*p_str < '0' || *p_str > '9')) p_str++;
+                        s += strtod(p_str, NULL) * w;
                     }
                 }
-                if (threshold < 1.0 && threshold > 0) printf("%.17g\t%llu\n", s / threshold, (unsigned long long)raw_s);
-                else printf("%.17g\t%llu\n", s, (unsigned long long)raw_s);
+                printf("%.17g\t%llu\n", s, (unsigned long long)raw_s);
             }
             else printf("ERR\n");
             fflush(stdout);
