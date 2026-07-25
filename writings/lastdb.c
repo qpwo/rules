@@ -1520,8 +1520,34 @@ static float vec_dot_f32(const void *a, const void *b, size_t bytes) {
     return vec_dot_f32_avx2(a, b, bytes);
 }
 
+__attribute__((target("avx512fp16,avx512vl,avx512f")))
+static float vec_dot_f16_avx512fp16(const void *a, const void *b, size_t bytes) {
+    size_t n = bytes / 2;
+    const unaligned_f16 *fa = a, *fb = b;
+    __m512h sum0 = _mm512_setzero_ph();
+    __m512h sum1 = _mm512_setzero_ph();
+    __m512h sum2 = _mm512_setzero_ph();
+    __m512h sum3 = _mm512_setzero_ph();
+    size_t i = 0;
+    for (; i + 127 < n; i += 128) {
+        sum0 = _mm512_fmadd_ph(_mm512_castsi512_ph(_mm512_loadu_si512((const void *)(fa + i))), _mm512_castsi512_ph(_mm512_loadu_si512((const void *)(fb + i))), sum0);
+        sum1 = _mm512_fmadd_ph(_mm512_castsi512_ph(_mm512_loadu_si512((const void *)(fa + i + 32))), _mm512_castsi512_ph(_mm512_loadu_si512((const void *)(fb + i + 32))), sum1);
+        sum2 = _mm512_fmadd_ph(_mm512_castsi512_ph(_mm512_loadu_si512((const void *)(fa + i + 64))), _mm512_castsi512_ph(_mm512_loadu_si512((const void *)(fb + i + 64))), sum2);
+        sum3 = _mm512_fmadd_ph(_mm512_castsi512_ph(_mm512_loadu_si512((const void *)(fa + i + 96))), _mm512_castsi512_ph(_mm512_loadu_si512((const void *)(fb + i + 96))), sum3);
+    }
+    sum0 = _mm512_add_ph(_mm512_add_ph(sum0, sum1), _mm512_add_ph(sum2, sum3));
+    for (; i < n; i += 32) {
+        size_t rem = n - i;
+        __mmask32 mask = rem >= 32 ? 0xFFFFFFFFu : (uint32_t)((1ULL << rem) - 1ULL);
+        __m512h va = _mm512_castsi512_ph(_mm512_maskz_loadu_epi16(mask, fa + i));
+        __m512h vb = _mm512_castsi512_ph(_mm512_maskz_loadu_epi16(mask, fb + i));
+        sum0 = _mm512_fmadd_ph(va, vb, sum0);
+    }
+    return _mm512_reduce_add_ph(sum0);
+}
+
 __attribute__((target("avx2,f16c,fma")))
-static float vec_dot_f16(const void *a, const void *b, size_t bytes) {
+static float vec_dot_f16_avx2(const void *a, const void *b, size_t bytes) {
     size_t n = bytes / 2;
     const unaligned_f16 *fa = a, *fb = b;
     __m256 sum0 = _mm256_setzero_ps();
@@ -1568,6 +1594,13 @@ static float vec_dot_f16(const void *a, const void *b, size_t bytes) {
         sum += _mm_cvtss_f32(_mm_cvtph_ps(ha)) * _mm_cvtss_f32(_mm_cvtph_ps(hb));
     }
     return sum;
+}
+
+static float vec_dot_f16(const void *a, const void *b, size_t bytes) {
+    if (__builtin_cpu_supports("avx512fp16")) {
+        return vec_dot_f16_avx512fp16(a, b, bytes);
+    }
+    return vec_dot_f16_avx2(a, b, bytes);
 }
 
 __attribute__((target("avx2")))
