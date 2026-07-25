@@ -1814,6 +1814,51 @@ static inline Chunk *chunk_pop(void) {
 
 static int srv_db_fd = -1;
 #include <sys/resource.h>
+#include <pthread.h>
+static struct { pthread_rwlock_t rw; char pad[64 - sizeof(pthread_rwlock_t)]; } srv_rwlocks[256];
+static int srv_rwlocks_init = 0;
+static inline int srv_read_lock_func(const char *db_path) {
+    if (!__atomic_load_n(&srv_rwlocks_init, __ATOMIC_ACQUIRE)) {
+        #pragma omp critical (init)
+        if (!__atomic_load_n(&srv_rwlocks_init, __ATOMIC_ACQUIRE)) {
+            for (int i = 0; i < 256; i++) pthread_rwlock_init(&srv_rwlocks[i].rw, NULL);
+            __atomic_store_n(&srv_rwlocks_init, 1, __ATOMIC_RELEASE);
+        }
+    }
+    int cpu = sched_getcpu();
+    if (cpu < 0 || cpu >= 256) cpu = 0;
+    pthread_rwlock_rdlock(&srv_rwlocks[cpu].rw);
+    if (srv_db_fd < 0) {
+        pthread_rwlock_unlock(&srv_rwlocks[cpu].rw);
+        for (int i = 0; i < 256; i++) pthread_rwlock_wrlock(&srv_rwlocks[i].rw);
+        
+        for (int i = 256; i-- > 0; ) pthread_rwlock_unlock(&srv_rwlocks[i].rw);
+        pthread_rwlock_rdlock(&srv_rwlocks[cpu].rw);
+    }
+    return cpu;
+}
+static inline int srv_write_lock_func(const char *db_path) {
+    if (!__atomic_load_n(&srv_rwlocks_init, __ATOMIC_ACQUIRE)) {
+        #pragma omp critical (init)
+        if (!__atomic_load_n(&srv_rwlocks_init, __ATOMIC_ACQUIRE)) {
+            for (int i = 0; i < 256; i++) pthread_rwlock_init(&srv_rwlocks[i].rw, NULL);
+            __atomic_store_n(&srv_rwlocks_init, 1, __ATOMIC_RELEASE);
+        }
+    }
+    for (int i = 0; i < 256; i++) pthread_rwlock_wrlock(&srv_rwlocks[i].rw);
+    
+    return 0;
+}
+static inline void srv_unlock_read_attr(int *cpu) {
+    if (*cpu >= 0) pthread_rwlock_unlock(&srv_rwlocks[*cpu].rw);
+}
+static inline void srv_unlock_write_attr(int *dummy) {
+    (void)dummy;
+    for (int i = 256; i-- > 0; ) pthread_rwlock_unlock(&srv_rwlocks[i].rw);
+}
+#define SRV_READ_LOCK(path) int _srv_cpu __attribute__((cleanup(srv_unlock_read_attr))) = srv_read_lock_func(path)
+#define SRV_WRITE_LOCK(path) int _srv_dummy __attribute__((cleanup(srv_unlock_write_attr))) = srv_write_lock_func(path)
+
 static void do_serve(const char *db_path, int port, int32_t cipherkey) {
     omp_set_dynamic(0);
     omp_set_max_active_levels(2);
@@ -1885,9 +1930,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             char *v = (char*)buf + 32 + tl + kl;
 
                             int perms = 0;
-                            #pragma omp critical (db)
-                            {
-                                load_db(db_path);
+                            { SRV_READ_LOCK(db_path);
                                 char ustr[64];
                                 int ulen = snprintf(ustr, sizeof(ustr), "%d:%d", user, color);
                                 if (ulen > 0 && ulen < (int)sizeof(ustr)) {
@@ -1914,9 +1957,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
 
                             if (op == 1) {
                                 if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
-                                #pragma omp critical (db)
-                                {
-                                    load_db(db_path);
+                                { SRV_READ_LOCK(db_path);
                                     Node *n = ht_get(full_tenant, ft_len, k, kl);
                                     if (n) {
                                         Record *r = rec_at(n->off1 - 1);
@@ -1946,9 +1987,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             if (op == 4 && vl > 0) { char th_buf[64]={0}; memcpy(th_buf, v, vl < 63 ? vl : 63); threshold = strtod(th_buf, NULL); }
                             if (op == 5 && kl > 0) { char th_buf[64]={0}; memcpy(th_buf, k, kl < 63 ? kl : 63); threshold = strtod(th_buf, NULL); }
                             if (threshold <= 0 || threshold > 1.0) threshold = 1.0;
-                            #pragma omp critical (db)
-                            {
-                                load_db(db_path);
+                            { SRV_READ_LOCK(db_path);
                             uint64_t start_idx, end_idx;
                             ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
                             #pragma omp parallel for schedule(dynamic, 1024) num_threads(worker_threads())
@@ -2006,9 +2045,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 int req = op == 2 ? 2 : 4;
                                 if (!(perms & req)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
                                 int wrote = 0;
-                                #pragma omp critical (db)
-                                {
-                                    if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
+                                { SRV_WRITE_LOCK(db_path);
                                     wrote = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, v, vl, op == 2 ? OP_PUT : OP_DEL);
                                     if (wrote) sync_fd(srv_db_fd);
                                     load_db(db_path);
@@ -2027,9 +2064,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 char v_null[64]; size_t vln = vl > 63 ? 63 : vl; memcpy(v_null, v, vln); v_null[vln] = 0;
                                 uint64_t off = strtoull(v_null, NULL, 10);
 
-                                #pragma omp critical (db)
-                                {
-                                    load_db(db_path);
+                                { SRV_READ_LOCK(db_path);
                                     if (off > valid_size) off = valid_size;
                                     while (off < valid_size) {
                                         if (!rec_valid(off)) break;
@@ -2069,9 +2104,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
 
                                 const char *best_k = NULL;
                                 uint16_t best_k_len = 0;
-                                #pragma omp critical (db)
-                                {
-                                    load_db(db_path);
+                                { SRV_READ_LOCK(db_path);
                                     Node *n = NULL;
                                     if (!q_vec) {
                                         n = ht_get(full_tenant, ft_len, k, kl);
@@ -2119,9 +2152,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     if (tab) { *tab = 0; sum_now = strtod(tab + 1, NULL); has_now = 1; }
                                     threshold = strtod(th_buf, NULL); if (threshold <= 0 || threshold > 1.0) threshold = 1.0;
                                 }
-                                #pragma omp critical (db)
-                                {
-                                    load_db(db_path);
+                                { SRV_READ_LOCK(db_path);
                                     uint64_t start_idx, end_idx;
                                     ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
                                     #pragma omp parallel for reduction(+:count_est,raw_count,sum) schedule(static, 4096) num_threads(worker_threads())
@@ -2168,9 +2199,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             } else if (op == 10) {
                                 if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
                                 char val[64]; int vl_out = 0; int wrote = 0;
-                                #pragma omp critical (db)
-                                {
-                                    if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
+                                { SRV_WRITE_LOCK(db_path);
                                     long long cur = 0;
                                     Node *n = ht_get(full_tenant, ft_len, k, kl);
                                     if (n) { Record *r = rec_at(n->off1 - 1); if (r->op != OP_DEL && r->v_len < 64) { char buf[64]={0}; memcpy(buf, rec_v(r), r->v_len); cur = strtoll(buf, NULL, 10); } }
@@ -2204,9 +2233,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     send_response(fd, cipherkey, 1, "bad grant", 9); chunk_push(c); continue;
                                 }
                                 int wrote = 0;
-                                #pragma omp critical (db)
-                                {
-                                    if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
+                                { SRV_WRITE_LOCK(db_path);
                                     wrote = append_raw(srv_db_fd, "0:users", 7, user_key, user_key_len, user_val, user_val_len, OP_PUT);
                                     if (wrote) {
                                         sync_fd(srv_db_fd);
@@ -2218,9 +2245,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             } else if (op == 12) {
                                 if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
                                 char val[64]; int vl_out = 0; int ok = 0; int shed = 0;
-                                #pragma omp critical (db)
-                                {
-                                    if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
+                                { SRV_WRITE_LOCK(db_path);
                                     long long cur = 0;
                                     Node *n = ht_get(full_tenant, ft_len, k, kl);
                                     if (n) { Record *r = rec_at(n->off1 - 1); if (r->op != OP_DEL && r->v_len < 64) { char buf[64]={0}; memcpy(buf, rec_v(r), r->v_len); cur = strtoll(buf, NULL, 10); } }
@@ -2241,9 +2266,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             } else if (op == 13) {
                                 if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
                                 int wrote = 0; int exists = 0;
-                                #pragma omp critical (db)
-                                {
-                                    if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
+                                { SRV_WRITE_LOCK(db_path);
                                     Node *n = ht_get(full_tenant, ft_len, k, kl);
                                     if (n) { Record *r = rec_at(n->off1 - 1); if (r->op != OP_DEL) exists = 1; }
                                     if (!exists) {
@@ -2265,9 +2288,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 char *new_val = tab + 1;
                                 size_t new_len = vl - old_len - 1;
                                 int wrote = 0; int match = 0;
-                                #pragma omp critical (db)
-                                {
-                                    if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
+                                { SRV_WRITE_LOCK(db_path);
                                     Node *n = ht_get(full_tenant, ft_len, k, kl);
                                     if (n) {
                                         Record *r = rec_at(n->off1 - 1);
@@ -2299,9 +2320,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 }
 
                                 char val[192]; int vl_out = 0; int ok = 1; int shed = 0; char err_msg[32] = "error";
-                                #pragma omp critical (db)
-                                {
-                                    if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
+                                { SRV_WRITE_LOCK(db_path);
                                     double stored_hl = hl, last = ts, value = 0;
                                     int had = 0;
                                     Node *n = ht_get(full_tenant, ft_len, k, kl);
@@ -2352,9 +2371,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 char *ret_k = NULL;
                                 uint16_t ret_kl = 0;
                                 uint32_t ret_vl = 0;
-                                #pragma omp critical (db)
-                                {
-                                    if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
+                                { SRV_WRITE_LOCK(db_path);
                                     uint64_t start_idx, end_idx;
                                     ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
                                     if (end_idx > start_idx) {
@@ -2410,13 +2427,11 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     bad = !tab || (size_t)(tab - p) > UINT16_MAX || line_len - (size_t)(tab - p) - 1 > UINT32_MAX || (!nl && end >= (char *)c->data + sizeof(c->data));
                                     p += line_len + (nl ? 1 : 0);
                                 }
-                                #pragma omp critical (db)
-                                {
-                                    Chunk *batch_c = NULL;
+                                { SRV_WRITE_LOCK(db_path); Chunk *batch_c = NULL;
                                     char *batch_buf = NULL;
                                     size_t used = 0;
                                     if (!bad) {
-                                        if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
+                                        
                                         batch_c = chunk_pop();
                                         if (!batch_c) {
                                             shed = 1;
