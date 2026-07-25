@@ -2550,10 +2550,10 @@ threshold = 1.0;
                                         double db_w = (double)(1U << (r->weight_log > 20 ? 20 : r->weight_log));
                                         double w_weight = (threshold < 1.0 && r->weight_log < max_w) ? db_w / threshold : db_w;
                                         double eff_w = is_decay ? w_weight * __builtin_fabs(cur) : w_weight;
-                                        if (eff_w < min_weight) continue;
-                                        if (op == 4 || op == 5) {
+                                        double disp_w = is_decay ? db_w * __builtin_fabs(cur) : db_w;
+                                        if (op == 4 || op == 5) { if (disp_w < min_weight) continue;
                                             char weight[32];
-                                            int wlen = snprintf(weight, sizeof(weight), "%.5g\t", eff_w);
+                                            int wlen = snprintf(weight, sizeof(weight), "%.5g\t", disp_w);
                                             size_t rec_len = wlen + r->k_len + 1 + out_vl + 1;
                                             size_t my_off;
                                             #pragma omp atomic capture
@@ -2566,6 +2566,7 @@ threshold = 1.0;
                                                 out[my_off++] = '\n';
                                             }
                                         } else {
+                                    if (eff_w < min_weight) continue;
                                     count_est += w_weight;
                                     raw_count++;
                                             if (op == 9 && r->v_len > 0) {
