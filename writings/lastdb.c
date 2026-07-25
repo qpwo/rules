@@ -2302,57 +2302,62 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     } else send_response(fd, cipherkey, 2, "not found", 9);
                                 }
                             }
-                            else if (op == 4 || op == 5) {
+                            else if (op == 4 || op == 5 || op == 8 || op == 9) {
                                 if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
-                                Chunk *out_c = chunk_pop();
-                                if (!out_c) { send_response(fd, cipherkey, 3, "shed", 4); chunk_push(c); continue; }
-                                uint8_t *out = out_c->data; size_t out_len = 0;
+                                Chunk *out_c = NULL;
+                                uint8_t *out = NULL; size_t out_len = 0;
+                                if (op == 4 || op == 5) {
+                                    out_c = chunk_pop();
+                                    if (!out_c) { send_response(fd, cipherkey, 3, "shed", 4); chunk_push(c); continue; }
+                                    out = out_c->data;
+                                }
+                                #define OUT_CAP (60u * 1024u * 1024u)
                                 uint64_t query_bfs[64] = {0};
-                            if (op == 5) {
                                 int num_words = 0; char *w = v; char *end = v + vl;
                                 while (w < end && num_words < 64) {
                                     char *tab = memchr(w, '\t', end - w);
                                     size_t wl = tab ? tab - w : end - w;
-                                            if (wl > 0) query_bfs[num_words++] = compute_bf(w[0] == '-' ? w + 1 : w, w[0] == '-' ? wl - 1 : wl);
+                                    if (wl > 0) query_bfs[num_words++] = compute_bf(w[0] == '-' ? w + 1 : w, w[0] == '-' ? wl - 1 : wl);
                                     w += wl + 1;
                                 }
-                            }
-                            #define OUT_CAP (60u * 1024u * 1024u)
-                            #define APP(ptr, lll) do { size_t app_n = (lll); if (out_len <= OUT_CAP && app_n <= OUT_CAP - out_len) { memcpy(out + out_len, ptr, app_n); out_len += app_n; } else { out_len = OUT_CAP + 1; } } while(0)
-                            double threshold = 1.0; double eval_now = (double)time(NULL); int evaluate_decay = 1;
-                            if (op == 4 && vl > 0) {
-                                char th_buf[128]={0}; memcpy(th_buf, v, vl < 127 ? vl : 127);
-                                char *tab = strchr(th_buf, '\t');
-                                if (tab) { *tab = 0; eval_now = strtod(tab + 1, NULL); }
-                                threshold = strtod(th_buf, NULL);
-                            }
-                            if (op == 5 && kl > 0) {
-                                char th_buf[128]={0}; memcpy(th_buf, k, kl < 127 ? kl : 127);
-                                char *tab = strchr(th_buf, '\t');
-                                if (tab) { *tab = 0; eval_now = strtod(tab + 1, NULL); }
-                                threshold = strtod(th_buf, NULL);
-                            }
-                            if (threshold <= 0) threshold = 1.0;
-                            double max_w = 31.0;
-                            if (threshold > 1.0) { max_w = threshold; threshold = 1.0; }
-                            { SRV_READ_LOCK(db_path);
-                            uint64_t start_idx, end_idx;
-                            ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
-                            uint64_t count = end_idx - start_idx;
-                            #pragma omp parallel for schedule(static, 4096) num_threads(worker_threads())
-                            for (uint64_t i = 0; i < count; i++) {
-                                Record *r = rec_at(ht[start_idx + i].off1 - 1);
-                                if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
-                                if (r->weight_log > max_w) continue;
-                                if (threshold < 1.0) {
-                                    if ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
+
+                                double threshold = 1.0; double eval_now = (double)time(NULL);
+                                char *pref = k; size_t pref_len = kl;
+                                if (kl > 0) {
+                                    char th_buf[256]={0}; memcpy(th_buf, k, kl < 255 ? kl : 255);
+                                    char *tab1 = strchr(th_buf, '\t');
+                                    if (tab1) {
+                                        *tab1 = 0;
+                                        pref_len = tab1 - th_buf;
+                                        char *tab2 = strchr(tab1 + 1, '\t');
+                                        if (tab2) { *tab2 = 0; eval_now = strtod(tab2 + 1, NULL); }
+                                        threshold = strtod(tab1 + 1, NULL);
+                                    }
                                 }
+                                if (threshold <= 0) threshold = 1.0;
+                                double max_w = 31.0;
+                                if (threshold > 1.0) { max_w = threshold; threshold = 1.0; }
+
+                                double count_est = 0; uint64_t raw_count = 0; double sum = 0;
+
+                                { SRV_READ_LOCK(db_path);
+                                uint64_t start_idx, end_idx;
+                                ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
+                                uint64_t count = end_idx - start_idx;
+                                #pragma omp parallel for reduction(+:count_est,raw_count,sum) schedule(static, 4096) num_threads(worker_threads())
+                                for (uint64_t i = 0; i < count; i++) {
+                                    Record *r = rec_at(ht[start_idx + i].off1 - 1);
+                                    if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
+                                    if (pref_len > 0 && (r->k_len < pref_len || memcmp(rec_k(r), pref, pref_len))) continue;
+                                    if (r->weight_log > max_w) continue;
+                                    if (threshold < 1.0 && ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold)) continue;
+
                                     const char *out_val = rec_v(r);
                                     size_t out_vl = r->v_len;
                                     char eval_buf[64];
                                     double cur = 0;
                                     int is_decay = 0;
-                                    if (evaluate_decay && out_vl > 0 && out_vl < 192) {
+                                    if (out_vl > 0 && out_vl < 192) {
                                         if (decay_value_at(out_val, out_vl, eval_now, &cur)) {
                                             if (cur == 0) continue;
                                             out_vl = snprintf(eval_buf, sizeof(eval_buf), "%.17g", cur);
@@ -2360,31 +2365,28 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                             is_decay = 1;
                                         }
                                     }
-                                    int match = 0;
-                                    if (op == 4) {
-                                        match = (kl == 0 || (r->k_len >= kl && !memcmp(rec_k(r), k, kl)));
-                                    } else {
-                                        match = 1;
-                                        char *w = v; char *end = v + vl;
-                                        int word_idx = 0;
-                                        while (w < end) {
-                                            char *tab = memchr(w, '\t', end - w);
-                                            size_t wl = tab ? tab - w : end - w;
-                                            if (wl > 0) {
-                                                int negate = (w[0] == '-');
-                                                char *kw = negate ? w + 1 : w;
-                                                size_t kwl = negate ? wl - 1 : wl;
-                                                if (kwl > 0) {
+
+                                    int match = 1;
+                                    char *w_iter = v;
+                                    int word_idx = 0;
+                                    while (w_iter < end && match) {
+                                        char *tab = memchr(w_iter, '\t', end - w_iter);
+                                        size_t wl = tab ? tab - w_iter : end - w_iter;
+                                        if (wl > 0) {
+                                            int negate = (w_iter[0] == '-');
+                                            char *kw = negate ? w_iter + 1 : w_iter;
+                                            size_t kwl = negate ? wl - 1 : wl;
+                                            if (kwl > 0) {
                                                 if (kw[0] == '>' || kw[0] == '<' || kw[0] == '^') {
                                                     char num_buf[64] = {0};
                                                     size_t cl = kwl - 1 < 63 ? kwl - 1 : 63;
                                                     memcpy(num_buf, kw + 1, cl);
                                                     if (kw[0] == '^') {
-                                                        int max_w = atoi(num_buf);
-                                                        int cmp = r->weight_log <= max_w;
-                                                        if (negate ? cmp : !cmp) { match = 0; break; }
+                                                        int max_w2 = atoi(num_buf);
+                                                        int cmp = r->weight_log <= max_w2;
+                                                        if (negate ? cmp : !cmp) match = 0;
                                                     } else {
-                                                        double thresh = strtod(num_buf, NULL);
+                                                        double thresh_val = strtod(num_buf, NULL);
                                                         double val_to_check = cur;
                                                         if (!is_decay) {
                                                             char v_buf[256] = {0};
@@ -2392,27 +2394,28 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                                             memcpy(v_buf, out_val, vcl);
                                                             val_to_check = strtod(v_buf, NULL);
                                                         }
-                                                        int cmp = kw[0] == '>' ? (val_to_check > thresh) : (val_to_check < thresh);
-                                                        if (negate ? cmp : !cmp) { match = 0; break; }
+                                                        int cmp = kw[0] == '>' ? (val_to_check > thresh_val) : (val_to_check < thresh_val);
+                                                        if (negate ? cmp : !cmp) match = 0;
                                                     }
                                                 } else {
-                                                    if (word_idx < 64 && !negate && (r->bf & query_bfs[word_idx]) != query_bfs[word_idx]) { match = 0; break; }
-                                                    int found = (!is_decay && memmem_pivot(out_val, out_vl, kw, kwl)) || memmem_pivot(rec_k(r), r->k_len, kw, kwl);
-                                                    if (negate ? found : !found) { match = 0; break; }
+                                                    if (word_idx < 64 && !negate && (r->bf & query_bfs[word_idx]) != query_bfs[word_idx]) match = 0;
+                                                    else {
+                                                        int found = (!is_decay && memmem_pivot(out_val, out_vl, kw, kwl)) || memmem_pivot(rec_k(r), r->k_len, kw, kwl);
+                                                        if (negate ? found : !found) match = 0;
+                                                    }
                                                 }
-                                                }
-                                                word_idx++;
                                             }
-                                            w += wl + 1;
+                                            word_idx++;
                                         }
+                                        w_iter += wl + 1;
                                     }
-                                        if (match) {
-                                            double db_w = (double)(1U << r->weight_log);
-                                            
-                                            double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
-                                            double w = db_w > qw ? db_w : qw;
+                                    if (match) {
+                                        double db_w = (double)(1U << r->weight_log);
+                                        double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
+                                        double w_weight = db_w > qw ? db_w : qw;
+                                        if (op == 4 || op == 5) {
                                             char weight[32];
-                                            int wlen = snprintf(weight, sizeof(weight), "%.5g\t", w);
+                                            int wlen = snprintf(weight, sizeof(weight), "%.5g\t", w_weight);
                                             size_t rec_len = wlen + r->k_len + 1 + out_vl + 1;
                                             size_t my_off;
                                             #pragma omp atomic capture
@@ -2424,195 +2427,33 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                                 memcpy(out + my_off, out_val, out_vl); my_off += out_vl;
                                                 out[my_off++] = '\n';
                                             }
-                                        }
-                                    }
-                                }
-                                send_response(fd, cipherkey, out_len > OUT_CAP ? 4 : 0, out, out_len > OUT_CAP ? OUT_CAP : out_len);
-                                chunk_push(out_c);
-                            }
-                            else if (op == 2 || op == 3) {
-                                int req = op == 2 ? 2 : 4;
-                                if (!(perms & req)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
-                                if (op == 3 && vl == 1 && v[0] == '*' && !kl) {
-                                    send_response(fd, cipherkey, 1, "empty prefix", 12);
-                                    chunk_push(c);
-                                    continue;
-                                }
-                                int wrote = 0;
-                                { SRV_WRITE_LOCK(db_path);
-                                    if (op == 3 && vl == 1 && v[0] == '*') {
-                                        uint64_t start_idx, end_idx;
-                                        ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
-                                        for (uint64_t i = start_idx; i < end_idx; i++) {
-                                            Record *r = rec_at(ht[i].off1 - 1);
-                                            if (r->op != OP_DEL && r->t_len == ft_len && !memcmp(rec_t(r), full_tenant, ft_len) && r->k_len >= kl && !memcmp(rec_k(r), k, kl)) {
-                                                if (append_raw(srv_db_fd, full_tenant, ft_len, rec_k(r), r->k_len, NULL, 0, OP_DEL)) wrote++;
-                                            }
-                                        }
-                                    } else {
-                                        wrote = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, v, vl, op == 2 ? OP_PUT : OP_DEL);
-                                    }
-                                    if (wrote) (void)0;
-                                    load_db(db_path);
-                                }
-                                if (wrote) {
-                                    char receipt[64];
-                                    int receipt_len = snprintf(receipt, sizeof(receipt), "%llu", (unsigned long long)valid_size);
-                                    send_response(fd, cipherkey, 0, receipt, receipt_len);
-                                } else send_response(fd, cipherkey, 3, "shed", 4);
-                            }
-                            else if (op == 6) {
-                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
-                                Chunk *out_c = chunk_pop();
-                                if (!out_c) { send_response(fd, cipherkey, 3, "shed", 4); chunk_push(c); continue; }
-                                uint8_t *out = out_c->data; size_t out_len = 0; int more = 0;
-                                char v_null[64]; size_t vln = vl > 63 ? 63 : vl; memcpy(v_null, v, vln); v_null[vln] = 0;
-                                uint64_t off = strtoull(v_null, NULL, 10);
-
-                                { SRV_READ_LOCK(db_path);
-                                    if (off > valid_size) off = valid_size;
-                                    while (off < valid_size) {
-                                        if (!rec_valid(off)) break;
-                                        Record *r = rec_at(off);
-                                        uint64_t next = off + r->len;
-                                        if (out_len + r->k_len + r->v_len + 256 > OUT_CAP) { more = 1; break; }
-                                        char color_prefix[32];
-                                        int cpl = sprintf(color_prefix, "%d:", color);
-                                        if (r->t_len >= cpl && !memcmp(rec_t(r), color_prefix, cpl)) {
-                                            char line[128];
-                                            int ll = sprintf(line, "%llu\t%llu\t%s\t%u\t", (unsigned long long)next, (unsigned long long)off, r->op == OP_PUT ? "put" : "del", 1U << r->weight_log);
-                                            memcpy(out + out_len, line, ll); out_len += ll;
-                                            memcpy(out + out_len, rec_t(r) + cpl, r->t_len - cpl); out_len += r->t_len - cpl;
-                                            out[out_len++] = '\t';
-                                            memcpy(out + out_len, rec_k(r), r->k_len); out_len += r->k_len;
-                                            out[out_len++] = '\t';
-                                            if (r->op == OP_PUT) { memcpy(out + out_len, rec_v(r), r->v_len); out_len += r->v_len; }
-                                            out[out_len++] = '\n';
-                                        }
-                                        off = next;
-                                    }
-                                }
-                                send_response(fd, cipherkey, more ? 4 : 0, out, out_len);
-                                chunk_push(out_c);
-                            } else if (op == 7) {
-                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
-                                float (*dot_fn)(const void *, const void *, size_t) = NULL;
-                                char type[16] = {0};
-                                const char *q_vec = NULL;
-                                size_t q_len = 0;
-                                if (vl > 0 && vl < 15) { memcpy(type, v, vl); }
-                                else if (vl >= 15 && kl < 15) { memcpy(type, k, kl); q_vec = v; q_len = vl; }
-                                if (!strcmp(type, "f32")) dot_fn = vec_dot_f32;
-                                else if (!strcmp(type, "f16")) dot_fn = vec_dot_f16;
-                                else if (!strcmp(type, "i8")) dot_fn = vec_dot_i8;
-                                else if (!strcmp(type, "b8")) dot_fn = vec_dot_b8;
-                                else { send_response(fd, cipherkey, 1, "bad type", 8); chunk_push(c); continue; }
-
-                                const char *best_k = NULL;
-                                uint16_t best_k_len = 0;
-                                { SRV_READ_LOCK(db_path);
-                                    Node *n = NULL;
-                                    if (!q_vec) {
-                                        n = ht_get(full_tenant, ft_len, k, kl);
-                                        if (n) { Record *r = rec_at(n->off1 - 1); if (r->op != OP_DEL && r->v_len) { q_vec = rec_v(r); q_len = r->v_len; } }
-                                    }
-                                    if (q_vec && ((!strcmp(type,"f32") && q_len%4==0) || (!strcmp(type,"f16") && q_len%2==0) || (!strcmp(type,"i8")) || (!strcmp(type,"b8")))) {
-                                        float best_score = -1e30f;
-                                        uint64_t start_idx, end_idx;
-                                        ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
-                                        uint64_t count = end_idx - start_idx;
-                                        #pragma omp parallel num_threads(worker_threads())
-                                        {
-                                            float local_best = -1e30f;
-                                            const char *local_k = NULL;
-                                            uint16_t local_k_len = 0;
-                                            #pragma omp for schedule(static, 4096)
-                                            for (uint64_t i = 0; i < count; i++) {
-                                                uint64_t c_off1 = ht[start_idx + i].off1;
-                                                Record *c_rec = rec_at(c_off1 - 1);
-                                                if (c_rec->op == OP_DEL || c_rec->t_len != ft_len || c_rec->v_len != q_len) continue;
-                                                if (n && c_off1 == n->off1) continue;
-                                                if (memcmp(rec_t(c_rec), full_tenant, ft_len) != 0) continue;
-                                                size_t p1 = q_len > 256 ? 256 : q_len;
-                                                float s1 = dot_fn(q_vec, rec_v(c_rec), p1);
-                                                if (p1 < q_len && s1 * ((float)q_len / p1) < local_best - 0.8f) continue;
-                                                size_t p2 = q_len > 1024 ? 1024 : q_len;
-                                                float s2 = p1 < p2 ? s1 + dot_fn(q_vec + p1, rec_v(c_rec) + p1, p2 - p1) : s1;
-                                                if (p2 < q_len && s2 * ((float)q_len / p2) < local_best - 0.3f) continue;
-                                                float score = p2 < q_len ? s2 + dot_fn(q_vec + p2, rec_v(c_rec) + p2, q_len - p2) : s2;
-                                                if (score > local_best) {
-                                                    local_best = score; local_k = rec_k(c_rec); local_k_len = c_rec->k_len;
-                                                    if (score > *(volatile float *)&best_score) {
-                                                        #pragma omp critical (best)
-                                                        {
-                                                            if (score > best_score) { best_score = score; best_k = local_k; best_k_len = local_k_len; }
-                                                        }
-                                                    }
+                                        } else {
+                                            count_est += w_weight;
+                                            raw_count++;
+                                            if (op == 9 && r->v_len > 0) {
+                                                if (is_decay) {
+                                                    sum += w_weight * cur;
+                                                } else if (r->v_len < 192) {
+                                                    char buf2[192] = {0};
+                                                    memcpy(buf2, rec_v(r), r->v_len);
+                                                    char *p_str = buf2;
+                                                    while (*p_str && *p_str != '-' && *p_str != '.' && (*p_str < '0' || *p_str > '9')) p_str++;
+                                                    sum += strtod(p_str, NULL) * w_weight;
                                                 }
-                                                if (*(volatile float *)&best_score > local_best) local_best = *(volatile float *)&best_score;
-                                            }
-                                            #pragma omp critical (best)
-                                            {
-                                                if (local_best > best_score) { best_score = local_best; best_k = local_k; best_k_len = local_k_len; }
                                             }
                                         }
                                     }
                                 }
-                                if (best_k) send_response(fd, cipherkey, 0, best_k, best_k_len);
-                                else send_response(fd, cipherkey, 2, "not found", 9);
-                            } else if (op == 8 || op == 9) {
-                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
-                                double count_est = 0; uint64_t raw_count = 0; double sum = 0; double threshold = 1.0; double sum_now = (double)time(NULL);
-                                if (vl > 0 && vl < 128) {
-                                    char th_buf[128] = {0}; memcpy(th_buf, v, vl);
-                                    char *tab = strchr(th_buf, '\t');
-                                    if (tab) { *tab = 0; sum_now = strtod(tab + 1, NULL); }
-                                    threshold = strtod(th_buf, NULL); if (threshold <= 0) threshold = 1.0;
                                 }
-                                double max_w = 31.0;
-                                if (threshold > 1.0) { max_w = threshold; threshold = 1.0; }
-                                { SRV_READ_LOCK(db_path);
-                                    uint64_t start_idx, end_idx;
-                                    ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
-                                    uint64_t count = end_idx - start_idx;
-                                    #pragma omp parallel for reduction(+:count_est,raw_count,sum) schedule(static, 4096) num_threads(worker_threads())
-                                    for (uint64_t i = 0; i < count; i++) {
-                                        Record *r = rec_at(ht[start_idx + i].off1 - 1);
-                                        if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
-                                        if (kl && (r->k_len < kl || memcmp(rec_k(r), k, kl))) continue;
-                                        if (r->weight_log > max_w) continue;
-                                if (threshold < 1.0) {
-                                    if ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
+                                if (op == 4 || op == 5) {
+                                    send_response(fd, cipherkey, out_len > OUT_CAP ? 4 : 0, out, out_len > OUT_CAP ? OUT_CAP : out_len);
+                                    if (out_c) chunk_push(out_c);
+                                } else {
+                                    char val[64]; int vl_out = 0;
+                                    if (op == 8) vl_out = snprintf(val, sizeof(val), "%.0f\t%llu", count_est, (unsigned long long)raw_count);
+                                    else vl_out = snprintf(val, sizeof(val), "%.17g\t%llu", sum, (unsigned long long)raw_count);
+                                    send_response(fd, cipherkey, 0, val, vl_out);
                                 }
-                                double db_w = (double)(1U << r->weight_log);
-                                
-                                double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
-                                double w = db_w > qw ? db_w : qw;
-                                double cur = 0;
-                                int is_decay = 0;
-                                if (r->v_len > 0 && r->v_len < 192) {
-                                    if (decay_value_at(rec_v(r), r->v_len, sum_now, &cur)) is_decay = 1;
-                                }
-                                if (is_decay && cur == 0) continue;
-                                count_est += w;
-                                        raw_count++;
-                                        if (op == 9 && r->v_len > 0) {
-                                    if (is_decay) {
-                                        sum += w * cur;
-                                    } else if (r->v_len < 192) {
-                                        char buf2[192] = {0};
-                                        memcpy(buf2, rec_v(r), r->v_len);
-                                        char *p_str = buf2;
-                                        while (*p_str && *p_str != '-' && *p_str != '.' && (*p_str < '0' || *p_str > '9')) p_str++;
-                                        sum += strtod(p_str, NULL) * w;
-                                    }
-                                        }
-                                    }
-                                }
-                                char val[64]; int vl_out = 0;
-                                if (op == 8) vl_out = snprintf(val, sizeof(val), "%.0f\t%llu", count_est, (unsigned long long)raw_count);
-                                else vl_out = snprintf(val, sizeof(val), "%.17g\t%llu", sum, (unsigned long long)raw_count);
-                                send_response(fd, cipherkey, 0, val, vl_out);
                             } else if (op == 10) {
                                 if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
                                 char val[64]; int vl_out = 0; int wrote = 0;

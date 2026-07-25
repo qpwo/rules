@@ -74,15 +74,13 @@ export async function drop_prefix(client, color, tenant, prefix) {
 }
 
 export async function scan(client, color, tenant, prefix = '', threshold = 1.0, now = null) {
-    var val = String(threshold);
-    if (now !== null) val += '\t' + String(now);
-    return parseWeighted(await request(client, 'scan', color, tenant, prefix, val));
+    var k = prefix + '\t' + threshold + '\t' + (now === null ? Date.now() / 1000.0 : now);
+    return parseWeighted(await request(client, 'scan', color, tenant, k, ''));
 }
 
 export async function search(client, color, tenant, words, threshold = 1.0, now = null) {
-    var key = String(threshold);
-    if (now !== null) key += '\t' + String(now);
-    return parseWeighted(await request(client, 'search', color, tenant, key, Array.isArray(words) ? words.join('\t') : words));
+    var k = '\t' + threshold + '\t' + (now === null ? Date.now() / 1000.0 : now);
+    return parseWeighted(await request(client, 'search', color, tenant, k, Array.isArray(words) ? words.join('\t') : words));
 }
 
 function parseWeighted(res) {
@@ -97,35 +95,16 @@ function parseWeighted(res) {
     return out;
 }
 
-export async function tail(client, color, offset = 0) {
-    return request(client, 'tail', color, '', '', String(offset));
+export async function count(client, color, tenant, words = '', prefix = '', threshold = 1.0, now = null) {
+    var k = prefix + '\t' + threshold + '\t' + (now === null ? Date.now() / 1000.0 : now);
+    var res = await request(client, 'count', color, tenant, k, Array.isArray(words) ? words.join('\t') : words);
+    var p = res.toString().split('\t');
+    return { estimated: Number(p[0]), raw: Number(p[1]) };
 }
 
-export async function* follow(client, color, offset = 0) {
-    while (true) {
-        var res = await request(client, 'tail', color, '', '', String(offset));
-        var str = res.toString();
-        var lines = str.split('\n');
-        for (var i = 0; i < lines.length - 1; i++) {
-            var parts = lines[i].split('\t');
-            offset = Number(parts[0]);
-            yield parts;
-        }
-        if (!res.hasMore && lines.length < 2) {
-            await new Promise(r => setTimeout(r, 500));
-        }
-    }
-}
-
-export async function closest(client, color, tenant, keyOrType, typeOrVector) {
-    return request(client, 'closest', color, tenant, keyOrType, typeOrVector);
-}
-
-export async function count(client, color, tenant, prefix = '', threshold = 1.0, now = null) {
-    if (now === null) now = Date.now() / 1000.0;
-    var val = String(threshold);
-    if (now !== null) val += '\t' + String(now);
-    var res = await request(client, 'count', color, tenant, prefix, val);
+export async function sum(client, color, tenant, words = '', prefix = '', threshold = 1.0, now = null) {
+    var k = prefix + '\t' + threshold + '\t' + (now === null ? Date.now() / 1000.0 : now);
+    var res = await request(client, 'sum', color, tenant, k, Array.isArray(words) ? words.join('\t') : words);
     var p = res.toString().split('\t');
     return { estimated: Number(p[0]), raw: Number(p[1]) };
 }
@@ -333,11 +312,11 @@ async function cli(client, a) {
     if (a[0] === 'closest' && a.length === 5) {
         return closest(client, parseI32(a[1]), a[2], a[3], a[4]);
     }
-    if (a[0] === 'count' && (a.length >= 3 && a.length <= 6)) {
-        return count(client, parseI32(a[1]), a[2], a[3] ?? '', a[4] ? Number(a[4]) : 1.0, a[5] ? Number(a[5]) : null);
+    if (a[0] === 'count' && (a.length >= 3 && a.length <= 7)) {
+        return count(client, parseI32(a[1]), a[2], a[3] ?? '', a[4] ?? '', a[5] ? Number(a[5]) : 1.0, a[6] ? Number(a[6]) : null);
     }
-    if (a[0] === 'sum' && (a.length >= 3 && a.length <= 6)) {
-        return sum(client, parseI32(a[1]), a[2], a[3] ?? '', a[4] ? Number(a[4]) : 1.0, a[5] ? Number(a[5]) : null);
+    if (a[0] === 'sum' && (a.length >= 3 && a.length <= 7)) {
+        return sum(client, parseI32(a[1]), a[2], a[3] ?? '', a[4] ?? '', a[5] ? Number(a[5]) : 1.0, a[6] ? Number(a[6]) : null);
     }
     if (a[0] === 'incr' && a.length === 5) {
         return incr(client, parseI32(a[1]), a[2], a[3], a[4]);
@@ -434,8 +413,8 @@ function usage() {
         '  search COLOR TENANT WORD... [THRESHOLD]',
         '  tail COLOR [OFFSET]',
         '  closest COLOR TENANT KEY TYPE',
-        '  count COLOR TENANT [PREFIX] [THRESHOLD] [NOW]',
-        '  sum COLOR TENANT [PREFIX] [THRESHOLD] [NOW]',
+        '  count COLOR TENANT [WORDS] [PREFIX] [THRESHOLD] [NOW]',
+        '  sum COLOR TENANT [WORDS] [PREFIX] [THRESHOLD] [NOW]',
         '  incr COLOR TENANT KEY DELTA',
         '  take COLOR TENANT KEY',
         '  putnx COLOR TENANT KEY VALUE',
