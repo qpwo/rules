@@ -2076,7 +2076,7 @@ static int write_full(int fd, const void *buf, size_t n) {
 }
 
 static void send_response(int fd, int32_t cipherkey, int32_t status, const void *payload, uint32_t n) {
-    if (n > 64u * 1024u * 1024u - 16u) {
+    if (n > 64u * 1024u * 1024u - 20u) {
         status = 3;
         payload = "too large";
         n = 9;
@@ -2099,7 +2099,7 @@ static void send_response(int fd, int32_t cipherkey, int32_t status, const void 
     uint8_t small[4096];
     uint8_t *buf = small;
     if (4 + len > sizeof(small)) {
-        if (len > 32u * 1024u * 1024u) {
+        if (len > 64u * 1024u * 1024u - 4u) {
             status = 3;
             payload = "shed";
             n = 4;
@@ -2592,7 +2592,7 @@ if (match) {
                                 } else {
                                     char val[128]; int vl_out = 0;
 if (max_wl < 0) max_wl = 0;
-                                if (raw_count < 100 && !max_wl) { count_est = raw_count; sum = raw_sum; }
+                                if (raw_count < 100) { count_est = raw_count; sum = raw_sum; }
                                 if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu\t%d", count_est, (unsigned long long)raw_count, max_wl);
                                 else vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%llu\t%d", sum, raw_sum, (unsigned long long)raw_count, max_wl);
                                     send_response(fd, cipherkey, 0, val, vl_out);
