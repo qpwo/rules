@@ -485,6 +485,7 @@ static void load_db(const char *path)
     if (close(fd)) {
         die("close");
     }
+    (void)madvise(map_base, map_size, MADV_HUGEPAGE);
     (void)posix_madvise(map_base, map_size, POSIX_MADV_SEQUENTIAL);
     uint64_t off = valid_size;
     uint64_t start_len = ht_len;
