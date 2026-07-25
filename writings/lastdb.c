@@ -321,6 +321,12 @@ static void ht_put(uint64_t hash, uint64_t off)
     uint64_t idx = hash & mask;
 
     while (1) {
+        if (elem.dist >= ht_max_probe) {
+            ht_reserve(ht_cap);
+            elem.dist = 0;
+            idx = elem.hash & (ht_cap - 1);
+            continue;
+        }
         if (ht[idx].dist < 0) {
             ht[idx] = elem;
             ht_len++;
