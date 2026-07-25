@@ -1577,12 +1577,11 @@ static float vec_dot_f32_avx512(const void *a, const void *b, size_t bytes) {
     sum0 = _mm512_add_ps(sum0, sum1);
     sum2 = _mm512_add_ps(sum2, sum3);
     sum0 = _mm512_add_ps(sum0, sum2);
-    for (; i + 15 < n; i += 16) {
-        sum0 = _mm512_fmadd_ps(_mm512_loadu_ps(fa + i), _mm512_loadu_ps(fb + i), sum0);
+    for (; i < n; i += 16) {
+        __mmask16 mask = n - i >= 16 ? 0xFFFF : ((1u << (n - i)) - 1u);
+        sum0 = _mm512_fmadd_ps(_mm512_maskz_loadu_ps(mask, fa + i), _mm512_maskz_loadu_ps(mask, fb + i), sum0);
     }
-    float sum = _mm512_reduce_add_ps(sum0);
-    for (; i < n; i++) sum += fa[i] * fb[i];
-    return sum;
+    return _mm512_reduce_add_ps(sum0);
 }
 
 __attribute__((target("avx2,fma")))
