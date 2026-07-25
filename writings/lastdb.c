@@ -2297,7 +2297,6 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                 while (1) {
                     usleep(1000000);
                     int need_compact = 0;
-        int sfd = -1;
         { SRV_READ_LOCK(db_path);
             if (srv_db_fd >= 0) {
                 struct statvfs st;
@@ -2306,12 +2305,11 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                     uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.15L);
                     if (free_bytes < reserve_bytes) need_compact = 1;
                 }
-                sfd = srv_db_fd;
+                (void)fdatasync(srv_db_fd);
             }
             if (!last_compact_size) last_compact_size = valid_size;
             if (valid_size > 1073741824ULL && valid_size > last_compact_size * 3 / 2) need_compact = 1;
         }
-        if (sfd >= 0) (void)fdatasync(sfd);
                     if (need_compact) { SRV_WRITE_LOCK(db_path); do_compact(db_path); if (srv_db_fd >= 0) { close(srv_db_fd); srv_db_fd = -1; } load_db(db_path); if (srv_db_fd < 0) srv_db_fd = open_append(db_path); last_compact_size = valid_size; }
                 }
             }
