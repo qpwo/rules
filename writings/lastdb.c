@@ -128,14 +128,20 @@ static uint64_t key_hash(const char *t, uint16_t tl, const char *k, uint16_t kl)
 }
 
 static uint64_t ht_lower_bound(uint64_t hash) {
-    uint64_t len = ht_sorted_len;
+    uint64_t length = ht_sorted_len;
+    if (length == 0) return 0;
+    uint64_t step = 1ULL << (63 - __builtin_clzll(length));
     uint64_t begin = 0;
-    while (len > 1) {
-        uint64_t half = len >> 1;
-        begin += ht[begin + half].hash < hash ? half : 0;
-        len -= half;
+    if (step != length && ht[step].hash < hash) {
+        length -= step + 1;
+        if (length == 0) return ht_sorted_len;
+        step = length == 1 ? 1 : 1ULL << (64 - __builtin_clzll(length - 1));
+        begin = ht_sorted_len - step;
     }
-    return begin + (len > 0 && ht[begin].hash < hash);
+    for (step >>= 1; step != 0; step >>= 1) {
+        if (ht[begin + step].hash < hash) begin += step;
+    }
+    return begin + (ht[begin].hash < hash);
 }
 
 static void ht_tenant_range(const char *t, uint16_t tl, uint64_t *start_idx, uint64_t *end_idx) {
