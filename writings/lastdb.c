@@ -30,7 +30,8 @@
 typedef struct __attribute__((packed)) {
     uint32_t magic;
     uint32_t len;
-    uint16_t t_len;
+    uint8_t t_len;
+    uint8_t weight_log;
     uint16_t k_len;
     uint32_t v_len;
     uint8_t op;
@@ -154,6 +155,7 @@ static uint64_t rec_check(const Record *r, const char *t, const char *k, const c
     h = fnv_u64(h, r->magic);
     h = fnv_u64(h, r->len);
     h = fnv_u64(h, r->t_len);
+    h = fnv_u64(h, r->weight_log);
     h = fnv_u64(h, r->k_len);
     h = fnv_u64(h, r->v_len);
     h = fnv_u64(h, r->op);
@@ -377,20 +379,18 @@ static int append_raw(int fd, const char *t, size_t tl, const char *k, size_t kl
         v = "";
         vl = 0;
     }
-    if (tl > UINT16_MAX || kl > UINT16_MAX) diex("tenant/key too long");
+    if (tl > 255 || kl > UINT16_MAX) diex("tenant/key too long");
     if (vl > UINT32_MAX) diex("value too long");
     if (sizeof(Record) + tl + kl + vl > UINT32_MAX) diex("record too long");
 
     Record r = {0};
     r.magic = MAGIC;
     r.len = (uint32_t)(sizeof(r) + tl + kl + vl);
-    r.t_len = (uint16_t)tl;
+    r.t_len = (uint8_t)tl;
+    r.weight_log = 0;
     r.k_len = (uint16_t)kl;
     r.v_len = (uint32_t)vl;
     r.op = op;
-    r.bf = compute_bf(k, kl) | compute_bf(v, vl);
-    r.key_hash = key_hash(t, r.t_len, k, r.k_len);
-    r.check = rec_check(&r, t, k, v);
 
     struct statvfs st;
     if (op != OP_DEL && !fstatvfs(fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
@@ -398,14 +398,20 @@ static int append_raw(int fd, const char *t, size_t tl, const char *k, size_t kl
         uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.1L);
         double avail = (double)st.f_bavail / st.f_blocks;
         double keep = __builtin_exp2(50.0 * (avail - 0.2));
-        double gate = (double)(r.check >> 11) * 0x1.0p-53;
+        double gate = (double)(key_hash(t, r.t_len, k, r.k_len) >> 11) * 0x1.0p-53;
         if (free_bytes < reserve_bytes + r.len) {
             return 0;
         }
-        if (avail < 0.2 && gate > keep) {
-            return 0;
+        if (avail < 0.2) {
+            if (gate > keep) return 0;
+            int wl = (int)(-50.0 * (avail - 0.2));
+            r.weight_log = wl > 31 ? 31 : wl;
         }
     }
+
+    r.bf = compute_bf(k, kl) | compute_bf(v, vl);
+    r.key_hash = key_hash(t, r.t_len, k, r.k_len);
+    r.check = rec_check(&r, t, k, v);
 
     struct iovec iov[4] = {
         {&r, sizeof(r)},
@@ -1343,14 +1349,15 @@ static int batch_put(int fd, char *buf, size_t *used, const char *t, const char 
     size_t tl = strlen(t);
     size_t kl = strlen(k);
     size_t vl = strlen(v);
-    if (tl > UINT16_MAX || kl > UINT16_MAX) diex("tenant/key too long");
+    if (tl > 255 || kl > UINT16_MAX) diex("tenant/key too long");
     if (vl > UINT32_MAX) diex("value too long");
     if (sizeof(Record) + tl + kl + vl > UINT32_MAX) diex("record too long");
 
     Record r = {0};
     r.magic = MAGIC;
     r.len = (uint32_t)(sizeof(r) + tl + kl + vl);
-    r.t_len = (uint16_t)tl;
+    r.t_len = (uint8_t)tl;
+    r.weight_log = 0;
     r.k_len = (uint16_t)kl;
     r.v_len = (uint32_t)vl;
     r.op = OP_PUT;
@@ -1529,7 +1536,13 @@ static inline Chunk *chunk_pop(void) {
 }
 
 static int srv_db_fd = -1;
+#include <sys/resource.h>
 static void do_serve(const char *db_path, int port, int32_t cipherkey) {
+    struct rlimit rl;
+    if (getrlimit(RLIMIT_NOFILE, &rl)) die("getrlimit");
+    int max_conn = (rl.rlim_cur > 100 ? rl.rlim_cur : 100) * 9 / 10;
+    _Atomic int active_conn = 0;
+
     int srv = socket(AF_INET, SOCK_STREAM, 0);
     if (srv < 0) die("socket");
     int opt = 1;
@@ -1549,6 +1562,11 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
             while (1) {
                 int fd = accept(srv, NULL, NULL);
                 if (fd >= 0) {
+                    if (active_conn >= max_conn) {
+                        close(fd);
+                        continue;
+                    }
+                    active_conn++;
                     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
                     #pragma omp task
                     {
@@ -1605,7 +1623,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
 
                             char full_tenant[65536];
                             int ft_len = sprintf(full_tenant, "%d:", color);
-                            if (tl > 60000) tl = 60000;
+                            if (tl > 200) tl = 200;
                             memcpy(full_tenant + ft_len, t, tl);
                             ft_len += tl;
                             full_tenant[ft_len] = 0;
@@ -1785,11 +1803,11 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
                                         if (kl && (r->k_len < kl || memcmp(rec_k(r), k, kl))) continue;
                                         if (threshold < 1.0 && (double)(r->check >> 11) * 0x1.0p-53 > threshold) continue;
-                                        count++;
+                                        count += 1ULL << r->weight_log;
                                         if (op == 9 && r->v_len > 0 && r->v_len < 64) {
                                             char buf2[64] = {0}; memcpy(buf2, rec_v(r), r->v_len);
                                             char *p = buf2; while (*p && *p != '-' && *p != '.' && (*p < '0' || *p > '9')) p++;
-                                            sum += strtod(p, NULL);
+                                            sum += strtod(p, NULL) * (1ULL << r->weight_log);
                                         }
                                     }
                                 }
@@ -1845,6 +1863,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             chunk_push(c);
                         }
                         close(fd);
+                        active_conn--;
                     }
                 }
             }
@@ -1919,7 +1938,7 @@ int main(int argc, char **argv)
                 if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
                     if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
                     if (threshold < 1.0 && (double)(r->check >> 11) * 0x1.0p-53 > threshold) continue;
-                    c++;
+                    c += 1ULL << r->weight_log;
                 }
                 if (threshold < 1.0 && threshold > 0) printf("%.0f\n", c / threshold);
                 else printf("%llu\n", (unsigned long long)c);
@@ -1940,7 +1959,7 @@ int main(int argc, char **argv)
                         char buf[64] = {0};
                         memcpy(buf, rec_v(r), r->v_len);
                         char *p = buf; while (*p && *p != '-' && *p != '.' && (*p < '0' || *p > '9')) p++;
-                        s += strtod(p, NULL);
+                        s += strtod(p, NULL) * (1ULL << r->weight_log);
                     }
                 }
                 if (threshold < 1.0 && threshold > 0) printf("%.17g\n", s / threshold);
