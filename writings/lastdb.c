@@ -281,17 +281,29 @@ static Node *ht_get(const char *t, uint16_t tl, const char *k, uint16_t kl)
 {
     if (!ht_len) return NULL;
     uint64_t hash = key_hash(t, tl, k, kl);
-    uint64_t n = ht_len;
-    Node *base = ht;
-    while (n > 1) {
-        uint64_t half = n / 2;
-        base += (base[half].hash < hash) ? half : 0;
-        n -= half;
+    uint64_t length = ht_len;
+    Node *begin = ht;
+    Node *end = ht + length;
+    uint64_t step = 1ULL << (63 - __builtin_clzll(length));
+    if (step != length && begin[step].hash < hash) {
+        length -= step + 1;
+        if (length == 0) {
+            begin = end;
+            goto done;
+        }
+        step = length <= 1 ? 1 : 1ULL << (64 - __builtin_clzll(length - 1));
+        begin = end - step;
     }
-    base += (base->hash < hash);
-    while (base < ht + ht_len && base->hash == hash) {
-        if (key_eq(base->off1 - 1, t, tl, k, kl)) return base;
-        base++;
+    for (step /= 2; step != 0; step /= 2) {
+        if (begin[step].hash < hash) {
+            begin += step;
+        }
+    }
+    begin += (begin->hash < hash);
+done:
+    while (begin < end && begin->hash == hash) {
+        if (key_eq(begin->off1 - 1, t, tl, k, kl)) return begin;
+        begin++;
     }
     return NULL;
 }
