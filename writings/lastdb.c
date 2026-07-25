@@ -1602,86 +1602,20 @@ static void send_response(int fd, int32_t cipherkey, int32_t status, const void 
     if (resp_c) chunk_push(resp_c);
 }
 
-#include <linux/rseq.h>
-extern __thread struct rseq __rseq_abi __attribute__((weak, tls_model("initial-exec")));
-
-static struct {
-    Chunk *freelist;
-} __attribute__((aligned(64))) chunk_heaps[CPU_SETSIZE];
+static __thread Chunk *chunk_freelist;
 
 static inline void chunk_push(Chunk *chunk) {
-#ifdef __x86_64__
-    if (&__rseq_abi) {
-        asm volatile(".pushsection .rodata.rseq,\"a\",@progbits\n"
-                     "    .balign    32\n"
-                     "300:    .long    0\n"
-                     "    .long    0\n"
-                     "    .quad    301f\n"
-                     "    .quad    302f-301f\n"
-                     "    .quad    303f\n"
-                     "    .popsection\n"
-                     "301:    lea    300b(%%rip),%%rcx\n"
-                     "    mov    %%rcx,8(%1)\n"
-                     "    mov    (%1),%%ecx\n"
-                     "    shl    $6,%%ecx\n"
-                     "    mov    (%2,%%rcx),%%rdx\n"
-                     "    mov    %%rdx,(%0)\n"
-                     "    mov    %0,(%2,%%rcx)\n"
-                     "302:    .pushsection .text.unlikely,\"ax\",@progbits\n"
-                     "    .byte    0x0f,0xb9,0x4d\n"
-                     "    .long    0x53053053\n"
-                     "303:    jmp    301b\n"
-                     "    .popsection"
-                     : : "r"(chunk), "r"(&__rseq_abi), "r"(chunk_heaps) : "rcx", "rdx", "memory");
-        return;
-    }
-#endif
-    #pragma omp critical (chunks)
-    {
-        *(Chunk **)chunk = chunk_heaps[0].freelist;
-        chunk_heaps[0].freelist = chunk;
-    }
+    *(Chunk **)chunk = chunk_freelist;
+    chunk_freelist = chunk;
 }
 
 static inline Chunk *chunk_pop(void) {
-    Chunk *chunk = NULL;
-#ifdef __x86_64__
-    if (&__rseq_abi) {
-        asm volatile(".pushsection .rodata.rseq,\"a\",@progbits\n"
-                     "    .balign    32\n"
-                     "300:    .long    0\n"
-                     "    .long    0\n"
-                     "    .quad    301f\n"
-                     "    .quad    302f-301f\n"
-                     "    .quad    303f\n"
-                     "    .popsection\n"
-                     "301:    lea    300b(%%rip),%%rcx\n"
-                     "    mov    %%rcx,8(%1)\n"
-                     "    mov    (%1),%%ecx\n"
-                     "    shl    $6,%%ecx\n"
-                     "    mov    (%2,%%rcx),%0\n"
-                     "    test    %0,%0\n"
-                     "    jz    302f\n"
-                     "    mov    (%0),%%rdx\n"
-                     "    mov    %%rdx,(%2,%%rcx)\n"
-                     "302:    .pushsection .text.unlikely,\"ax\",@progbits\n"
-                     "    .byte    0x0f,0xb9,0x4d\n"
-                     "    .long    0x53053053\n"
-                     "303:    jmp    301b\n"
-                     "    .popsection"
-                     : "=&r"(chunk) : "r"(&__rseq_abi), "r"(chunk_heaps) : "rcx", "rdx", "memory");
+    Chunk *chunk = chunk_freelist;
+    if (chunk) {
+        chunk_freelist = *(Chunk **)chunk;
+        return chunk;
     }
-#endif
-    if (!chunk) {
-        #pragma omp critical (chunks)
-        {
-            if (chunk_heaps[0].freelist) {
-                chunk = chunk_heaps[0].freelist;
-                chunk_heaps[0].freelist = *(Chunk **)chunk;
-            }
-        }
-    }
-    if (chunk) return chunk;
+
     struct sysinfo si;
     if (!sysinfo(&si)) {
         uint64_t total = (uint64_t)si.totalram * si.mem_unit;
