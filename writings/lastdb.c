@@ -1321,7 +1321,7 @@ static void write_weighted_record(Record *r, double now)
     }
 
     double print_w = (double)(1U << (r->weight_log > 20 ? 20 : r->weight_log));
-    if (cur > 0) print_w *= cur;
+    if (cur) print_w *= __builtin_fabs(cur);
     if (print_w < 0.5) return;
     char wbuf[32];
     int wl = snprintf(wbuf, sizeof(wbuf), "%.5g\t", print_w);
@@ -2551,7 +2551,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
                                         double db_w = (threshold < 1.0) ? 1.0 : (double)(1U << (r->weight_log > 20 ? 20 : r->weight_log));
                                         double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
                                         double w_weight = db_w * qw;
-                                        double eff_w = is_decay ? w_weight * cur : w_weight;
+                                        double eff_w = is_decay ? w_weight * __builtin_fabs(cur) : w_weight;
                                         if (eff_w < min_weight) continue;
                                         if (op == 4 || op == 5) {
                                             char weight[32];
@@ -2572,7 +2572,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
                                     raw_count++;
                                             if (op == 9 && r->v_len > 0) {
                                                 if (is_decay) {
-                                                    sum += eff_w;
+                                                    sum += w_weight * cur;
                                                     raw_sum += cur;
                                                 } else if (r->v_len < 192) {
                                                     char buf2[192] = {0};
