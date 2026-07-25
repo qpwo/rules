@@ -2580,13 +2580,9 @@ double rse = count_est > 0 ? __builtin_sqrt(w2_sum > count_est ? w2_sum - count_
 double confidence = rse >= 1.0 ? 0.0 : 1.0 - rse;
 if (decay_est > 0 && count_est > 0) { double decay_frac = decay_est / count_est; confidence *= 1.0 - decay_frac * 0.5; }
 if (max_wl > 0 && w2_sum > 0 && count_est > 0) { double ess = count_est * count_est / w2_sum; if (ess < 30.0) confidence *= ess / 30.0; }
-                                if (confidence < 0.3) {
-                                    send_response(fd, cipherkey, 2, "low_confidence", 14);
-                                } else {
                                 if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu\t%d\t%.4g", count_est, (unsigned long long)raw_count, max_wl, confidence);
                                 else vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%llu\t%d\t%.4g", sum, raw_sum, (unsigned long long)raw_count, max_wl, confidence);
-                                    send_response(fd, cipherkey, 0, val, vl_out);
-                                }
+                                send_response(fd, cipherkey, 0, val, vl_out);
                                 }
                             } else if (op == 10) {
                                 if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
