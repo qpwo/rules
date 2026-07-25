@@ -251,6 +251,10 @@ static int worker_threads(void)
 
     int n = omp_get_num_procs();
     int budget = n * 9 / 10;
+    double load[1];
+    if (getloadavg(load, 1) == 1 && load[0] > n * 0.8) {
+        budget = n / 2;
+    }
     return budget > 0 ? budget : 1;
 }
 
@@ -2582,7 +2586,8 @@ double confidence = ess >= 1000 ? 1.0 : ess / 1000.0;
 if (max_wl > 0) confidence *= (20.0 - max_wl) / 20.0;
                                 if (count_est < 0.5) count_est = 0;
                                 if (__builtin_fabs(sum) < 5e-15) sum = 0;
-                                if (confidence < 0.10) { count_est = 0; sum = 0; confidence = 0; }
+                                if (raw_count < 5) confidence *= (double)raw_count / 5.0;
+                                if (confidence < 0.15) { count_est = 0; sum = 0; confidence = 0; }
                                 if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu\t%d\t%.4g", count_est, (unsigned long long)raw_count, max_wl, confidence);
                                 else vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%llu\t%d\t%.4g", sum, raw_sum, (unsigned long long)raw_count, max_wl, confidence);
                                 send_response(fd, cipherkey, 0, val, vl_out);
