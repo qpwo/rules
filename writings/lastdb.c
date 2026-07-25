@@ -1580,10 +1580,7 @@ static float vec_dot_f32_avx512(const void *a, const void *b, size_t bytes) {
     for (; i + 15 < n; i += 16) {
         sum0 = _mm512_fmadd_ps(_mm512_loadu_ps(fa + i), _mm512_loadu_ps(fb + i), sum0);
     }
-    float buf[16];
-    _mm512_storeu_ps(buf, sum0);
-    float sum = 0;
-    for (int j = 0; j < 16; j++) sum += buf[j];
+    float sum = _mm512_reduce_add_ps(sum0);
     for (; i < n; i++) sum += fa[i] * fb[i];
     return sum;
 }
@@ -1743,10 +1740,7 @@ static float vec_dot_i8_avx512vnni(const void *a, const void *b, size_t bytes) {
     for (; i + 63 < n; i += 64) {
         sum0 = _mm512_dpbssd_epi32(sum0, _mm512_loadu_si512((const void *)(ca + i)), _mm512_loadu_si512((const void *)(cb + i)));
     }
-    int32_t buf[16];
-    _mm512_storeu_si512((void *)buf, sum0);
-    int32_t sum = 0;
-    for (int j = 0; j < 16; j++) sum += buf[j];
+    int32_t sum = _mm512_reduce_add_epi32(sum0);
     for (; i < n; i++) sum += (int32_t)ca[i] * (int32_t)cb[i];
     return (float)sum;
 }
