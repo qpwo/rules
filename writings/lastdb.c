@@ -1206,7 +1206,10 @@ static int do_search(const char *t, int num_words, char **words)
     size_t lens[num_words];
     term_lens(num_words, words, lens);
     for (int i = 0; i < num_words; i++) {
-        if (lens[i] < 3) diex("search terms need at least 3 bytes");
+        char *w = words[i][0] == '-' ? words[i] + 1 : words[i];
+        size_t wl = words[i][0] == '-' ? lens[i] - 1 : lens[i];
+        if (wl < 3 && w[0] != '>' && w[0] != '<' && w[0] != '^') diex("search terms need at least 3 bytes");
+        if (wl < 2) diex("search operators need a number");
     }
 
     uint64_t term_bfs[num_words];
