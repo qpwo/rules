@@ -1438,8 +1438,37 @@ static int do_compact(const char *path)
 typedef float unaligned_f32 __attribute__((aligned(1)));
 typedef uint16_t unaligned_f16 __attribute__((aligned(1)));
 
+__attribute__((target("avx512f")))
+static float vec_dot_f32_avx512(const void *a, const void *b, size_t bytes) {
+    size_t n = bytes / 4;
+    const unaligned_f32 *fa = a, *fb = b;
+    __m512 sum0 = _mm512_setzero_ps();
+    __m512 sum1 = _mm512_setzero_ps();
+    __m512 sum2 = _mm512_setzero_ps();
+    __m512 sum3 = _mm512_setzero_ps();
+    size_t i = 0;
+    for (; i + 63 < n; i += 64) {
+        sum0 = _mm512_fmadd_ps(_mm512_loadu_ps(fa + i), _mm512_loadu_ps(fb + i), sum0);
+        sum1 = _mm512_fmadd_ps(_mm512_loadu_ps(fa + i + 16), _mm512_loadu_ps(fb + i + 16), sum1);
+        sum2 = _mm512_fmadd_ps(_mm512_loadu_ps(fa + i + 32), _mm512_loadu_ps(fb + i + 32), sum2);
+        sum3 = _mm512_fmadd_ps(_mm512_loadu_ps(fa + i + 48), _mm512_loadu_ps(fb + i + 48), sum3);
+    }
+    sum0 = _mm512_add_ps(sum0, sum1);
+    sum2 = _mm512_add_ps(sum2, sum3);
+    sum0 = _mm512_add_ps(sum0, sum2);
+    for (; i + 15 < n; i += 16) {
+        sum0 = _mm512_fmadd_ps(_mm512_loadu_ps(fa + i), _mm512_loadu_ps(fb + i), sum0);
+    }
+    float buf[16];
+    _mm512_storeu_ps(buf, sum0);
+    float sum = 0;
+    for (int j = 0; j < 16; j++) sum += buf[j];
+    for (; i < n; i++) sum += fa[i] * fb[i];
+    return sum;
+}
+
 __attribute__((target("avx2,fma")))
-static float vec_dot_f32(const void *a, const void *b, size_t bytes) {
+static float vec_dot_f32_avx2(const void *a, const void *b, size_t bytes) {
     size_t n = bytes / 4;
     const unaligned_f32 *fa = a, *fb = b;
     __m256 sum0 = _mm256_setzero_ps();
@@ -1482,6 +1511,13 @@ static float vec_dot_f32(const void *a, const void *b, size_t bytes) {
     float sum = buf[0] + buf[1] + buf[2] + buf[3] + buf[4] + buf[5] + buf[6] + buf[7];
     for (; i < n; i++) sum += fa[i] * fb[i];
     return sum;
+}
+
+static float vec_dot_f32(const void *a, const void *b, size_t bytes) {
+    if (__builtin_cpu_supports("avx512f")) {
+        return vec_dot_f32_avx512(a, b, bytes);
+    }
+    return vec_dot_f32_avx2(a, b, bytes);
 }
 
 __attribute__((target("avx2,f16c,fma")))
