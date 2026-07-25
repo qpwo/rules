@@ -67,8 +67,8 @@ export async function tail(client, color, offset = 0) {
     return request(client, 'tail', color, '', '', String(offset));
 }
 
-export async function closest(client, color, tenant, key, type) {
-    return request(client, 'closest', color, tenant, key, type);
+export async function closest(client, color, tenant, keyOrType, typeOrVector) {
+    return request(client, 'closest', color, tenant, keyOrType, typeOrVector);
 }
 
 export async function count(client, color, tenant, prefix = '', threshold = 1.0) {

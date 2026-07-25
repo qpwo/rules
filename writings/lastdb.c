@@ -919,7 +919,7 @@ static int do_tail(const char *path, const char *start, int follow)
             if (!rec_valid(off)) break;
             Record *r = rec_at(off);
             uint64_t next = off + r->len;
-            printf("%llu\t%llu\t%s\t", (unsigned long long)next, (unsigned long long)off, r->op == OP_PUT ? "put" : "del");
+            printf("%llu\t%llu\t%s\t%u\t", (unsigned long long)next, (unsigned long long)off, r->op == OP_PUT ? "put" : "del", 1U << r->weight_log);
             fwrite(rec_t(r), 1, r->t_len, stdout);
             putchar('\t');
             fwrite(rec_k(r), 1, r->k_len, stdout);
@@ -1367,7 +1367,10 @@ static int do_closest(const char *path, const char *type, const char *t, const c
             if (ht[i].off1 == n->off1) continue; // skip self
             if (memcmp(rec_t(c), t, r->t_len) != 0) continue;
 
-            float score = dot_fn(rec_v(r), rec_v(c), r->v_len);
+            size_t p_len = r->v_len > 256 ? 256 : r->v_len;
+            float p_score = dot_fn(rec_v(r), rec_v(c), p_len);
+            if (p_len < r->v_len && p_score * ((float)r->v_len / p_len) < local_best - 0.5f) continue;
+            float score = p_len < r->v_len ? p_score + dot_fn(rec_v(r) + p_len, rec_v(c) + p_len, r->v_len - p_len) : p_score;
             if (score > local_best) {
                 local_best = score;
                 local_k = rec_k(c);
@@ -1869,7 +1872,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         int cpl = sprintf(color_prefix, "%d:", color);
                                         if (r->t_len >= cpl && !memcmp(rec_t(r), color_prefix, cpl)) {
                                             char line[128];
-                                            int ll = sprintf(line, "%llu\t%llu\t%s\t", (unsigned long long)next, (unsigned long long)off, r->op == OP_PUT ? "put" : "del");
+                                            int ll = sprintf(line, "%llu\t%llu\t%s\t%u\t", (unsigned long long)next, (unsigned long long)off, r->op == OP_PUT ? "put" : "del", 1U << r->weight_log);
                                             APP(line, ll);
                                             APP(rec_t(r) + cpl, r->t_len - cpl); APP("\t", 1);
                                             APP(rec_k(r), r->k_len); APP("\t", 1);
@@ -1885,7 +1888,10 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
                                 float (*dot_fn)(const void *, const void *, size_t) = NULL;
                                 char type[16] = {0};
-                                if (vl > 0 && vl < 15) memcpy(type, v, vl);
+                                const char *q_vec = NULL;
+                                size_t q_len = 0;
+                                if (vl > 0 && vl < 15) { memcpy(type, v, vl); }
+                                else if (vl >= 15 && kl < 15) { memcpy(type, k, kl); q_vec = v; q_len = vl; }
                                 if (!strcmp(type, "f32")) dot_fn = vec_dot_f32;
                                 else if (!strcmp(type, "f16")) dot_fn = vec_dot_f16;
                                 else if (!strcmp(type, "i8")) dot_fn = vec_dot_i8;
@@ -1896,33 +1902,35 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 #pragma omp critical (db)
                                 {
                                     load_db(db_path);
-                                    Node *n = ht_get(full_tenant, ft_len, k, kl);
-                                    if (n) {
-                                        Record *r = rec_at(n->off1 - 1);
-                                        if (r->op != OP_DEL && r->v_len) {
-                                            if ((!strcmp(type,"f32") && r->v_len%4==0) || (!strcmp(type,"f16") && r->v_len%2==0) || (!strcmp(type,"i8"))) {
-                                                float best_score = -1e30f;
-                                                uint64_t start_idx, end_idx;
-                                                ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
-                                                #pragma omp parallel num_threads(worker_threads())
-                                                {
-                                                    float local_best = -1e30f;
-                                                    const char *local_k = NULL;
-                                                    uint16_t local_k_len = 0;
-                                                    #pragma omp for schedule(dynamic, 1024)
-                                                    for (uint64_t i = start_idx; i < end_idx; i++) {
-                                                        Record *c_rec = rec_at(ht[i].off1 - 1);
-                                                        if (c_rec->op == OP_DEL || c_rec->t_len != ft_len || c_rec->v_len != r->v_len) continue;
-                                                        if (ht[i].off1 == n->off1) continue;
-                                                        if (memcmp(rec_t(c_rec), full_tenant, ft_len) != 0) continue;
-                                                        float score = dot_fn(rec_v(r), rec_v(c_rec), r->v_len);
-                                                        if (score > local_best) { local_best = score; local_k = rec_k(c_rec); local_k_len = c_rec->k_len; }
-                                                    }
-                                                    #pragma omp critical (best)
-                                                    {
-                                                        if (local_best > best_score) { best_score = local_best; best_k = local_k; best_k_len = local_k_len; }
-                                                    }
-                                                }
+                                    Node *n = NULL;
+                                    if (!q_vec) {
+                                        n = ht_get(full_tenant, ft_len, k, kl);
+                                        if (n) { Record *r = rec_at(n->off1 - 1); if (r->op != OP_DEL && r->v_len) { q_vec = rec_v(r); q_len = r->v_len; } }
+                                    }
+                                    if (q_vec && ((!strcmp(type,"f32") && q_len%4==0) || (!strcmp(type,"f16") && q_len%2==0) || (!strcmp(type,"i8")))) {
+                                        float best_score = -1e30f;
+                                        uint64_t start_idx, end_idx;
+                                        ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
+                                        #pragma omp parallel num_threads(worker_threads())
+                                        {
+                                            float local_best = -1e30f;
+                                            const char *local_k = NULL;
+                                            uint16_t local_k_len = 0;
+                                            #pragma omp for schedule(dynamic, 1024)
+                                            for (uint64_t i = start_idx; i < end_idx; i++) {
+                                                Record *c_rec = rec_at(ht[i].off1 - 1);
+                                                if (c_rec->op == OP_DEL || c_rec->t_len != ft_len || c_rec->v_len != q_len) continue;
+                                                if (n && ht[i].off1 == n->off1) continue;
+                                                if (memcmp(rec_t(c_rec), full_tenant, ft_len) != 0) continue;
+                                                size_t p_len = q_len > 256 ? 256 : q_len;
+                                                float p_score = dot_fn(q_vec, rec_v(c_rec), p_len);
+                                                if (p_len < q_len && p_score * ((float)q_len / p_len) < local_best - 0.5f) continue;
+                                                float score = p_len < q_len ? p_score + dot_fn(q_vec + p_len, rec_v(c_rec) + p_len, q_len - p_len) : p_score;
+                                                if (score > local_best) { local_best = score; local_k = rec_k(c_rec); local_k_len = c_rec->k_len; }
+                                            }
+                                            #pragma omp critical (best)
+                                            {
+                                                if (local_best > best_score) { best_score = local_best; best_k = local_k; best_k_len = local_k_len; }
                                             }
                                         }
                                     }
