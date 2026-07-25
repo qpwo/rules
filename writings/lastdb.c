@@ -1322,6 +1322,7 @@ static void write_weighted_record(Record *r, double now)
 
     double print_w = (double)(1U << r->weight_log);
     if (cur > 0) print_w *= cur;
+    if (print_w < 0.5) return;
     char wbuf[32];
     int wl = snprintf(wbuf, sizeof(wbuf), "%.5g\t", print_w);
     if (wl < 0 || wl >= (int)sizeof(wbuf)) diex("weight print failed");
@@ -2569,7 +2570,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
                                                 out[my_off++] = '\n';
                                             }
                                         } else {
-                                    count_est += eff_w;
+                                    count_est += w_weight;
                                     raw_count++;
                                             if (op == 9 && r->v_len > 0) {
                                                 if (is_decay) {
@@ -3095,7 +3096,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
                     dc = cur;
                 }
             }
-            count_est += w * dc;
+            count_est += w;
             raw_c++;
                 }
                 if (offs) munmap(offs, count * 8);
