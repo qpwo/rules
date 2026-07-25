@@ -2472,14 +2472,14 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
 double max_w = threshold > 1.0 ? threshold : 20.0;
 double sample_rate = threshold < 1.0 ? threshold : 1.0;
 
-                                double count_est = 0; uint64_t raw_count = 0; double sum = 0; double raw_sum = 0; double w2_sum = 0; double decay_est = 0; int max_wl = 0;
+                                double count_est = 0; uint64_t raw_count = 0; double sum = 0; double raw_sum = 0; double w2_sum = 0; double decay_est = 0; double decay_w = 0; int max_wl = 0;
 
                                 { SRV_READ_LOCK(db_path);
                                 uint64_t start_idx, end_idx;
                                 ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
                                 uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
                                 uint64_t *offs = get_sorted_offs(start_idx, count);
-                                #pragma omp parallel for reduction(+:count_est,raw_count,sum,raw_sum,w2_sum,decay_est) reduction(max:max_wl) schedule(static, 4096) num_threads(worker_threads())
+                                #pragma omp parallel for reduction(+:count_est,raw_count,sum,raw_sum,w2_sum,decay_est,decay_w) reduction(max:max_wl) schedule(static, 4096) num_threads(worker_threads())
                                 for (uint64_t i = 0; i < count; i++) {
                                     Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
                                     if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
@@ -2550,7 +2550,7 @@ if (match) {
                                         } else {
 count_est += db_w;
 w2_sum += db_w * db_w;
-if (is_decay) decay_est += db_w * __builtin_fabs(cur);
+if (is_decay) { decay_est += db_w * __builtin_fabs(cur); decay_w += db_w; }
                                     raw_count++;
                                             if (op == 9 && r->v_len > 0) {
                                                 if (is_decay) {
@@ -2577,7 +2577,7 @@ if (is_decay) decay_est += db_w * __builtin_fabs(cur);
 if (max_wl < 0) max_wl = 0;
 double rse = count_est > 0 ? __builtin_sqrt(w2_sum > count_est ? w2_sum - count_est : 0) / count_est : 0;
 double confidence = rse >= 1.0 ? 0.0 : 1.0 - rse;
-if (decay_est > 0 && count_est > 0) { double decay_frac = decay_est / count_est; confidence *= (1.0 - decay_frac) * (1.0 - decay_frac); }
+if (decay_w > 0 && count_est > 0) { double decay_frac = decay_w / count_est; if (decay_frac > 1) decay_frac = 1; confidence *= (1.0 - decay_frac) * (1.0 - decay_frac); }
 if (max_wl > 0 && w2_sum > 0 && count_est > 0) { double ess = count_est * count_est / w2_sum; if (ess < 100.0) confidence *= ess / 100.0; }
 if (max_wl > 8) confidence *= 1.0 / (1U << (max_wl - 8 > 12 ? 12 : max_wl - 8));
 if (max_w < 20.0) confidence *= max_w / 20.0;
