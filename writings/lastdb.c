@@ -817,7 +817,7 @@ static int decay_value_at(const char *s, size_t n, double now, double *out)
     if (floor < 0.001) {
         floor = 0.001;
     }
-    if (x <= 0 || age > hl * 64 || __builtin_fabs(x) < floor) {
+    if (age > hl * 64 || __builtin_fabs(x) < floor) {
         *out = 0;
         return 1;
     }
