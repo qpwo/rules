@@ -2278,6 +2278,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                 while (1) {
                     usleep(1000000);
                     int need_compact = 0;
+                    int sync_fd = -1;
                     { SRV_READ_LOCK(db_path);
                         if (srv_db_fd >= 0) {
                             struct statvfs st;
@@ -2286,9 +2287,10 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.15L);
                                 if (free_bytes < reserve_bytes) need_compact = 1;
                             }
-                            fdatasync(srv_db_fd);
+                            sync_fd = srv_db_fd;
                         }
                     }
+                    if (sync_fd >= 0) (void)fdatasync(sync_fd);
                     if (need_compact) { SRV_WRITE_LOCK(db_path); do_compact(db_path); if (srv_db_fd >= 0) { close(srv_db_fd); srv_db_fd = -1; } }
                 }
             }
