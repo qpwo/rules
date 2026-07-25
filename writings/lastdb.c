@@ -2538,7 +2538,8 @@ double max_w = threshold > 1.0 ? threshold : 13.0;
                                         double w_weight = db_w;
     
                                         double disp_w = is_decay ? db_w * __builtin_fabs(cur) : db_w;
-                                        if (op == 4 || op == 5) { if (disp_w < min_weight) continue;
+                                        if (disp_w < min_weight) continue;
+                                        if (op == 4 || op == 5) {
                                             char weight[32];
                                             int wlen = snprintf(weight, sizeof(weight), "%.5g\t", disp_w);
                                             size_t rec_len = wlen + r->k_len + 1 + out_vl + 1;
