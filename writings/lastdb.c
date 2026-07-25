@@ -324,8 +324,9 @@ static void lock_ex(int fd)
 
 static void sync_fd(int fd)
 {
-    // Trust the Linux page cache writeback for massive throughput.
-    (void)fd;
+    if (fsync(fd)) {
+        die("fsync");
+    }
 }
 
 static void write_allv(int fd, struct iovec *iov, int n)
