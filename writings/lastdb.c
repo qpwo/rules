@@ -248,28 +248,54 @@ static void ht_put(uint64_t hash, uint64_t off)
     ht_len++;
 }
 
+static int node_cmp(const void *a, const void *b) {
+    const Node *na = a, *nb = b;
+    return (na->hash > nb->hash) - (na->hash < nb->hash);
+}
+
+static uint64_t bit_floor(uint64_t x) {
+    if (!x) return 0;
+    return 1ULL << (63 - __builtin_clzll(x));
+}
+
+static uint64_t bit_ceil(uint64_t x) {
+    if (x <= 1) return 1;
+    return 1ULL << (64 - __builtin_clzll(x - 1));
+}
+
 static void build_index(void)
 {
+    uint64_t j = 0;
+    for (uint64_t i = 0; i < ht_cap; i++) {
+        if (ht[i].off1) ht[j++] = ht[i];
+    }
+    ht_cap = j;
+    if (ht_cap) qsort(ht, ht_cap, sizeof(Node), node_cmp);
 }
 
 static Node *ht_get(const char *t, uint16_t tl, const char *k, uint16_t kl)
 {
-    if (!ht_len) return NULL;
+    if (!ht_cap) return NULL;
     uint64_t hash = key_hash(t, tl, k, kl);
-    uint64_t mask = ht_cap - 1;
-    uint64_t pos = hash & mask;
-    uint64_t d = 0;
+    uint64_t length = ht_cap;
+    Node *begin = ht;
+    Node *end = ht + length;
 
-    while (ht[pos].off1) {
-        if (ht[pos].hash == hash) {
-            if (key_eq(ht[pos].off1 - 1, t, tl, k, kl)) {
-                return &ht[pos];
-            }
-        }
-        uint64_t existing_d = (pos - (ht[pos].hash & mask)) & mask;
-        if (existing_d < d) break;
-        pos = (pos + 1) & mask;
-        d++;
+    uint64_t step = bit_floor(length);
+    if (step != length && begin[step].hash < hash) {
+        length -= step + 1;
+        if (length == 0) return NULL;
+        step = bit_ceil(length);
+        begin = end - step;
+    }
+    for (step /= 2; step != 0; step /= 2) {
+        if (begin[step].hash < hash) begin += step;
+    }
+    begin += (begin->hash < hash);
+
+    while (begin < end && begin->hash == hash) {
+        if (key_eq(begin->off1 - 1, t, tl, k, kl)) return begin;
+        begin++;
     }
     return NULL;
 }
