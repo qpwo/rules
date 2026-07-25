@@ -29,6 +29,7 @@ var OP = new Map([
     ['cas', 14],
     ['decay', 15],
     ['batch', 16],
+    ['pop', 17],
 ]);
 
 export async function open(host, username, password, cipherkey, port = 51515) {
@@ -46,6 +47,14 @@ export async function open(host, username, password, cipherkey, port = 51515) {
 export async function close(client) {
     client.socket.end();
     await once(client.socket, 'close');
+}
+
+export async function pop(client, color, tenant, prefix = '') {
+    var res = await request(client, 'pop', color, tenant, prefix, '');
+    var str = res.toString();
+    var tab = str.indexOf('\t');
+    if (tab < 0) return { key: '', value: str };
+    return { key: str.slice(0, tab), value: str.slice(tab + 1) };
 }
 
 export async function get(client, color, tenant, key) {
@@ -326,6 +335,9 @@ async function cli(client, a) {
         for (var i = 3; i < a.length; i += 2) pairs.push([a[i], a[i+1]]);
         return batch(client, parseI32(a[1]), a[2], pairs);
     }
+    if (a[0] === 'pop' && (a.length === 3 || a.length === 4)) {
+        return pop(client, parseI32(a[1]), a[2], a[3] ?? '');
+    }
     usage();
 }
 
@@ -403,6 +415,7 @@ function usage() {
         '  cas COLOR TENANT KEY OLD NEW',
         '  decay COLOR TENANT KEY HALF_LIFE DELTA [NOW]',
         '  batch COLOR TENANT KEY1 VAL1 [KEY2 VAL2 ...]',
+    '  pop COLOR TENANT [PREFIX]',
         '  grant COLOR USER PASS PERMS',
         '',
     ].join('\n'));

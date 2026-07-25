@@ -2346,6 +2346,57 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 if (ok) send_response(fd, cipherkey, 0, val, vl_out);
                                 else if (shed) send_response(fd, cipherkey, 3, "shed", 4);
                                 else send_response(fd, cipherkey, 2, err_msg, strlen(err_msg));
+                            } else if (op == 17) {
+                                if (!(perms & 6)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
+                                int wrote = 0;
+                                char *ret_k = NULL;
+                                uint16_t ret_kl = 0;
+                                uint32_t ret_vl = 0;
+                                #pragma omp critical (db)
+                                {
+                                    if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
+                                    uint64_t start_idx, end_idx;
+                                    ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
+                                    if (end_idx > start_idx) {
+                                        uint64_t count = end_idx - start_idx;
+                                        static uint64_t seed = 0x12345678;
+                                        seed = seed * 6364136223846793005ULL + 1;
+                                        uint64_t start_offset = seed % count;
+                                        for (uint64_t i = 0; i < count; i++) {
+                                            uint64_t idx = start_idx + ((start_offset + i) % count);
+                                            Record *r = rec_at(ht[idx].off1 - 1);
+                                            if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
+                                            if (kl && (r->k_len < kl || memcmp(rec_k(r), k, kl))) continue;
+
+                                            Chunk *out_c = chunk_pop();
+                                            if (out_c) {
+                                                ret_k = (char *)out_c->data;
+                                                ret_kl = r->k_len;
+                                                ret_vl = r->v_len;
+                                                if (ret_kl + 1 + ret_vl <= sizeof(out_c->data)) {
+                                                    memcpy(ret_k, rec_k(r), ret_kl);
+                                                    ret_k[ret_kl] = '\t';
+                                                    memcpy(ret_k + ret_kl + 1, rec_v(r), ret_vl);
+                                                    wrote = append_raw(srv_db_fd, full_tenant, ft_len, rec_k(r), r->k_len, NULL, 0, OP_DEL);
+                                                    if (wrote) {
+                                                        sync_fd(srv_db_fd);
+                                                        load_db(db_path);
+                                                    }
+                                                }
+                                            }
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (wrote) {
+                                    send_response(fd, cipherkey, 0, ret_k, ret_kl + 1 + ret_vl);
+                                    chunk_push((Chunk *)ret_k);
+                                } else if (ret_k) {
+                                    send_response(fd, cipherkey, 3, "shed", 4);
+                                    chunk_push((Chunk *)ret_k);
+                                } else {
+                                    send_response(fd, cipherkey, 2, "empty", 5);
+                                }
                             } else if (op == 16) {
                                 if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
                                 int wrote = 0;
