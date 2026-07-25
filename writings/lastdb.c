@@ -1570,6 +1570,12 @@ static int write_full(int fd, const void *buf, size_t n) {
 }
 
 static void send_response(int fd, int32_t cipherkey, int32_t status, const void *payload, uint32_t n) {
+    if (n > 64u * 1024u * 1024u - 16u) {
+        status = 3;
+        payload = "too large";
+        n = 9;
+    }
+
     uint32_t len = 16 + n;
     if (!cipherkey) {
         uint8_t head[20];
