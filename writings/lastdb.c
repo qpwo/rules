@@ -1983,9 +1983,19 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             }
                             #define OUT_CAP (60u * 1024u * 1024u)
                             #define APP(ptr, lll) do { size_t app_n = (lll); if (out_len <= OUT_CAP && app_n <= OUT_CAP - out_len) { memcpy(out + out_len, ptr, app_n); out_len += app_n; } else { out_len = OUT_CAP + 1; } } while(0)
-                            double threshold = 1.0;
-                            if (op == 4 && vl > 0) { char th_buf[64]={0}; memcpy(th_buf, v, vl < 63 ? vl : 63); threshold = strtod(th_buf, NULL); }
-                            if (op == 5 && kl > 0) { char th_buf[64]={0}; memcpy(th_buf, k, kl < 63 ? kl : 63); threshold = strtod(th_buf, NULL); }
+                            double threshold = 1.0; double eval_now = 0; int has_now = 0;
+                            if (op == 4 && vl > 0) {
+                                char th_buf[128]={0}; memcpy(th_buf, v, vl < 127 ? vl : 127);
+                                char *tab = strchr(th_buf, '\t');
+                                if (tab) { *tab = 0; eval_now = strtod(tab + 1, NULL); has_now = 1; }
+                                threshold = strtod(th_buf, NULL);
+                            }
+                            if (op == 5 && kl > 0) {
+                                char th_buf[128]={0}; memcpy(th_buf, k, kl < 127 ? kl : 127);
+                                char *tab = strchr(th_buf, '\t');
+                                if (tab) { *tab = 0; eval_now = strtod(tab + 1, NULL); has_now = 1; }
+                                threshold = strtod(th_buf, NULL);
+                            }
                             if (threshold <= 0 || threshold > 1.0) threshold = 1.0;
                             { SRV_READ_LOCK(db_path);
                             uint64_t start_idx, end_idx;
@@ -2022,9 +2032,23 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                             double db_w = (double)(1U << r->weight_log);
                                             double qw = 1.0 / threshold;
                                             double w = db_w > qw ? db_w : qw;
+                                            const char *out_val = rec_v(r);
+                                            size_t out_vl = r->v_len;
+                                            char eval_buf[64];
+                                            if (has_now && out_vl > 0 && out_vl < 192) {
+                                                char buf2[192] = {0}; memcpy(buf2, out_val, out_vl);
+                                                char *t1 = strchr(buf2, '\t'); char *t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
+                                                if (t1 && t2) {
+                                                    *t1 = 0; *t2 = 0;
+                                                    double cur = decay_live_value(strtod(buf2, NULL), strtod(t1 + 1, NULL), strtod(t2 + 1, NULL), eval_now);
+                                                    if (cur == 0) continue;
+                                                    out_vl = snprintf(eval_buf, sizeof(eval_buf), "%.17g", cur);
+                                                    out_val = eval_buf;
+                                                }
+                                            }
                                             char weight[32];
                                             int wlen = snprintf(weight, sizeof(weight), "%.0f\t", w);
-                                            size_t rec_len = wlen + r->k_len + 1 + r->v_len + 1;
+                                            size_t rec_len = wlen + r->k_len + 1 + out_vl + 1;
                                             size_t my_off;
                                             #pragma omp atomic capture
                                             { my_off = out_len; out_len += rec_len; }
@@ -2032,7 +2056,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                                 memcpy(out + my_off, weight, wlen); my_off += wlen;
                                                 memcpy(out + my_off, rec_k(r), r->k_len); my_off += r->k_len;
                                                 out[my_off++] = '\t';
-                                                memcpy(out + my_off, rec_v(r), r->v_len); my_off += r->v_len;
+                                                memcpy(out + my_off, out_val, out_vl); my_off += out_vl;
                                                 out[my_off++] = '\n';
                                             }
                                         }
@@ -2046,7 +2070,18 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 if (!(perms & req)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
                                 int wrote = 0;
                                 { SRV_WRITE_LOCK(db_path);
-                                    wrote = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, v, vl, op == 2 ? OP_PUT : OP_DEL);
+                                    if (op == 3 && vl == 1 && v[0] == '*') {
+                                        uint64_t start_idx, end_idx;
+                                        ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
+                                        for (uint64_t i = start_idx; i < end_idx; i++) {
+                                            Record *r = rec_at(ht[i].off1 - 1);
+                                            if (r->op != OP_DEL && r->t_len == ft_len && !memcmp(rec_t(r), full_tenant, ft_len) && r->k_len >= kl && !memcmp(rec_k(r), k, kl)) {
+                                                if (append_raw(srv_db_fd, full_tenant, ft_len, rec_k(r), r->k_len, NULL, 0, OP_DEL)) wrote++;
+                                            }
+                                        }
+                                    } else {
+                                        wrote = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, v, vl, op == 2 ? OP_PUT : OP_DEL);
+                                    }
                                     if (wrote) sync_fd(srv_db_fd);
                                     load_db(db_path);
                                 }
