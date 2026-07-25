@@ -2775,7 +2775,8 @@ double max_w = threshold > 1.0 ? threshold : 13.0;
                                 if (found_off1) {
                                     SRV_WRITE_LOCK(db_path);
                                     Record *r = rec_at(found_off1 - 1);
-                                    if (r->op != OP_DEL && r->t_len == ft_len && !memcmp(rec_t(r), full_tenant, ft_len)) {
+                                    Node *rn = ht_get(full_tenant, ft_len, rec_k(r), r->k_len);
+                                    if (rn && rn->off1 == found_off1 && r->op != OP_DEL && r->t_len == ft_len && !memcmp(rec_t(r), full_tenant, ft_len)) {
                                         Chunk *out_c = chunk_pop();
                                         if (out_c) {
                                             ret_k = (char *)out_c->data;
