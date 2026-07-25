@@ -2715,10 +2715,14 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 char *tab2 = tab1 ? strchr(tab1 + 1, '\t') : NULL;
                                 if (!tab1 || !tab2) { send_response(fd, cipherkey, 1, "bad arg", 7); chunk_push(c); continue; }
                                 *tab1 = 0; *tab2 = 0;
-                                double hl = parse_f64(v_null);
-                                double ts = parse_f64(tab1 + 1);
-                                double d = parse_f64(tab2 + 1);
-                                if (hl <= 0 || !__builtin_isfinite(hl) || !__builtin_isfinite(ts) || !__builtin_isfinite(d)) {
+                                char *e1;
+                                char *e2;
+                                char *e3;
+                                errno = 0;
+                                double hl = strtod(v_null, &e1);
+                                double ts = strtod(tab1 + 1, &e2);
+                                double d = strtod(tab2 + 1, &e3);
+                                if (errno || e1 != tab1 || e2 != tab2 || *e3 || hl <= 0 || !__builtin_isfinite(hl) || !__builtin_isfinite(ts) || !__builtin_isfinite(d)) {
                                     send_response(fd, cipherkey, 1, "bad arg", 7); chunk_push(c); continue;
                                 }
 
