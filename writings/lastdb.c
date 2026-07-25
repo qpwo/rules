@@ -2569,8 +2569,8 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
                                                 out[my_off++] = '\n';
                                             }
                                         } else {
-                                            count_est += w_weight;
-                                            raw_count++;
+                                    count_est += eff_w;
+                                    raw_count++;
                                             if (op == 9 && r->v_len > 0) {
                                                 if (is_decay) {
                                                     sum += eff_w;
@@ -3087,13 +3087,15 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
             
             double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
             double w = db_w * qw;
+            double dc = 1;
             if (r->v_len > 0 && r->v_len < 192) {
                 double cur = 0;
                 if (decay_value_at(rec_v(r), r->v_len, now, &cur)) {
                     if (cur == 0) continue;
+                    dc = cur;
                 }
             }
-            count_est += w;
+            count_est += w * dc;
             raw_c++;
                 }
                 if (offs) munmap(offs, count * 8);
