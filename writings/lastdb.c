@@ -3,6 +3,7 @@
 #define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
+#include <sys/file.h>
 #include <limits.h>
 #include <math.h>
 #include <stdint.h>
@@ -287,7 +288,7 @@ static void load_db(const char *path)
     }
 
     map_size = (size_t)st.st_size;
-    map_base = mmap(NULL, map_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    map_base = mmap(NULL, map_size, PROT_READ, MAP_SHARED, fd, 0);
     if (close(fd)) {
         die("close");
     }
@@ -311,12 +312,9 @@ static void load_db(const char *path)
 
 static void lock_ex(int fd)
 {
-    struct flock fl = {0};
-    fl.l_type = F_WRLCK;
-    fl.l_whence = SEEK_SET;
-    while (fcntl(fd, F_SETLKW, &fl)) {
+    while (flock(fd, LOCK_EX)) {
         if (errno != EINTR) {
-            die("fcntl lock");
+            die("flock lock");
         }
     }
 }
@@ -806,7 +804,7 @@ static int do_tail(const char *path, const char *start, int follow)
         if (!stat(path, &st) && st.st_size > (off_t)map_size) {
             int fd = open(path, O_RDONLY | O_CLOEXEC);
             if (fd >= 0) {
-                void *new_map = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+                void *new_map = mmap(NULL, st.st_size, PROT_READ, MAP_SHARED, fd, 0);
                 if (new_map != MAP_FAILED) {
                     munmap(map_base, map_size);
                     map_base = new_map;
