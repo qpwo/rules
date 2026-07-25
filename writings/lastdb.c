@@ -157,7 +157,11 @@ static int rec_valid(uint64_t off)
         return 0;
     }
 
-    return 1; // Defer hash checking to verify command to allow instant loading of 10TB datasets
+    if (r->key_hash != key_hash(rec_t(r), r->t_len, rec_k(r), r->k_len)) {
+        return 0;
+    }
+
+    return 1; // Defer value checking to verify command to allow instant loading of 10TB datasets
 }
 
 static int key_eq(uint64_t off, const char *t, uint16_t tl, const char *k, uint16_t kl)
