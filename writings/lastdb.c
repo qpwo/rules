@@ -42,10 +42,10 @@ typedef struct __attribute__((packed)) {
 
 static uint64_t compute_bf(const char *data, size_t len) {
     uint64_t bf = 0;
-    for (size_t i = 0; i + 3 < len; i++) {
-        uint32_t gram;
-        memcpy(&gram, data + i, 4);
-        gram = (gram ^ (gram >> 16)) * 0x85ebca6b;
+    const unsigned char *p = (const unsigned char *)data;
+    for (size_t i = 0; i + 2 < len; i++) {
+        uint32_t gram = p[i] | (p[i+1] << 8) | (p[i+2] << 16);
+        gram *= 0x85ebca6b;
         gram ^= gram >> 13;
         gram *= 0xc2b2ae35;
         gram ^= gram >> 16;
@@ -1920,14 +1920,18 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         Record *r = rec_at(ht[i].off1 - 1);
                                         if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
                                         if (kl && (r->k_len < kl || memcmp(rec_k(r), k, kl))) continue;
-                                        if (threshold < 1.0 && (double)(r->key_hash >> 11) * 0x1.0p-53 > threshold) continue;
-                                        double w = (double)(1U << r->weight_log) / threshold;
-                                        count_est += w;
+                                if (threshold < 1.0 && (double)(r->key_hash >> 11) * 0x1.0p-53 > threshold) continue;
+                                double db_w = (double)(1U << r->weight_log);
+                                double qw = 1.0 / threshold;
+                                double w = db_w > qw ? db_w : qw;
+                                count_est += w;
                                         raw_count++;
                                         if (op == 9 && r->v_len > 0 && r->v_len < 64) {
-                                            char buf2[64] = {0}; memcpy(buf2, rec_v(r), r->v_len);
-                                            char *p_str = buf2; while (*p_str && *p_str != '-' && *p_str != '.' && (*p_str < '0' || *p_str > '9')) p_str++;
-                                            sum += strtod(p_str, NULL) * w;
+                                    char buf2[64] = {0}; memcpy(buf2, rec_v(r), r->v_len);
+                                    char *t1 = strchr(buf2, '\t'); char *t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
+                                    char *p_str = t2 ? t2 + 1 : buf2;
+                                    while (*p_str && *p_str != '-' && *p_str != '.' && (*p_str < '0' || *p_str > '9')) p_str++;
+                                    sum += strtod(p_str, NULL) * w;
                                         }
                                     }
                                 }
@@ -2216,9 +2220,11 @@ int main(int argc, char **argv)
                 Record *r = rec_at(ht[i].off1 - 1);
                 if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
                     if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
-                    if (threshold < 1.0 && (double)(r->key_hash >> 11) * 0x1.0p-53 > threshold) continue;
-                    count_est += (double)(1U << r->weight_log) / threshold;
-                    raw_c++;
+            if (threshold < 1.0 && (double)(r->key_hash >> 11) * 0x1.0p-53 > threshold) continue;
+            double db_w = (double)(1U << r->weight_log);
+            double qw = 1.0 / threshold;
+            count_est += db_w > qw ? db_w : qw;
+            raw_c++;
                 }
                 printf("%.0f\t%llu\n", count_est, (unsigned long long)raw_c);
             }
@@ -2233,14 +2239,18 @@ int main(int argc, char **argv)
                 Record *r = rec_at(ht[i].off1 - 1);
                 if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
                     if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
-                    if (threshold < 1.0 && (double)(r->key_hash >> 11) * 0x1.0p-53 > threshold) continue;
-                    double w = (double)(1U << r->weight_log) / threshold;
-                    raw_s++;
+            if (threshold < 1.0 && (double)(r->key_hash >> 11) * 0x1.0p-53 > threshold) continue;
+            double db_w = (double)(1U << r->weight_log);
+            double qw = 1.0 / threshold;
+            double w = db_w > qw ? db_w : qw;
+            raw_s++;
                     if (r->v_len > 0 && r->v_len < 64) {
-                        char buf[64] = {0};
-                        memcpy(buf, rec_v(r), r->v_len);
-                        char *p_str = buf; while (*p_str && *p_str != '-' && *p_str != '.' && (*p_str < '0' || *p_str > '9')) p_str++;
-                        s += strtod(p_str, NULL) * w;
+                char buf[64] = {0};
+                memcpy(buf, rec_v(r), r->v_len);
+                char *t1 = strchr(buf, '\t'); char *t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
+                char *p_str = t2 ? t2 + 1 : buf;
+                while (*p_str && *p_str != '-' && *p_str != '.' && (*p_str < '0' || *p_str > '9')) p_str++;
+                s += strtod(p_str, NULL) * w;
                     }
                 }
                 printf("%.17g\t%llu\n", s, (unsigned long long)raw_s);
