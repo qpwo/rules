@@ -42,6 +42,10 @@ typedef struct __attribute__((packed)) {
 } Record;
 
 static uint64_t compute_bf(const char *data, size_t len) {
+    if (len > 65536) {
+        return UINT64_MAX;
+    }
+
     uint64_t bf = 0;
     const unsigned char *p = (const unsigned char *)data;
     for (size_t i = 0; i + 2 < len; i++) {
