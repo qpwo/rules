@@ -244,6 +244,10 @@ static void reserve_ram(size_t bytes)
 
 static int worker_threads(void)
 {
+    if (omp_in_parallel()) {
+        return 1;
+    }
+
     int n = omp_get_num_procs();
     int keep = (n + 9) / 10;
     return n > keep ? n - keep : 1;
