@@ -435,7 +435,37 @@ static int open_append(const char *path)
 static int do_write(const char *path, const char *t, const char *k, const char *v, uint8_t op)
 {
     int lockfd = open_lockfile(path);
-    load_db(path);
+    map_size = 0;
+    valid_size = 0;
+
+    int rfd = open(path, O_RDONLY | O_CLOEXEC);
+    if (rfd < 0 && errno != ENOENT) {
+        die("open");
+    }
+    if (rfd >= 0) {
+        struct stat st;
+        if (fstat(rfd, &st)) {
+            die("fstat");
+        }
+        map_size = (size_t)st.st_size;
+        if (map_size) {
+            map_base = mmap(NULL, map_size, PROT_READ, MAP_PRIVATE, rfd, 0);
+            if (close(rfd)) {
+                die("close");
+            }
+            if (map_base == MAP_FAILED) {
+                die("mmap");
+            }
+            (void)posix_madvise(map_base, map_size, POSIX_MADV_SEQUENTIAL);
+            (void)posix_madvise(map_base, map_size, POSIX_MADV_NOREUSE);
+            while (valid_size < map_size && rec_valid(valid_size)) {
+                valid_size += rec_at(valid_size)->len;
+            }
+        } else if (close(rfd)) {
+            die("close");
+        }
+    }
+
     int fd = open_append(path);
     append_fd(fd, t, k, v, op);
     sync_fd(fd);
