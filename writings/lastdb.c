@@ -484,32 +484,15 @@ static int append_raw(int fd, const char *t, size_t tl, const char *k, size_t kl
     if (op != OP_DEL && !fstatvfs(fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
         uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
         uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.1L);
-        double avail = (double)st.f_bavail / st.f_blocks;
-        int wl = avail < 0.2 ? (int)(-50.0 * (avail - 0.2)) : 0;
-        if (wl > 31) wl = 31;
-        double keep = 1.0 / (1U << wl);
-        uint64_t gh = key_hash(t, r.t_len, k, r.k_len);
-        const char *sep = memchr(k, '/', r.k_len);
-        if (sep) gh = key_hash(t, r.t_len, k, sep - k);
-        double gate = (double)(gh & 0xFFFFFFFFULL) * 0x1.0p-32;
         if (free_bytes < reserve_bytes + r.len) {
             return 0;
         }
         if (tl > 0 && t[0] != '0') {
-            int exists = 0;
-            uint8_t old_wl = 0;
             if (ht_cap) {
                 Node *n = ht_get(t, (uint16_t)tl, k, (uint16_t)kl);
                 if (n && rec_at(n->off1 - 1)->op != OP_DEL) {
-                    exists = 1;
-                    old_wl = rec_at(n->off1 - 1)->weight_log;
+                    r.weight_log = rec_at(n->off1 - 1)->weight_log;
                 }
-            }
-            if (exists) {
-                r.weight_log = old_wl;
-            } else if (wl > 0 && op != OP_DEL) {
-                if (gate > keep) return 1;
-                r.weight_log = wl;
             }
         }
     }
@@ -1180,11 +1163,13 @@ static int rec_has_terms(Record *r, int num_words, char **words, size_t *lens, u
     }
 
     for (int j = 0; j < num_words; j++) {
-        if ((r->bf & term_bfs[j]) != term_bfs[j]) return 0;
-        if ((is_decay_val || !memmem_pivot(rec_v(r), r->v_len, words[j], lens[j])) &&
-            !memmem_pivot(rec_k(r), r->k_len, words[j], lens[j])) {
-            return 0;
-        }
+        int negate = (words[j][0] == '-');
+        char *w = negate ? words[j] + 1 : words[j];
+        size_t wl = negate ? lens[j] - 1 : lens[j];
+        if (wl == 0) continue;
+        if (!negate && (r->bf & term_bfs[j]) != term_bfs[j]) return 0;
+        int found = (!is_decay_val && memmem_pivot(rec_v(r), r->v_len, w, wl)) || memmem_pivot(rec_k(r), r->k_len, w, wl);
+        if (negate ? found : !found) return 0;
     }
     return 1;
 }
@@ -1203,7 +1188,10 @@ static int do_search(const char *t, int num_words, char **words)
     }
 
     uint64_t term_bfs[num_words];
-    for (int i = 0; i < num_words; i++) term_bfs[i] = compute_bf(words[i], lens[i]);
+    for (int i = 0; i < num_words; i++) {
+        if (words[i][0] == '-') term_bfs[i] = compute_bf(words[i] + 1, lens[i] - 1);
+        else term_bfs[i] = compute_bf(words[i], lens[i]);
+    }
 
     double now = (double)time(NULL);
     uint64_t start_idx, end_idx;
@@ -1339,7 +1327,7 @@ static int do_compact(const char *path)
         die("open tmp");
     }
 
-    int compact_wl = 0;
+    double decay_factor = 0;
     struct statvfs st;
     if (!fstatvfs(fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
         uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
@@ -1347,11 +1335,26 @@ static int do_compact(const char *path)
         uint64_t target = free_bytes > reserve_bytes ? free_bytes - reserve_bytes : 0;
         uint64_t disk_half = (uint64_t)st.f_blocks * st.f_frsize / 2;
         if (target > disk_half) target = disk_half;
-        while (live_bytes > target && compact_wl < 31) {
-            compact_wl++;
-            live_bytes /= 2;
+        if (live_bytes > target) {
+            double low = 0, high = 31.0 / valid_size;
+            for (int step = 0; step < 40; step++) {
+                double mid = (low + high) / 2;
+                uint64_t est = 0;
+                for (uint64_t i = 0; i < ht_len; i++) {
+                    Record *r = rec_at(ht[i].off1 - 1);
+                    if (r->op == OP_DEL) continue;
+                    int twl = r->weight_log;
+                    if (r->t_len > 0 && rec_t(r)[0] != '0') {
+                        int ewl = (int)((valid_size - (ht[i].off1 - 1)) * mid);
+                        if (ewl > 31) ewl = 31;
+                        if (ewl > twl) twl = ewl;
+                    }
+                    est += r->len >> (twl - r->weight_log);
+                }
+                if (est > target) low = mid; else high = mid;
+            }
+            decay_factor = high;
         }
-        if (live_bytes > target) diex("compact needs temp space plus 10 percent disk reserve");
     }
 
     (void)posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
@@ -1369,8 +1372,10 @@ static int do_compact(const char *path)
         if (n && (n->off1 - 1) == off && r->op != OP_DEL) {
             int keep = 1;
             uint8_t new_wl = r->weight_log;
-            if (compact_wl > 0 && r->t_len > 0 && rec_t(r)[0] != '0') {
-                uint8_t twl = r->weight_log > compact_wl ? r->weight_log : compact_wl;
+            if (decay_factor > 0 && r->t_len > 0 && rec_t(r)[0] != '0') {
+                int ewl = (int)((valid_size - off) * decay_factor);
+                if (ewl > 31) ewl = 31;
+                uint8_t twl = r->weight_log > ewl ? r->weight_log : ewl;
                 double gate = (double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32;
                 const char *sep = memchr(rec_k(r), '/', r->k_len);
                 if (sep) gate = (double)(key_hash(rec_t(r), r->t_len, rec_k(r), sep - rec_k(r)) & 0xFFFFFFFFULL) * 0x1.0p-32;
@@ -1688,37 +1693,8 @@ static int batch_flush(int fd, char *buf, size_t *used)
     return 1;
 }
 
-static int batch_pressure(int fd, size_t need, double *keep, uint8_t *weight_log)
-{
-    *keep = 1.0;
-    *weight_log = 0;
-
-    struct statvfs st;
-    if (fstatvfs(fd, &st) || st.f_blocks == 0 || st.f_frsize == 0) {
-        return 1;
-    }
-
-    uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
-    uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.1L);
-    if (free_bytes < reserve_bytes + need) {
-        return 0;
-    }
-
-    double avail = (double)st.f_bavail / st.f_blocks;
-    if (avail >= 0.2) {
-        return 1;
-    }
-
-    int wl = (int)(-50.0 * (avail - 0.2));
-    *weight_log = wl > 31 ? 31 : wl;
-    *keep = 1.0 / (1U << *weight_log);
-    return 1;
-}
-
 static int batch_put(int fd, char *buf, size_t *used, const char *t, size_t tl, const char *k, size_t kl, const char *v, size_t vl)
 {
-    static double keep = 1.0;
-    static uint8_t weight_log = 0;
     if (tl > 255 || kl > UINT16_MAX) diex("tenant/key too long");
     if (vl > UINT32_MAX) diex("value too long");
     if (sizeof(Record) + tl + kl + vl > UINT32_MAX) diex("record too long");
@@ -1738,28 +1714,18 @@ static int batch_put(int fd, char *buf, size_t *used, const char *t, size_t tl, 
     if (BATCH_WRITE_BYTES - *used < r.len && !batch_flush(fd, buf, used)) {
         return 0;
     }
-    if (!*used && !batch_pressure(fd, r.len, &keep, &weight_log)) {
-        return 0;
+    struct statvfs st;
+    if (!*used && !fstatvfs(fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
+        uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
+        uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.1L);
+        if (free_bytes < reserve_bytes + r.len) return 0;
     }
     if (tl > 0 && t[0] != '0') {
-        int exists = 0;
-        uint8_t old_wl = 0;
         if (ht_cap) {
             Node *n = ht_get(t, r.t_len, k, r.k_len);
             if (n && rec_at(n->off1 - 1)->op != OP_DEL) {
-                exists = 1;
-                old_wl = rec_at(n->off1 - 1)->weight_log;
+                r.weight_log = rec_at(n->off1 - 1)->weight_log;
             }
-        }
-        if (exists) {
-            r.weight_log = old_wl;
-        } else if (keep < 1.0) {
-            uint64_t gh = key_hash(t, r.t_len, k, r.k_len);
-            const char *sep = memchr(k, '/', r.k_len);
-            if (sep) gh = key_hash(t, r.t_len, k, sep - k);
-            double gate = (double)(gh & 0xFFFFFFFFULL) * 0x1.0p-32;
-            if (gate > keep) return 1;
-            r.weight_log = weight_log;
         }
     }
 
@@ -2177,7 +2143,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 while (w < end && num_words < 64) {
                                     char *tab = memchr(w, '\t', end - w);
                                     size_t wl = tab ? tab - w : end - w;
-                                    if (wl > 0) query_bfs[num_words++] = compute_bf(w, wl);
+                                            if (wl > 0) query_bfs[num_words++] = compute_bf(w[0] == '-' ? w + 1 : w, w[0] == '-' ? wl - 1 : wl);
                                     w += wl + 1;
                                 }
                             }
@@ -2235,8 +2201,14 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                             char *tab = memchr(w, '\t', end - w);
                                             size_t wl = tab ? tab - w : end - w;
                                             if (wl > 0) {
-                                                if (word_idx < 64 && (r->bf & query_bfs[word_idx]) != query_bfs[word_idx]) { match = 0; break; }
-                                                if ((is_decay || !memmem_pivot(out_val, out_vl, w, wl)) && !memmem_pivot(rec_k(r), r->k_len, w, wl)) { match = 0; break; }
+                                                int negate = (w[0] == '-');
+                                                char *kw = negate ? w + 1 : w;
+                                                size_t kwl = negate ? wl - 1 : wl;
+                                                if (kwl > 0) {
+                                                    if (word_idx < 64 && !negate && (r->bf & query_bfs[word_idx]) != query_bfs[word_idx]) { match = 0; break; }
+                                                    int found = (!is_decay && memmem_pivot(out_val, out_vl, kw, kwl)) || memmem_pivot(rec_k(r), r->k_len, kw, kwl);
+                                                    if (negate ? found : !found) { match = 0; break; }
+                                                }
                                                 word_idx++;
                                             }
                                             w += wl + 1;
@@ -2690,20 +2662,45 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                             uint16_t item_kl = ntohs(*(uint16_t*)p);
                                             uint32_t item_vl = ntohl(*(uint32_t*)(p + 2));
                                             p += 6;
-                                            if (batch_put(srv_db_fd, batch_buf, &used, full_tenant, ft_len, p, item_kl, p + item_kl, item_vl)) {
-                                                wrote++;
-                                            } else {
-                                                shed = 1;
+                                            uint8_t twl = 0;
+                                            if (item_kl > 0 && p[0] != '0' && ht_cap) {
+                                                Node *n = ht_get(full_tenant, ft_len, p, item_kl);
+                                                if (n && rec_at(n->off1 - 1)->op != OP_DEL) twl = rec_at(n->off1 - 1)->weight_log;
                                             }
+                                            Record r = {0};
+                                            r.magic = MAGIC;
+                                            r.len = (uint32_t)(sizeof(r) + ft_len + item_kl + item_vl);
+                                            r.t_len = (uint8_t)ft_len;
+                                            r.k_len = (uint16_t)item_kl;
+                                            r.v_len = (uint32_t)item_vl;
+                                            r.op = OP_PUT;
+                                            r.weight_log = twl;
+                                            r.bf = compute_bf(p, item_kl) | compute_bf(p + item_kl, item_vl);
+                                            r.key_hash = key_hash(full_tenant, ft_len, p, item_kl);
+                                            r.check = rec_check(&r, full_tenant, p, p + item_kl);
+                                            if (used + r.len > sizeof(batch_c->data)) { shed = 1; break; }
+                                            memcpy(batch_buf + used, &r, sizeof(r)); used += sizeof(r);
+                                            memcpy(batch_buf + used, full_tenant, ft_len); used += ft_len;
+                                            memcpy(batch_buf + used, p, item_kl); used += item_kl;
+                                            memcpy(batch_buf + used, p + item_kl, item_vl); used += item_vl;
                                             p += item_kl + item_vl;
+                                            wrote++;
                                         }
                                         if (batch_c) {
-                                            if (used && !batch_flush(srv_db_fd, batch_buf, &used)) {
-                                                shed = 1;
+                                            if (!shed && used) {
+                                                struct statvfs st;
+                                                if (!fstatvfs(srv_db_fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
+                                                    if ((uint64_t)st.f_bavail * st.f_frsize < (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.1L) + used) shed = 1;
+                                                }
+                                                if (!shed) {
+                                                    off_t pos = lseek(srv_db_fd, 0, SEEK_END);
+                                                    if (pos >= 0) (void)fallocate(srv_db_fd, FALLOC_FL_KEEP_SIZE, 0, (pos + used + 33554431) & ~(off_t)33554431);
+                                                    write_all(srv_db_fd, batch_buf, used);
+                                                }
                                             }
                                             chunk_push(batch_c);
                                         }
-                                        if (wrote) sync_fd(srv_db_fd);
+                                        if (wrote && !shed) sync_fd(srv_db_fd);
                                         load_db(db_path);
                                     }
                                 }
