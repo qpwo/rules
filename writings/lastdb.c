@@ -2580,7 +2580,7 @@ if (is_decay) decay_est += db_w;
 if (max_wl < 0) max_wl = 0;
 double rse = count_est > 0 ? __builtin_sqrt(w2_sum > count_est ? w2_sum - count_est : 0) / count_est : 0;
 double confidence = rse >= 1.0 ? 0.0 : 1.0 - rse;
-if (decay_est > 0 && count_est > 0) { double decay_frac = decay_est / count_est; confidence *= 1.0 - decay_frac * 0.85; }
+if (decay_est > 0 && count_est > 0) { double decay_frac = decay_est / count_est; confidence *= (1.0 - decay_frac) * (1.0 - decay_frac); }
 if (max_wl > 0 && w2_sum > 0 && count_est > 0) { double ess = count_est * count_est / w2_sum; if (ess < 100.0) confidence *= ess / 100.0; }
 if (max_wl > 8) confidence *= 1.0 / (1U << (max_wl - 8 > 12 ? 12 : max_wl - 8));
 if (max_w < 20.0) confidence *= max_w / 20.0;
