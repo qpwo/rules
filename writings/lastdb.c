@@ -1554,16 +1554,18 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             #pragma omp critical (db)
                             {
                                 load_db(db_path);
-                                char ustr[32];
-                                sprintf(ustr, "%d", user);
-                                Node *n = ht_get("0:users", 7, ustr, strlen(ustr));
-                                if (n) {
-                                    Record *r = rec_at(n->off1 - 1);
-                                    if (r->op != OP_DEL && r->v_len >= 3) {
-                                        char vbuf[64] = {0};
-                                        memcpy(vbuf, rec_v(r), r->v_len < 63 ? r->v_len : 63);
-                                        int32_t sp = 0, sprm = 0;
-                                        if (sscanf(vbuf, "%d,%d", &sp, &sprm) == 2 && sp == pass) perms = sprm;
+                                char ustr[64];
+                                int ulen = snprintf(ustr, sizeof(ustr), "%d:%d", user, color);
+                                if (ulen > 0 && ulen < (int)sizeof(ustr)) {
+                                    Node *n = ht_get("0:users", 7, ustr, ulen);
+                                    if (n) {
+                                        Record *r = rec_at(n->off1 - 1);
+                                        if (r->op != OP_DEL && r->v_len >= 3) {
+                                            char vbuf[64] = {0};
+                                            memcpy(vbuf, rec_v(r), r->v_len < 63 ? r->v_len : 63);
+                                            int32_t sp = 0, sprm = 0;
+                                            if (sscanf(vbuf, "%d,%d", &sp, &sprm) == 2 && sp == pass) perms = sprm;
+                                        }
                                     }
                                 }
                                 if (user == 0 && pass == 0) perms = 7;
@@ -1776,6 +1778,31 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     load_db(db_path);
                                 }
                                 send_response(fd, cipherkey, 0, val, vl_out);
+                            } else if (op == 11) {
+                                char target_buf[32] = {0};
+                                char grant_buf[64] = {0};
+                                int32_t target = 0, new_pass = 0, grant = 0;
+                                if (kl > 30 || vl > 62) { send_response(fd, cipherkey, 1, "bad grant", 9); chunk_push(c); continue; }
+                                memcpy(target_buf, k, kl);
+                                memcpy(grant_buf, v, vl);
+                                if (sscanf(target_buf, "%d", &target) != 1 || sscanf(grant_buf, "%d,%d", &new_pass, &grant) != 2 || grant < 0 || grant > 7 || (grant & ~perms)) {
+                                    send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue;
+                                }
+                                char user_key[64];
+                                char user_val[64];
+                                int user_key_len = snprintf(user_key, sizeof(user_key), "%d:%d", target, color);
+                                int user_val_len = snprintf(user_val, sizeof(user_val), "%d,%d", new_pass, grant);
+                                if (user_key_len <= 0 || user_key_len >= (int)sizeof(user_key) || user_val_len <= 0 || user_val_len >= (int)sizeof(user_val)) {
+                                    send_response(fd, cipherkey, 1, "bad grant", 9); chunk_push(c); continue;
+                                }
+                                #pragma omp critical (db)
+                                {
+                                    if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
+                                    append_raw(srv_db_fd, "0:users", 7, user_key, user_key_len, user_val, user_val_len, OP_PUT);
+                                    sync_fd(srv_db_fd);
+                                    load_db(db_path);
+                                }
+                                send_response(fd, cipherkey, 0, "ok", 2);
                             } else {
                                 send_response(fd, cipherkey, 1, "bad op", 6);
                             }

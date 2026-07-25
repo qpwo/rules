@@ -23,6 +23,7 @@ var OP = new Map([
     ['count', 8],
     ['sum', 9],
     ['incr', 10],
+    ['grant', 11],
 ]);
 
 export async function open(host, username, password, cipherkey, port = 51515) {
@@ -80,6 +81,10 @@ export async function sum(client, color, tenant, prefix = '') {
 
 export async function incr(client, color, tenant, key, delta) {
     return request(client, 'incr', color, tenant, key, String(delta));
+}
+
+export async function grant(client, color, user, password, permissions) {
+    return request(client, 'grant', color, '', String(user), i32(password) + ',' + i32(permissions));
 }
 
 export async function request(client, op, color, tenant, key, value) {
@@ -223,6 +228,9 @@ async function cli(client, a) {
     if (a[0] === 'incr' && a.length === 5) {
         return incr(client, parseI32(a[1]), a[2], a[3], a[4]);
     }
+    if (a[0] === 'grant' && a.length === 5) {
+        return grant(client, parseI32(a[1]), parseI32(a[2]), parseI32(a[3]), parseI32(a[4]));
+    }
     usage();
 }
 
@@ -295,6 +303,7 @@ function usage() {
         '  count COLOR TENANT [PREFIX]',
         '  sum COLOR TENANT [PREFIX]',
         '  incr COLOR TENANT KEY DELTA',
+        '  grant COLOR USER PASS PERMS',
         '',
     ].join('\n'));
     process.exit(2);
