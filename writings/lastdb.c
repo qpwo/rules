@@ -1606,8 +1606,8 @@ static void send_response(int fd, int32_t cipherkey, int32_t status, const void 
 extern __thread struct rseq __rseq_abi __attribute__((weak, tls_model("initial-exec")));
 
 static struct {
-    alignas(64) Chunk *freelist;
-} chunk_heaps[CPU_SETSIZE];
+    Chunk *freelist;
+} __attribute__((aligned(64))) chunk_heaps[CPU_SETSIZE];
 
 static inline void chunk_push(Chunk *chunk) {
 #ifdef __x86_64__
