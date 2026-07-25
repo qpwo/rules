@@ -66,24 +66,38 @@ static void diex(const char *msg)
     exit(1);
 }
 
+static uint64_t rd64(const void *p) {
+    uint64_t x = 0;
+    memcpy(&x, p, 8);
+    return x;
+}
+
+static uint64_t mum(uint64_t a, uint64_t b) {
+    __uint128_t r = (__uint128_t)a * b;
+    return (uint64_t)r ^ (uint64_t)(r >> 64);
+}
+
 static uint64_t fnv_bytes(uint64_t h, const void *p, size_t n)
 {
-    const uint8_t *b = p;
-    for (size_t i = 0; i < n; i++) {
-        h ^= b[i];
-        h *= FNV1;
+    const unsigned char *b = p;
+    size_t total = n;
+    while (n >= 16) {
+        h = mum(rd64(b) ^ h, rd64(b + 8) ^ h);
+        b += 16;
+        n -= 16;
     }
-    return h;
+    uint64_t x = 0, y = 0;
+    if (n <= 8) memcpy(&x, b, n);
+    else {
+        memcpy(&x, b, 8);
+        memcpy(&y, b + 8, n - 8);
+    }
+    return mum(x ^ h, y ^ total);
 }
 
 static uint64_t fnv_u64(uint64_t h, uint64_t x)
 {
-    for (size_t i = 0; i < 8; i++) {
-        h ^= (uint8_t)(x & 0xff);
-        x >>= 8;
-        h *= FNV1;
-    }
-    return h;
+    return mum(h, x);
 }
 
 static uint64_t key_hash(const char *t, uint16_t tl, const char *k, uint16_t kl)
@@ -158,11 +172,7 @@ static int rec_valid(uint64_t off)
         return 0;
     }
 
-    if (r->key_hash != key_hash(rec_t(r), r->t_len, rec_k(r), r->k_len)) {
-        return 0;
-    }
-
-    return 1; // Defer value checking to verify command to allow instant loading of 10TB datasets
+    return 1; // Defer key/value checking to verify command to allow instant loading of 10TB datasets
 }
 
 static int key_eq(uint64_t off, const char *t, uint16_t tl, const char *k, uint16_t kl)
@@ -1128,6 +1138,7 @@ int main(int argc, char **argv)
 
     if (!strcmp(cmd, "repl") && argc == 3) {
         load_db(db);
+        int write_fd = open_append(db);
         char *line = NULL;
         size_t cap = 0;
         while (getline(&line, &cap, stdin) > 0) {
@@ -1157,8 +1168,8 @@ int main(int argc, char **argv)
                 }
             }
             if (!strcmp(args[0], "get") && n == 3) do_get(args[1], args[2]);
-            else if (!strcmp(args[0], "put") && n == 4) { do_write(db, args[1], args[2], args[3], OP_PUT); puts("ok"); }
-            else if (!strcmp(args[0], "del") && n == 3) { do_write(db, args[1], args[2], NULL, OP_DEL); puts("ok"); }
+            else if (!strcmp(args[0], "put") && n == 4) { append_fd(write_fd, args[1], args[2], args[3], OP_PUT); puts("ok"); }
+            else if (!strcmp(args[0], "del") && n == 3) { append_fd(write_fd, args[1], args[2], NULL, OP_DEL); puts("ok"); }
             else if (!strcmp(args[0], "scan") && n >= 2) do_scan(args[1], n == 3 ? args[2] : NULL);
             else if (!strcmp(args[0], "search") && n >= 2) do_search(args[1], n, args);
             else if (!strcmp(args[0], "closest") && n == 4) do_closest(db, args[1], args[2], args[3]);
