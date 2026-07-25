@@ -2558,7 +2558,7 @@ if (threshold > 1.0) threshold = 1.0;
                                             }
                                         } else {
                                     if (eff_w < min_weight) continue;
-                                    count_est += w_weight;
+                                    count_est += eff_w;
                                     raw_count++;
                                             if (op == 9 && r->v_len > 0) {
                                                 if (is_decay) {
@@ -2582,7 +2582,7 @@ if (threshold > 1.0) threshold = 1.0;
                                     if (out_c) chunk_push(out_c);
                                 } else {
                                     char val[128]; int vl_out = 0;
-                                    if (op == 8) vl_out = snprintf(val, sizeof(val), "%.0f\t%llu", count_est, (unsigned long long)raw_count);
+                                    if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu", count_est, (unsigned long long)raw_count);
                                     else vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%llu", sum, raw_sum, (unsigned long long)raw_count);
                                     send_response(fd, cipherkey, 0, val, vl_out);
                                 }
@@ -3079,11 +3079,11 @@ if (threshold > 1.0) threshold = 1.0;
                     dc = cur;
                 }
             }
-            count_est += w;
+            count_est += w * dc;
             raw_c++;
                 }
                 if (offs) munmap(offs, count * 8);
-                printf("%.0f\t%llu\n", count_est, (unsigned long long)raw_c);
+                printf("%.4g\t%llu\n", count_est, (unsigned long long)raw_c);
             }
             else if (!strcmp(args[0], "sum") && n >= 2) {
                 double s = 0; uint64_t raw_s = 0; double raw_sum = 0;
