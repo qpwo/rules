@@ -2275,18 +2275,19 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                 while (1) {
                     usleep(1000000);
                     int need_compact = 0;
+                    int sync_fd = -1;
                     { SRV_READ_LOCK(db_path);
-                        int fd_to_sync = srv_db_fd;
-                        if (fd_to_sync >= 0) {
-                            fdatasync(fd_to_sync);
+                        sync_fd = srv_db_fd;
+                        if (sync_fd >= 0) {
                             struct statvfs st;
-                            if (!fstatvfs(fd_to_sync, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
+                            if (!fstatvfs(sync_fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
                                 uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
                                 uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.15L);
                                 if (free_bytes < reserve_bytes) need_compact = 1;
                             }
                         }
                     }
+                    if (sync_fd >= 0) fdatasync(sync_fd);
                     if (need_compact) { SRV_WRITE_LOCK(db_path); do_compact(db_path); if (srv_db_fd >= 0) { close(srv_db_fd); srv_db_fd = -1; } }
                 }
             }
@@ -2578,7 +2579,7 @@ if (is_decay) decay_est += disp_w;
 if (max_wl < 0) max_wl = 0;
 double rse = count_est > 0 ? __builtin_sqrt(w2_sum > count_est ? w2_sum - count_est : 0) / count_est : 0;
 double confidence = rse >= 1.0 ? 0.0 : 1.0 - rse;
-if (decay_est > 0 && count_est > 0) { double decay_frac = decay_est / count_est; double avg_w = count_est / (double)raw_count; if (avg_w < 1e-9) confidence = 0; else if (avg_w < 1.0) confidence *= (1.0 - decay_frac) + decay_frac * avg_w; }
+if (decay_est > 0 && count_est > 0) { double decay_frac = decay_est / count_est; double avg_w = count_est / (double)raw_count; if (avg_w < 1e-9) confidence = 0; else if (avg_w < 1.0) confidence *= (1.0 - decay_frac) + decay_frac * avg_w; else confidence *= 1.0 - 0.5 * decay_frac; }
 if (max_wl > 0 && w2_sum > 0 && count_est > 0) { double ess = count_est * count_est / w2_sum; if (ess < 30.0) confidence *= ess / 30.0; }
                                 if (confidence < 0.3) {
                                     send_response(fd, cipherkey, 2, "low_confidence", 14);
