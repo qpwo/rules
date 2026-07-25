@@ -585,6 +585,7 @@ static int append_raw(int fd, const char *t, size_t tl, const char *k, size_t kl
     while (i < 4) {
         ssize_t got = writev(fd, iov + i, 4 - i);
         if (got < 0 && errno == EINTR) continue;
+        if (got < 0 && (errno == ENOSPC || errno == EDQUOT)) { if (pos >= 0) (void)ftruncate(fd, pos); return 0; }
         if (got <= 0) die("writev");
         while (i < 4 && (size_t)got >= iov[i].iov_len) {
             got -= (ssize_t)iov[i].iov_len;
