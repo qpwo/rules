@@ -2469,7 +2469,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     w += wl + 1;
                                 }
 
-                                double min_weight = (op == 4 || op == 5) ? 0.5 : 0.0;
+                                double min_weight = 0.5;
                                 double threshold = 1.0; double eval_now = (double)time(NULL);
                                 char *pref = k; size_t pref_len = kl;
                                 if (kl > 0) {
