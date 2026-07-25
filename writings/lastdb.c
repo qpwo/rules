@@ -1401,54 +1401,64 @@ static int do_compact(const char *path)
 typedef float unaligned_f32 __attribute__((aligned(1)));
 typedef uint16_t unaligned_f16 __attribute__((aligned(1)));
 
-__attribute__((target("avx512f,avx512vl,fma")))
+__attribute__((target("avx2,fma")))
 static float vec_dot_f32(const void *a, const void *b, size_t bytes) {
     size_t n = bytes / 4;
     const unaligned_f32 *fa = a, *fb = b;
-    __m512 sum0 = _mm512_setzero_ps();
-    __m512 sum1 = _mm512_setzero_ps();
-    __m512 sum2 = _mm512_setzero_ps();
-    __m512 sum3 = _mm512_setzero_ps();
+    __m256 sum0 = _mm256_setzero_ps();
+    __m256 sum1 = _mm256_setzero_ps();
+    __m256 sum2 = _mm256_setzero_ps();
+    __m256 sum3 = _mm256_setzero_ps();
     size_t i = 0;
-    for (; i + 63 < n; i += 64) {
-        sum0 = _mm512_fmadd_ps(_mm512_loadu_ps(fa + i), _mm512_loadu_ps(fb + i), sum0);
-        sum1 = _mm512_fmadd_ps(_mm512_loadu_ps(fa + i + 16), _mm512_loadu_ps(fb + i + 16), sum1);
-        sum2 = _mm512_fmadd_ps(_mm512_loadu_ps(fa + i + 32), _mm512_loadu_ps(fb + i + 32), sum2);
-        sum3 = _mm512_fmadd_ps(_mm512_loadu_ps(fa + i + 48), _mm512_loadu_ps(fb + i + 48), sum3);
+    for (; i + 31 < n; i += 32) {
+        sum0 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i), _mm256_loadu_ps(fb + i), sum0);
+        sum1 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i + 8), _mm256_loadu_ps(fb + i + 8), sum1);
+        sum2 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i + 16), _mm256_loadu_ps(fb + i + 16), sum2);
+        sum3 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i + 24), _mm256_loadu_ps(fb + i + 24), sum3);
     }
-    sum0 = _mm512_add_ps(sum0, sum1);
-    sum2 = _mm512_add_ps(sum2, sum3);
-    sum0 = _mm512_add_ps(sum0, sum2);
-    for (; i < n; i += 16) {
-        __mmask16 mask = n - i >= 16 ? 0xFFFF : (__mmask16)((1u << (n - i)) - 1u);
-        sum0 = _mm512_fmadd_ps(_mm512_maskz_loadu_ps(mask, fa + i), _mm512_maskz_loadu_ps(mask, fb + i), sum0);
+    sum0 = _mm256_add_ps(sum0, sum1);
+    sum2 = _mm256_add_ps(sum2, sum3);
+    sum0 = _mm256_add_ps(sum0, sum2);
+    for (; i + 7 < n; i += 8) {
+        sum0 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i), _mm256_loadu_ps(fb + i), sum0);
     }
-    return _mm512_reduce_add_ps(sum0);
+    float buf[8];
+    _mm256_storeu_ps(buf, sum0);
+    float sum = buf[0] + buf[1] + buf[2] + buf[3] + buf[4] + buf[5] + buf[6] + buf[7];
+    for (; i < n; i++) sum += fa[i] * fb[i];
+    return sum;
 }
 
-__attribute__((target("avx512f,avx512bw,avx512vl,f16c,fma")))
+__attribute__((target("avx2,f16c,fma")))
 static float vec_dot_f16(const void *a, const void *b, size_t bytes) {
     size_t n = bytes / 2;
     const unaligned_f16 *fa = a, *fb = b;
-    __m512 sum0 = _mm512_setzero_ps();
-    __m512 sum1 = _mm512_setzero_ps();
-    __m512 sum2 = _mm512_setzero_ps();
-    __m512 sum3 = _mm512_setzero_ps();
+    __m256 sum0 = _mm256_setzero_ps();
+    __m256 sum1 = _mm256_setzero_ps();
+    __m256 sum2 = _mm256_setzero_ps();
+    __m256 sum3 = _mm256_setzero_ps();
     size_t i = 0;
-    for (; i + 63 < n; i += 64) {
-        sum0 = _mm512_fmadd_ps(_mm512_cvtph_ps(_mm256_loadu_epi16(fa + i)), _mm512_cvtph_ps(_mm256_loadu_epi16(fb + i)), sum0);
-        sum1 = _mm512_fmadd_ps(_mm512_cvtph_ps(_mm256_loadu_epi16(fa + i + 16)), _mm512_cvtph_ps(_mm256_loadu_epi16(fb + i + 16)), sum1);
-        sum2 = _mm512_fmadd_ps(_mm512_cvtph_ps(_mm256_loadu_epi16(fa + i + 32)), _mm512_cvtph_ps(_mm256_loadu_epi16(fb + i + 32)), sum2);
-        sum3 = _mm512_fmadd_ps(_mm512_cvtph_ps(_mm256_loadu_epi16(fa + i + 48)), _mm512_cvtph_ps(_mm256_loadu_epi16(fb + i + 48)), sum3);
+    for (; i + 31 < n; i += 32) {
+        sum0 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i))), sum0);
+        sum1 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i + 8))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i + 8))), sum1);
+        sum2 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i + 16))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i + 16))), sum2);
+        sum3 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i + 24))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i + 24))), sum3);
     }
-    sum0 = _mm512_add_ps(sum0, sum1);
-    sum2 = _mm512_add_ps(sum2, sum3);
-    sum0 = _mm512_add_ps(sum0, sum2);
-    for (; i < n; i += 16) {
-        __mmask16 mask = n - i >= 16 ? 0xFFFF : (__mmask16)((1u << (n - i)) - 1u);
-        sum0 = _mm512_fmadd_ps(_mm512_cvtph_ps(_mm256_maskz_loadu_epi16(mask, fa + i)), _mm512_cvtph_ps(_mm256_maskz_loadu_epi16(mask, fb + i)), sum0);
+    sum0 = _mm256_add_ps(sum0, sum1);
+    sum2 = _mm256_add_ps(sum2, sum3);
+    sum0 = _mm256_add_ps(sum0, sum2);
+    for (; i + 7 < n; i += 8) {
+        sum0 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i))), sum0);
     }
-    return _mm512_reduce_add_ps(sum0);
+    float buf[8];
+    _mm256_storeu_ps(buf, sum0);
+    float sum = buf[0] + buf[1] + buf[2] + buf[3] + buf[4] + buf[5] + buf[6] + buf[7];
+    for (; i < n; i++) {
+        __m128i ha = _mm_insert_epi16(_mm_setzero_si128(), fa[i], 0);
+        __m128i hb = _mm_insert_epi16(_mm_setzero_si128(), fb[i], 0);
+        sum += _mm_cvtss_f32(_mm_cvtph_ps(ha)) * _mm_cvtss_f32(_mm_cvtph_ps(hb));
+    }
+    return sum;
 }
 
 __attribute__((target("avx2")))
@@ -2274,9 +2284,15 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     } else {
                                         char buf2[192] = {0};
                                         memcpy(buf2, rec_v(r), r->v_len);
-                                        char *p_str = buf2;
-                                        while (*p_str && *p_str != '-' && *p_str != '.' && (*p_str < '0' || *p_str > '9')) p_str++;
-                                        sum += strtod(p_str, NULL) * w;
+                                        char *t1 = strchr(buf2, '\t');
+                                        char *t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
+                                        if (t2) {
+                                            sum += strtod(t2 + 1, NULL) * w;
+                                        } else {
+                                            char *p_str = buf2;
+                                            while (*p_str && *p_str != '-' && *p_str != '.' && (*p_str < '0' || *p_str > '9')) p_str++;
+                                            sum += strtod(p_str, NULL) * w;
+                                        }
                                     }
                                         }
                                     }
@@ -2688,9 +2704,15 @@ int main(int argc, char **argv)
                 } else {
                     char buf[192] = {0};
                     memcpy(buf, rec_v(r), r->v_len);
-                    char *p_str = buf;
-                    while (*p_str && *p_str != '-' && *p_str != '.' && (*p_str < '0' || *p_str > '9')) p_str++;
-                    s += strtod(p_str, NULL) * w;
+                    char *t1 = strchr(buf, '\t');
+                    char *t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
+                    if (t2) {
+                        s += strtod(t2 + 1, NULL) * w;
+                    } else {
+                        char *p_str = buf;
+                        while (*p_str && *p_str != '-' && *p_str != '.' && (*p_str < '0' || *p_str > '9')) p_str++;
+                        s += strtod(p_str, NULL) * w;
+                    }
                 }
                     }
                 }
