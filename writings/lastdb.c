@@ -1405,6 +1405,7 @@ static int do_batch(const char *path, const char *t)
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <sys/socket.h>
 
 static void crypt_buf(uint8_t *buf, size_t len, int32_t key) {
@@ -1507,6 +1508,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
             while (1) {
                 int fd = accept(srv, NULL, NULL);
                 if (fd >= 0) {
+                    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
                     #pragma omp task
                     {
                         while (1) {
