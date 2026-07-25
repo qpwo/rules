@@ -1342,24 +1342,19 @@ static void send_response(int fd, int32_t cipherkey, int32_t status, const void 
 }
 
 typedef struct { uint8_t *buf; size_t cap; } BufCache;
-typedef struct __attribute__((aligned(64))) { BufCache x; char pad[64 - sizeof(BufCache)]; } RxSlot;
-static RxSlot rx_desk[1024];
+static _Thread_local BufCache rx_cache;
 
 static BufCache checkout_rx(BufCache iou) {
-    int cpu = sched_getcpu();
-    if (cpu < 0) {
-        cpu = 0;
-    }
-    BufCache *slot = &rx_desk[(unsigned)cpu % 1024].x;
-    BufCache old = *slot;
-    *slot = iou;
+    BufCache old = rx_cache;
+    rx_cache = iou;
     return old;
 }
 
 static void return_rx(BufCache c) {
-    c = checkout_rx(c);
-    if (c.buf) {
-        free(c.buf);
+    BufCache old = rx_cache;
+    rx_cache = c;
+    if (old.buf) {
+        free(old.buf);
     }
 }
 
