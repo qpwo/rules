@@ -1462,8 +1462,9 @@ static int do_compact(const char *path)
             double low = 0, high = 31.0 / valid_size;
             for (int step = 0; step < 40; step++) {
                 double mid = (low + high) / 2;
-                uint64_t est = 0;
-                for (uint64_t i = 0; i < ht_len; i++) {
+                uint64_t stride = ht_len / 100000 + 1;
+                double est = 0;
+                for (uint64_t i = 0; i < ht_len; i += stride) {
                     Record *r = rec_at(ht[i].off1 - 1);
                     if (r->op == OP_DEL) continue;
                     int twl = r->weight_log;
@@ -1472,9 +1473,10 @@ static int do_compact(const char *path)
                         if (ewl > 31) ewl = 31;
                         if (ewl > twl) twl = ewl;
                     }
-                    est += r->len >> (twl - r->weight_log);
+                    est += (double)(r->len >> (twl - r->weight_log));
                 }
-                if (est > target) low = mid; else high = mid;
+                est *= stride;
+                if (est > (double)target) low = mid; else high = mid;
             }
             decay_factor = high;
         }
@@ -2311,7 +2313,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             }
                         }
                     }
-                    if (need_compact) do_compact(db_path);
+                    if (need_compact) { SRV_WRITE_LOCK(db_path); do_compact(db_path); }
                 }
             }
             while (1) {
