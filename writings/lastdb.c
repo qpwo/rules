@@ -1249,16 +1249,24 @@ typedef uint16_t unaligned_f16 __attribute__((aligned(1)));
 __attribute__((target("avx2,fma")))
 static float vec_dot_f32(const void *a, const void *b, size_t bytes) {
     size_t n = bytes / 4;
-    __m256 sum_vec = _mm256_setzero_ps();
+    __m256 sum0 = _mm256_setzero_ps(), sum1 = _mm256_setzero_ps();
+    __m256 sum2 = _mm256_setzero_ps(), sum3 = _mm256_setzero_ps();
     const unaligned_f32 *fa = a, *fb = b;
     size_t i = 0;
+    for (; i + 31 < n; i += 32) {
+        sum0 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i), _mm256_loadu_ps(fb + i), sum0);
+        sum1 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i + 8), _mm256_loadu_ps(fb + i + 8), sum1);
+        sum2 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i + 16), _mm256_loadu_ps(fb + i + 16), sum2);
+        sum3 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i + 24), _mm256_loadu_ps(fb + i + 24), sum3);
+    }
+    sum0 = _mm256_add_ps(sum0, sum1);
+    sum2 = _mm256_add_ps(sum2, sum3);
+    sum0 = _mm256_add_ps(sum0, sum2);
     for (; i + 7 < n; i += 8) {
-        __m256 va = _mm256_loadu_ps(fa + i);
-        __m256 vb = _mm256_loadu_ps(fb + i);
-        sum_vec = _mm256_fmadd_ps(va, vb, sum_vec);
+        sum0 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i), _mm256_loadu_ps(fb + i), sum0);
     }
     float buf[8];
-    _mm256_storeu_ps(buf, sum_vec);
+    _mm256_storeu_ps(buf, sum0);
     float sum = buf[0] + buf[1] + buf[2] + buf[3] + buf[4] + buf[5] + buf[6] + buf[7];
     for (; i < n; i++) sum += fa[i] * fb[i];
     return sum;
@@ -1267,16 +1275,24 @@ static float vec_dot_f32(const void *a, const void *b, size_t bytes) {
 __attribute__((target("avx2,fma,f16c")))
 static float vec_dot_f16(const void *a, const void *b, size_t bytes) {
     size_t n = bytes / 2;
-    __m256 sum_vec = _mm256_setzero_ps();
+    __m256 sum0 = _mm256_setzero_ps(), sum1 = _mm256_setzero_ps();
+    __m256 sum2 = _mm256_setzero_ps(), sum3 = _mm256_setzero_ps();
     const unaligned_f16 *fa = a, *fb = b;
     size_t i = 0;
+    for (; i + 31 < n; i += 32) {
+        sum0 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i))), sum0);
+        sum1 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i + 8))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i + 8))), sum1);
+        sum2 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i + 16))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i + 16))), sum2);
+        sum3 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i + 24))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i + 24))), sum3);
+    }
+    sum0 = _mm256_add_ps(sum0, sum1);
+    sum2 = _mm256_add_ps(sum2, sum3);
+    sum0 = _mm256_add_ps(sum0, sum2);
     for (; i + 7 < n; i += 8) {
-        __m256 va = _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i)));
-        __m256 vb = _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i)));
-        sum_vec = _mm256_fmadd_ps(va, vb, sum_vec);
+        sum0 = _mm256_fmadd_ps(_mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i))), _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i))), sum0);
     }
     float buf[8];
-    _mm256_storeu_ps(buf, sum_vec);
+    _mm256_storeu_ps(buf, sum0);
     float sum = buf[0] + buf[1] + buf[2] + buf[3] + buf[4] + buf[5] + buf[6] + buf[7];
     for (; i < n; i++) {
         __m128 va = _mm_cvtph_ps(_mm_cvtsi32_si128(fa[i]));
@@ -1289,21 +1305,28 @@ static float vec_dot_f16(const void *a, const void *b, size_t bytes) {
 __attribute__((target("avx2")))
 static float vec_dot_i8(const void *a, const void *b, size_t bytes) {
     size_t n = bytes;
-    __m256i sum_vec = _mm256_setzero_si256();
+    __m256i sum0 = _mm256_setzero_si256(), sum1 = _mm256_setzero_si256();
     const int8_t *ca = a, *cb = b;
     size_t i = 0;
+    for (; i + 63 < n; i += 64) {
+        __m256i va0 = _mm256_loadu_si256((const __m256i*)(ca + i));
+        __m256i vb0 = _mm256_loadu_si256((const __m256i*)(cb + i));
+        __m256i va1 = _mm256_loadu_si256((const __m256i*)(ca + i + 32));
+        __m256i vb1 = _mm256_loadu_si256((const __m256i*)(cb + i + 32));
+        sum0 = _mm256_add_epi32(sum0, _mm256_madd_epi16(_mm256_cvtepi8_epi16(_mm256_castsi256_si128(va0)), _mm256_cvtepi8_epi16(_mm256_castsi256_si128(vb0))));
+        sum0 = _mm256_add_epi32(sum0, _mm256_madd_epi16(_mm256_cvtepi8_epi16(_mm256_extracti128_si256(va0, 1)), _mm256_cvtepi8_epi16(_mm256_extracti128_si256(vb0, 1))));
+        sum1 = _mm256_add_epi32(sum1, _mm256_madd_epi16(_mm256_cvtepi8_epi16(_mm256_castsi256_si128(va1)), _mm256_cvtepi8_epi16(_mm256_castsi256_si128(vb1))));
+        sum1 = _mm256_add_epi32(sum1, _mm256_madd_epi16(_mm256_cvtepi8_epi16(_mm256_extracti128_si256(va1, 1)), _mm256_cvtepi8_epi16(_mm256_extracti128_si256(vb1, 1))));
+    }
+    sum0 = _mm256_add_epi32(sum0, sum1);
     for (; i + 31 < n; i += 32) {
         __m256i va = _mm256_loadu_si256((const __m256i*)(ca + i));
         __m256i vb = _mm256_loadu_si256((const __m256i*)(cb + i));
-        __m256i va_lo = _mm256_cvtepi8_epi16(_mm256_castsi256_si128(va));
-        __m256i va_hi = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(va, 1));
-        __m256i vb_lo = _mm256_cvtepi8_epi16(_mm256_castsi256_si128(vb));
-        __m256i vb_hi = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(vb, 1));
-        sum_vec = _mm256_add_epi32(sum_vec, _mm256_madd_epi16(va_lo, vb_lo));
-        sum_vec = _mm256_add_epi32(sum_vec, _mm256_madd_epi16(va_hi, vb_hi));
+        sum0 = _mm256_add_epi32(sum0, _mm256_madd_epi16(_mm256_cvtepi8_epi16(_mm256_castsi256_si128(va)), _mm256_cvtepi8_epi16(_mm256_castsi256_si128(vb))));
+        sum0 = _mm256_add_epi32(sum0, _mm256_madd_epi16(_mm256_cvtepi8_epi16(_mm256_extracti128_si256(va, 1)), _mm256_cvtepi8_epi16(_mm256_extracti128_si256(vb, 1))));
     }
     int32_t buf[8];
-    _mm256_storeu_si256((__m256i*)buf, sum_vec);
+    _mm256_storeu_si256((__m256i*)buf, sum0);
     int32_t sum = buf[0] + buf[1] + buf[2] + buf[3] + buf[4] + buf[5] + buf[6] + buf[7];
     for (; i < n; i++) sum += (int32_t)ca[i] * (int32_t)cb[i];
     return (float)sum;
