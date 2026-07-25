@@ -248,54 +248,17 @@ static void ht_put(uint64_t hash, uint64_t off)
     ht_len++;
 }
 
-static int node_cmp(const void *a, const void *b) {
-    const Node *na = a, *nb = b;
-    return (na->hash > nb->hash) - (na->hash < nb->hash);
-}
-
-static uint64_t bit_floor(uint64_t x) {
-    if (!x) return 0;
-    return 1ULL << (63 - __builtin_clzll(x));
-}
-
-static uint64_t bit_ceil(uint64_t x) {
-    if (x <= 1) return 1;
-    return 1ULL << (64 - __builtin_clzll(x - 1));
-}
-
-static void build_index(void)
-{
-    uint64_t j = 0;
-    for (uint64_t i = 0; i < ht_cap; i++) {
-        if (ht[i].off1) ht[j++] = ht[i];
-    }
-    ht_cap = j;
-    if (ht_cap) qsort(ht, ht_cap, sizeof(Node), node_cmp);
-}
-
 static Node *ht_get(const char *t, uint16_t tl, const char *k, uint16_t kl)
 {
     if (!ht_cap) return NULL;
     uint64_t hash = key_hash(t, tl, k, kl);
-    uint64_t length = ht_cap;
-    Node *begin = ht;
-    Node *end = ht + length;
-
-    uint64_t step = bit_floor(length);
-    if (step != length && begin[step].hash < hash) {
-        length -= step + 1;
-        if (length == 0) return NULL;
-        step = bit_ceil(length);
-        begin = end - step;
-    }
-    for (step /= 2; step != 0; step /= 2) {
-        if (begin[step].hash < hash) begin += step;
-    }
-    begin += (begin->hash < hash);
-
-    while (begin < end && begin->hash == hash) {
-        if (key_eq(begin->off1 - 1, t, tl, k, kl)) return begin;
-        begin++;
+    uint64_t mask = ht_cap - 1;
+    uint64_t pos = hash & mask;
+    while (ht[pos].off1) {
+        if (ht[pos].hash == hash) {
+            if (key_eq(ht[pos].off1 - 1, t, tl, k, kl)) return &ht[pos];
+        }
+        pos = (pos + 1) & mask;
     }
     return NULL;
 }
@@ -344,7 +307,6 @@ static void load_db(const char *path)
         off += r->len;
     }
     valid_size = (size_t)off;
-    build_index();
 }
 
 static void lock_ex(int fd)
@@ -361,7 +323,7 @@ static void lock_ex(int fd)
 
 static void sync_fd(int fd)
 {
-    if (fsync(fd)) {
+    if (fdatasync(fd)) {
         die("fsync");
     }
 }
@@ -1155,6 +1117,61 @@ int main(int argc, char **argv)
 
     const char *db = argv[1];
     const char *cmd = argv[2];
+
+    if (!strcmp(cmd, "repl") && argc == 3) {
+        load_db(db);
+        char *line = NULL;
+        size_t cap = 0;
+        while (getline(&line, &cap, stdin) > 0) {
+            char *args[64];
+            int n = 0;
+            for (char *p = strtok(line, " \t\r\n"); p && n < 64; p = strtok(NULL, " \t\r\n")) args[n++] = p;
+            if (!n) continue;
+
+            struct stat st;
+            if (!stat(db, &st) && st.st_size > (off_t)map_size) {
+                int fd = open(db, O_RDONLY | O_CLOEXEC);
+                if (fd >= 0) {
+                    void *nm = mremap(map_base, map_size, st.st_size, MREMAP_MAYMOVE);
+                    if (nm != MAP_FAILED) {
+                        map_base = nm;
+                        map_size = st.st_size;
+                        uint64_t off = valid_size;
+                        while (off < map_size) {
+                            if (!rec_valid(off)) break;
+                            Record *r = rec_at(off);
+                            ht_put(r->key_hash, off);
+                            off += r->len;
+                        }
+                        valid_size = off;
+                    }
+                    close(fd);
+                }
+            }
+            if (!strcmp(args[0], "get") && n == 3) do_get(args[1], args[2]);
+            else if (!strcmp(args[0], "put") && n == 4) { do_write(db, args[1], args[2], args[3], OP_PUT); puts("ok"); }
+            else if (!strcmp(args[0], "del") && n == 3) { do_write(db, args[1], args[2], NULL, OP_DEL); puts("ok"); }
+            else if (!strcmp(args[0], "scan") && n >= 2) do_scan(args[1], n == 3 ? args[2] : NULL);
+            else if (!strcmp(args[0], "search") && n >= 2) do_search(args[1], n, args);
+            else if (!strcmp(args[0], "closest") && n == 4) do_closest(db, args[1], args[2], args[3]);
+            else if (!strcmp(args[0], "count") && n >= 2) {
+                uint64_t c = 0;
+                size_t tl = strlen(args[1]);
+                size_t pl = n == 3 ? strlen(args[2]) : 0;
+                for (uint64_t i = 0; i < ht_cap; i++) {
+                    if (!ht[i].off1) continue;
+                    Record *r = rec_at(ht[i].off1 - 1);
+                    if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
+                    if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
+                    c++;
+                }
+                printf("%llu\n", (unsigned long long)c);
+            }
+            else printf("ERR\n");
+            fflush(stdout);
+        }
+        return 0;
+    }
 
     if (!strcmp(cmd, "put") && argc == 6) {
         return do_write(db, argv[3], argv[4], argv[5], OP_PUT);
