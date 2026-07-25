@@ -1938,33 +1938,67 @@ typedef struct {
 } __attribute__((aligned(64))) CacheLine;
 static CacheLine cpu_chunks[1024];
 
-static inline void chunk_push(Chunk *chunk) {
-    int cpu = fast_getcpu();
-    if (cpu < 0 || cpu >= 1024) cpu = 0;
-    for (int i = 0; i < 1024; i++) {
-        int c = (cpu + i) & 1023;
-        Chunk *old = __atomic_exchange_n(&cpu_chunks[c].chunk, chunk, __ATOMIC_RELAXED);
-        if (!old) return;
-        chunk = old;
+static inline Chunk *chunk_swap(Chunk *in) {
+    if (!&__rseq_abi) {
+        int cpu = sched_getcpu();
+        if (cpu < 0 || cpu >= 1024) cpu = 0;
+        return __atomic_exchange_n(&cpu_chunks[cpu].chunk, in, __ATOMIC_RELAXED);
     }
-    munmap(chunk, sizeof(*chunk));
+    Chunk *out;
+    while (1) {
+        int ok = 1;
+        struct rseq_cs_struct cs __attribute__((aligned(32)));
+        uint64_t scratch1;
+        __asm__ volatile (
+            ".intel_syntax noprefix\n\t"
+            "mov qword ptr [%[cs]], 0\n\t"
+            "lea %[scratch1], [90f + rip]\n\t"
+            "mov qword ptr [%[cs] + 8], %[scratch1]\n\t"
+            "neg %[scratch1]\n\t"
+            "mov qword ptr [%[cs] + 16], %[scratch1]\n\t"
+            "lea %[scratch1], [91f + rip]\n\t"
+            "add qword ptr [%[cs] + 16], %[scratch1]\n\t"
+            "lea %[scratch1], [92f + rip]\n\t"
+            "mov qword ptr [%[cs] + 24], %[scratch1]\n\t"
+            "mov qword ptr [%[rseq] + 8], %[cs]\n\t"
+            "90:\n\t"
+            "mov eax, dword ptr [%[rseq] + 4]\n\t"
+            "and eax, 1023\n\t"
+            "shl rax, 6\n\t"
+            "add rax, %[cpu_chunks]\n\t"
+            "mov %[out], qword ptr [rax]\n\t"
+            "mov qword ptr [rax], %[in]\n\t"
+            "91:\n\t"
+            "jmp 93f\n\t"
+            ".int 0x53053053\n\t"
+            "92:\n\t"
+            "xor %k[ok], %k[ok]\n\t"
+            "93:\n\t"
+            "mov qword ptr [%[rseq] + 8], 0\n\t"
+            ".att_syntax prefix\n\t"
+            : [ok] "+r" (ok), [out] "=&r" (out), [scratch1] "=&r" (scratch1)
+            : [rseq] "r" (&__rseq_abi), [cpu_chunks] "r" (cpu_chunks), [cs] "r" (&cs), [in] "r" (in)
+            : "rax", "memory", "cc"
+        );
+        if (ok) return out;
+    }
+}
+
+static inline void chunk_push(Chunk *chunk) {
+    Chunk *old = chunk_swap(chunk);
+    if (old) munmap(old, sizeof(*old));
 }
 
 static inline Chunk *chunk_pop(void) {
-    int cpu = fast_getcpu();
-    if (cpu < 0 || cpu >= 1024) cpu = 0;
-    for (int i = 0; i < 1024; i++) {
-        int c = (cpu + i) & 1023;
-        Chunk *chunk = __atomic_exchange_n(&cpu_chunks[c].chunk, NULL, __ATOMIC_RELAXED);
-        if (chunk) return chunk;
-    }
+    Chunk *chunk = chunk_swap(NULL);
+    if (chunk) return chunk;
 
     uint64_t total = 0;
     uint64_t freeish = get_mem_avail(&total);
     if (total && freeish < total / 10 + sizeof(Chunk)) return NULL;
     double load[1];
     if (getloadavg(load, 1) == 1 && load[0] > omp_get_num_procs() * 0.9) return NULL;
-    Chunk *chunk = mmap(NULL, sizeof(*chunk), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    chunk = mmap(NULL, sizeof(*chunk), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (chunk == MAP_FAILED) return NULL;
     madvise(chunk, sizeof(*chunk), MADV_HUGEPAGE);
     return chunk;
