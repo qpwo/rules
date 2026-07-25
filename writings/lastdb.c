@@ -2469,7 +2469,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         }
                                     }
                                 }
-{ double _sn = (double)time(NULL); if (eval_now < 1e9 || eval_now > _sn + 86400) eval_now = _sn; }
+{ double _sn = (double)time(NULL); if (eval_now < 1e9 || eval_now > _sn) eval_now = _sn; }
 double max_w = threshold > 1.0 ? threshold : 13.0;
 double sample_rate = threshold < 1.0 ? threshold : 1.0;
 
