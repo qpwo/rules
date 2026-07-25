@@ -501,13 +501,17 @@ static int append_raw(int fd, const char *t, size_t tl, const char *k, size_t kl
     r.v_len = (uint32_t)vl;
     r.op = op;
 
-    struct statvfs st;
-    if (op != OP_DEL && !fstatvfs(fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
-        uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
-        uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.1L);
-        if (free_bytes < reserve_bytes + r.len) {
-            return 0;
+    static __thread uint32_t append_chk = 0;
+    static __thread uint64_t last_free = UINT64_MAX, last_res = 0;
+    if (op != OP_DEL) {
+        if (++append_chk % 1024 == 1) {
+            struct statvfs st;
+            if (!fstatvfs(fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
+                last_free = (uint64_t)st.f_bavail * st.f_frsize;
+                last_res = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.1L);
+            }
         }
+        if (last_free < last_res + r.len) return 0;
         if (tl > 0 && t[0] != '0') {
             if (ht_cap) {
                 Node *n = ht_get(t, (uint16_t)tl, k, (uint16_t)kl);
@@ -2254,10 +2258,20 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
             {
                 while (1) {
                     usleep(1000000);
+                    int need_compact = 0;
                     {
                         SRV_READ_LOCK(db_path);
-                        if (srv_db_fd >= 0) fdatasync(srv_db_fd);
+                        if (srv_db_fd >= 0) {
+                            fdatasync(srv_db_fd);
+                            struct statvfs st;
+                            if (!fstatvfs(srv_db_fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
+                                uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
+                                uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.15L);
+                                if (free_bytes < reserve_bytes) need_compact = 1;
+                            }
+                        }
                     }
+                    if (need_compact) do_compact(db_path);
                 }
             }
             while (1) {
@@ -2434,14 +2448,14 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 if (threshold > 1.0) { max_w = threshold; threshold = 1.0; }
                                 else if (threshold <= 0.0) { max_w = 0; threshold = 1.0; }
 
-                                double count_est = 0; uint64_t raw_count = 0; double sum = 0;
+                                double count_est = 0; uint64_t raw_count = 0; double sum = 0; double raw_sum = 0;
 
                                 { SRV_READ_LOCK(db_path);
                                 uint64_t start_idx, end_idx;
                                 ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
                                 uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
                                 uint64_t *offs = get_sorted_offs(start_idx, count);
-                                #pragma omp parallel for reduction(+:count_est,raw_count,sum) schedule(static, 4096) num_threads(worker_threads())
+                                #pragma omp parallel for reduction(+:count_est,raw_count,sum,raw_sum) schedule(static, 4096) num_threads(worker_threads())
                                 for (uint64_t i = 0; i < count; i++) {
                                     Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
                                     if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
@@ -2509,12 +2523,15 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                             if (op == 9 && r->v_len > 0) {
                                                 if (is_decay) {
                                                     sum += eff_w;
+                                                    raw_sum += cur;
                                                 } else if (r->v_len < 192) {
                                                     char buf2[192] = {0};
                                                     memcpy(buf2, rec_v(r), r->v_len);
                                                     char *p_str = buf2;
                                                     while (*p_str && *p_str != '-' && *p_str != '.' && (*p_str < '0' || *p_str > '9')) p_str++;
-                                                    sum += strtod(p_str, NULL) * w_weight;
+                                                    double v = strtod(p_str, NULL);
+                                                    sum += v * w_weight;
+                                                    raw_sum += v;
                                                 }
                                             }
                                         }
@@ -2526,9 +2543,9 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     send_response(fd, cipherkey, out_len > OUT_CAP ? 4 : 0, out, out_len > OUT_CAP ? OUT_CAP : out_len);
                                     if (out_c) chunk_push(out_c);
                                 } else {
-                                    char val[64]; int vl_out = 0;
+                                    char val[128]; int vl_out = 0;
                                     if (op == 8) vl_out = snprintf(val, sizeof(val), "%.0f\t%llu", count_est, (unsigned long long)raw_count);
-                                    else vl_out = snprintf(val, sizeof(val), "%.17g\t%llu", sum, (unsigned long long)raw_count);
+                                    else vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%llu", sum, raw_sum, (unsigned long long)raw_count);
                                     send_response(fd, cipherkey, 0, val, vl_out);
                                 }
                             } else if (op == 10) {
@@ -3046,7 +3063,7 @@ int main(int argc, char **argv)
                 printf("%.0f\t%llu\n", count_est, (unsigned long long)raw_c);
             }
             else if (!strcmp(args[0], "sum") && n >= 2) {
-                double s = 0; uint64_t raw_s = 0;
+                double s = 0; uint64_t raw_s = 0; double raw_sum = 0;
                 size_t tl = strlen(args[1]);
                 size_t pl = n >= 3 ? strlen(args[2]) : 0;
                 double threshold = n >= 4 ? strtod(args[3], NULL) : 1.0;
@@ -3057,7 +3074,7 @@ int main(int argc, char **argv)
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
             uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
             uint64_t *offs = get_sorted_offs(start_idx, count);
-            #pragma omp parallel for reduction(+:s,raw_s) schedule(static, 4096) num_threads(worker_threads())
+            #pragma omp parallel for reduction(+:s,raw_s,raw_sum) schedule(static, 4096) num_threads(worker_threads())
             for (uint64_t i = 0; i < count; i++) {
                 Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
                 if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
@@ -3080,23 +3097,27 @@ int main(int argc, char **argv)
             if (r->v_len > 0) {
                 if (is_decay) {
                     s += w * cur;
+                    raw_sum += cur;
                 } else if (r->v_len < 192) {
                     char buf[192] = {0};
                     memcpy(buf, rec_v(r), r->v_len);
                     char *t1 = strchr(buf, '\t');
                     char *t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
+                    double v = 0;
                     if (t2) {
-                        s += strtod(t2 + 1, NULL) * w;
+                        v = strtod(t2 + 1, NULL);
                     } else {
                         char *p_str = buf;
                         while (*p_str && *p_str != '-' && *p_str != '.' && (*p_str < '0' || *p_str > '9')) p_str++;
-                        s += strtod(p_str, NULL) * w;
+                        v = strtod(p_str, NULL);
                     }
+                    s += v * w;
+                    raw_sum += v;
                 }
                     }
                 }
                 if (offs) munmap(offs, count * 8);
-                printf("%.17g\t%llu\n", s, (unsigned long long)raw_s);
+                printf("%.17g\t%.17g\t%llu\n", s, raw_sum, (unsigned long long)raw_s);
             }
             else printf("ERR\n");
             fflush(stdout);

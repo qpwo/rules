@@ -106,6 +106,7 @@ export async function sum(client, color, tenant, words = '', prefix = '', thresh
     var k = prefix + '\t' + threshold + '\t' + (now === null ? Date.now() / 1000.0 : now);
     var res = await request(client, 'sum', color, tenant, k, Array.isArray(words) ? words.join('\t') : words);
     var p = res.toString().split('\t');
+    if (p.length >= 3) return { estimated: Number(p[0]), raw_sum: Number(p[1]), raw_count: Number(p[2]) };
     return { estimated: Number(p[0]), raw: Number(p[1]) };
 }
 
@@ -163,16 +164,25 @@ export async function decay(client, color, tenant, key, half_life, delta, now = 
 }
 
 export async function batch(client, color, tenant, pairs) {
-    var bufs = [];
+    var items = [];
+    var total = 0;
     for (var i = 0; i < pairs.length; i++) {
         var kb = Buffer.isBuffer(pairs[i][0]) ? pairs[i][0] : Buffer.from(pairs[i][0]);
         var vb = Buffer.isBuffer(pairs[i][1]) ? pairs[i][1] : Buffer.from(pairs[i][1]);
-        var head = Buffer.alloc(6);
-        head.writeUInt16BE(kb.length, 0);
-        head.writeUInt32BE(vb.length, 2);
-        bufs.push(head, kb, vb);
+        items.push(kb, vb);
+        total += 6 + kb.length + vb.length;
     }
-    return request(client, 'batch', color, tenant, '', Buffer.concat(bufs));
+    var buf = Buffer.allocUnsafe(total);
+    var off = 0;
+    for (var i = 0; i < items.length; i += 2) {
+        var kb = items[i], vb = items[i+1];
+        buf.writeUInt16BE(kb.length, off);
+        buf.writeUInt32BE(vb.length, off + 2);
+        off += 6;
+        kb.copy(buf, off); off += kb.length;
+        vb.copy(buf, off); off += vb.length;
+    }
+    return request(client, 'batch', color, tenant, '', buf);
 }
 
 export async function request(client, op, color, tenant, key, value) {
@@ -217,38 +227,38 @@ async function writeFrame(client, body) {
 }
 
 async function readFrame(client) {
-    while (client.rx.length < 4) {
-        var chunk = await readChunk(client);
-        client.rx = Buffer.concat([client.rx, chunk]);
+    var rx = client.rx;
+    while (rx.length < 4) {
+        rx = Buffer.concat([rx, await readChunk(client)]);
+    }
+    var len = rx.readUInt32BE(0);
+    if (len > MAX_FRAME) throw new Error('frame too large: ' + len);
+
+    if (rx.length < 4 + len) {
+        var chunks = [rx];
+        var got = rx.length;
+        while (got < 4 + len) {
+            var c = await readChunk(client);
+            chunks.push(c);
+            got += c.length;
+        }
+        rx = Buffer.concat(chunks, got);
     }
 
-    var len = client.rx.readUInt32BE(0);
-    if (len > MAX_FRAME) {
-        throw new Error('frame too large: ' + len);
-    }
-    while (client.rx.length < 4 + len) {
-        var chunk = await readChunk(client);
-        client.rx = Buffer.concat([client.rx, chunk]);
-    }
-
-    var body = client.rx.subarray(4, 4 + len);
-    client.rx = client.rx.subarray(4 + len);
-    return crypt(body, client.cipherkey);
+    client.rx = rx.subarray(4 + len);
+    return crypt(rx.subarray(4, 4 + len), client.cipherkey);
 }
 
 async function readChunk(client) {
     var chunk = client.socket.read();
-    if (chunk) {
-        return chunk;
-    }
-    var got = await Promise.race([
+    if (chunk) return chunk;
+    await Promise.race([
         once(client.socket, 'readable'),
         once(client.socket, 'error').then(throwFirst),
         once(client.socket, 'timeout').then(throwTimeout),
         once(client.socket, 'end').then(throwEnd),
     ]);
-    void got;
-    return readChunk(client);
+    return client.socket.read() || await readChunk(client);
 }
 
 function decodeResponse(client, body) {
