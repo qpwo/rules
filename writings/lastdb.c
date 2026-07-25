@@ -2487,7 +2487,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 }
                                 double max_w = 31.0;
                                 if (threshold > 1.0) { max_w = threshold; threshold = 1.0; }
-                                else if (threshold <= 0.0) { max_w = 0; threshold = 1.0; }
+                                else if (threshold <= 0.0) { max_w = 31; threshold = 1.0; }
 
                                 double count_est = 0; uint64_t raw_count = 0; double sum = 0; double raw_sum = 0;
 
@@ -3073,7 +3073,7 @@ int main(int argc, char **argv)
                 double threshold = n >= 4 ? strtod(args[3], NULL) : 1.0;
                 double max_w = 31.0;
                 if (threshold > 1.0) { max_w = threshold; threshold = 1.0; }
-                else if (threshold <= 0.0) { max_w = 0; threshold = 1.0; }
+                else if (threshold <= 0.0) { max_w = 31; threshold = 1.0; }
                 double now = (double)time(NULL);
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
             uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
@@ -3110,7 +3110,7 @@ int main(int argc, char **argv)
                 double threshold = n >= 4 ? strtod(args[3], NULL) : 1.0;
                 double max_w = 31.0;
                 if (threshold > 1.0) { max_w = threshold; threshold = 1.0; }
-                else if (threshold <= 0.0) { max_w = 0; threshold = 1.0; }
+                else if (threshold <= 0.0) { max_w = 31; threshold = 1.0; }
                 double sum_now = n >= 5 ? strtod(args[4], NULL) : (double)time(NULL);
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
             uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
