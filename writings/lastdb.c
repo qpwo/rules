@@ -13,6 +13,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#include <sys/sysinfo.h>
 #include <sys/uio.h>
 #include <unistd.h>
 #include <immintrin.h>
@@ -196,11 +197,27 @@ static int key_eq(uint64_t off, const char *t, uint16_t tl, const char *k, uint1
 #define MADV_HUGEPAGE 14
 #endif
 
+static void reserve_ram(size_t bytes)
+{
+    struct sysinfo si;
+    if (sysinfo(&si)) {
+        die("sysinfo");
+    }
+
+    uint64_t total = (uint64_t)si.totalram * si.mem_unit;
+    uint64_t freeish = (uint64_t)(si.freeram + si.bufferram) * si.mem_unit;
+    if (freeish < total / 10 + bytes) {
+        diex("ram reserve below 10 percent");
+    }
+}
+
 static void ht_put(uint64_t hash, uint64_t off)
 {
     if (ht_len * 2 >= ht_cap) {
         uint64_t ncap = ht_cap ? ht_cap * 2 : 4096;
-        Node *nht = mmap(NULL, (ncap + 256) * sizeof(*nht), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
+        size_t bytes = (ncap + 256) * sizeof(*ht);
+        reserve_ram(bytes);
+        Node *nht = mmap(NULL, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
         if (nht == MAP_FAILED) die("mmap nht");
         madvise(nht, (ncap + 256) * sizeof(*nht), MADV_HUGEPAGE);
         if (ht) {
