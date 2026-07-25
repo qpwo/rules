@@ -2553,7 +2553,7 @@ if (match) {
                                         double w_weight = db_w;
 
                                         double disp_w = is_decay ? db_w * __builtin_fabs(cur) : db_w;
-                                        if (disp_w < min_weight) continue;
+                                        if ((op == 4 || op == 5) && disp_w < min_weight) continue;
                                         if (r->weight_log > max_wl) max_wl = r->weight_log;
                                         if (op == 4 || op == 5) {
                                             char weight[32];
@@ -2570,7 +2570,7 @@ if (match) {
                                                 out[my_off++] = '\n';
                                             }
                                         } else {
-                                    count_est += disp_w;
+                                    count_est += db_w;
                                     raw_count++;
                                             if (op == 9 && r->v_len > 0) {
                                                 if (is_decay) {
@@ -3086,11 +3086,9 @@ if (threshold > 1.0) threshold = 1.0;
             double db_w = (double)(1U << (r->weight_log > 13 ? 13 : r->weight_log));
 
             double w = (threshold < 1.0 && r->weight_log == 0) ? db_w / threshold : db_w;
-            double cur = 0;
-            int is_decay = r->v_len > 0 && r->v_len < 192 && decay_value_at(rec_v(r), r->v_len, now, &cur);
-            if (is_decay && cur == 0) continue;
-            count_est += is_decay ? w * __builtin_fabs(cur) : w;
+            count_est += w;
             raw_c++;
+
                 }
                 if (offs) munmap(offs, count * 8);
                 if (raw_c < 100) count_est = raw_c;
