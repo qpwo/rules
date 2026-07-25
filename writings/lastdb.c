@@ -380,22 +380,7 @@ static int cmp_node_key(const void *a, const void *b) {
 static void deduplicate_ht(void) {
     if (!ht_len) { ht_sorted_len = 0; return; }
     if (ht_len > ht_sorted_len) {
-        if (ht_sorted_len > 0) {
-            qsort(ht + ht_sorted_len, ht_len - ht_sorted_len, sizeof(*ht), cmp_node);
-            Node *merged = mmap(NULL, ht_len * sizeof(*ht), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-            if (merged != MAP_FAILED) {
-                madvise(merged, ht_len * sizeof(*ht), MADV_HUGEPAGE);
-                uint64_t i = 0, j = ht_sorted_len, k = 0;
-                while (i < ht_sorted_len && j < ht_len) {
-                    if (cmp_node(&ht[i], &ht[j]) <= 0) merged[k++] = ht[i++];
-                    else merged[k++] = ht[j++];
-                }
-                while (i < ht_sorted_len) merged[k++] = ht[i++];
-                while (j < ht_len) merged[k++] = ht[j++];
-                memcpy(ht, merged, ht_len * sizeof(*ht));
-                munmap(merged, ht_len * sizeof(*ht));
-            } else qsort(ht, ht_len, sizeof(*ht), cmp_node);
-        } else qsort(ht, ht_len, sizeof(*ht), cmp_node);
+        qsort(ht, ht_len, sizeof(*ht), cmp_node);
     }
     uint64_t out = 0;
     for (uint64_t i = 0; i < ht_len; ) {
