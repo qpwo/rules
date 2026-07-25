@@ -1,9 +1,10 @@
-//bin/sh -c 'o=${0%.c}; [ "$o" -nt "$0" ] || { ${CC:-cc} -O3 -march=native -ffast-math -fopenmp -Wall -Wextra -Werror -o "$o" "$0" || exit; }; exec "$o" "$@"' "$0" "$@"; exit
+//bin/sh -c 'o=${0%.c}; [ "$o" -nt "$0" ] || { ${CC:-cc} -O3 -march=native -ffast-math -fopenmp -Wall -Wextra -Werror -o "$o" "$0" -lm || exit; }; exec "$o" "$@"' "$0" "$@"; exit
 /** lastdb: one-file durable append-only tenant key/value store, no sqlite, no deps. */
 #define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -630,6 +631,82 @@ static int do_take(const char *path, const char *t, const char *k)
     return 0;
 }
 
+static double parse_f64(const char *s)
+{
+    char *end = NULL;
+    errno = 0;
+    double x = strtod(s, &end);
+    if (!*s || errno || *end || !isfinite(x)) {
+        diex("invalid float");
+    }
+    return x;
+}
+
+static int current_decay(const char *t, const char *k, double *last, double *value)
+{
+    if (strlen(t) > UINT16_MAX || strlen(k) > UINT16_MAX) {
+        return 0;
+    }
+
+    Node *n = ht_get(t, (uint16_t)strlen(t), k, (uint16_t)strlen(k));
+    if (!n) {
+        return 0;
+    }
+
+    Record *r = rec_at(n->off1 - 1);
+    if (r->op == OP_DEL) {
+        return 0;
+    }
+    if (r->v_len >= 128) {
+        diex("stored decay state too long");
+    }
+
+    char buf[128] = {0};
+    memcpy(buf, rec_v(r), r->v_len);
+    char *tab = strchr(buf, '\t');
+    if (!tab) {
+        diex("stored decay state malformed");
+    }
+    *tab = 0;
+    *last = parse_f64(buf);
+    *value = parse_f64(tab + 1);
+    return 1;
+}
+
+static int do_decay(const char *path, const char *t, const char *k, const char *half_life, const char *now, const char *delta)
+{
+    int lockfd = open_lockfile(path);
+    load_db(path);
+    double hl = parse_f64(half_life);
+    double ts = parse_f64(now);
+    double d = parse_f64(delta);
+    if (hl <= 0) {
+        close(lockfd);
+        diex("half life must be positive");
+    }
+
+    double last = ts;
+    double value = 0;
+    if (current_decay(t, k, &last, &value) && ts < last) {
+        close(lockfd);
+        diex("time went backwards");
+    }
+
+    double next = value * exp2((last - ts) / hl) + d;
+    char val[128];
+    snprintf(val, sizeof(val), "%.17g\t%.17g", ts, next);
+
+    int fd = open_append(path);
+    append_fd(fd, t, k, val, OP_PUT);
+    sync_fd(fd);
+    if (close(fd)) {
+        die("close");
+    }
+    close(lockfd);
+    puts(val);
+    return 0;
+}
+
 static unsigned long long parse_u64(const char *s)
 {
     char *end = NULL;
@@ -974,6 +1051,7 @@ static void usage(const char *prog)
     fputs("  verify\n", stderr);
     fputs("  incr TENANT KEY DELTA\n", stderr);
     fputs("  take TENANT KEY\n", stderr);
+    fputs("  decay TENANT KEY HALF_LIFE NOW DELTA\n", stderr);
     fputs("  batch TENANT     # stdin: key<TAB>value\n", stderr);
     fputs("  compact\n", stderr);
     fputs("  closest TYPE TENANT KEY\n", stderr);
@@ -1023,6 +1101,9 @@ int main(int argc, char **argv)
     }
     if (!strcmp(cmd, "take") && argc == 5) {
         return do_take(db, argv[3], argv[4]);
+    }
+    if (!strcmp(cmd, "decay") && argc == 8) {
+        return do_decay(db, argv[3], argv[4], argv[5], argv[6], argv[7]);
     }
     if (!strcmp(cmd, "batch") && argc == 4) {
         return do_batch(db, argv[3]);
