@@ -1,11 +1,10 @@
-//bin/sh -c 'o=${0%.c}; [ "$o" -nt "$0" ] || { if [ "$(uname -s)" = Darwin ]; then p="$(brew --prefix libomp)"; ${CC:-clang} -O3 -march=native -DNDEBUG -Xpreprocessor -fopenmp -I"$p/include" -L"$p/lib" -Wl,-rpath,"$p/lib" "$0" -lomp -o "$o" -lm; else ${CC:-gcc} -O3 -march=native -DNDEBUG -fopenmp "$0" -o "$o" -lm; fi; } || exit; exec "$o" "$@"' "$0" "$@"; exit
+//bin/sh -c 'o=${0%.c}; [ "$o" -nt "$0" ] || { if [ "$(uname -s)" = Darwin ]; then p="$(brew --prefix libomp)"; ${CC:-clang} -O3 -march=native -DNDEBUG -Xpreprocessor -fopenmp -I"$p/include" -L"$p/lib" -Wl,-rpath,"$p/lib" "$0" -lomp -o "$o"; else ${CC:-gcc} -O3 -march=native -DNDEBUG -fopenmp "$0" -o "$o"; fi; } || exit; exec "$o" "$@"' "$0" "$@"; exit
 /** lastdb: one-file durable append-only tenant key/value store, no sqlite, no deps. */
 #define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/file.h>
 #include <limits.h>
-#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,24 +12,14 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
-#ifdef __linux__
 #include <sys/sysinfo.h>
-#endif
 #include <sys/uio.h>
 #include <unistd.h>
-#if defined(__x86_64__) || defined(__amd64__)
 #include <immintrin.h>
-#endif
 #include <omp.h>
 #include <sched.h>
 
-#ifndef O_CLOEXEC
-#define O_CLOEXEC 0
-#endif
 
-#ifndef O_DIRECTORY
-#define O_DIRECTORY 0
-#endif
 
 #define MAGIC 0x3144534cU
 #define OP_PUT 1
@@ -235,32 +224,18 @@ static int key_eq(uint64_t off, const char *t, uint16_t tl, const char *k, uint1
     return memcmp(rec_t(r), t, tl) == 0 && memcmp(rec_k(r), k, kl) == 0;
 }
 
-#ifndef MAP_ANONYMOUS
-#define MAP_ANONYMOUS 0x20
-#endif
-#ifndef MAP_POPULATE
-#define MAP_POPULATE 0x08000
-#endif
-#ifndef MADV_HUGEPAGE
-#define MADV_HUGEPAGE 14
-#endif
+
 
 static void reserve_ram(size_t bytes)
 {
-#ifdef __linux__
     struct sysinfo si;
-    if (sysinfo(&si)) {
-        die("sysinfo");
-    }
+    if (sysinfo(&si)) die("sysinfo");
 
     uint64_t total = (uint64_t)si.totalram * si.mem_unit;
     uint64_t freeish = (uint64_t)(si.freeram + si.bufferram) * si.mem_unit;
     if (freeish < total / 10 + bytes) {
         diex("ram reserve below 10 percent");
     }
-#else
-    (void)bytes;
-#endif
 }
 
 static int worker_threads(void)
@@ -362,9 +337,7 @@ static void load_db(const char *path)
         die("close");
     }
     (void)posix_madvise(map_base, map_size, POSIX_MADV_SEQUENTIAL);
-#ifdef POSIX_MADV_NOREUSE
     (void)posix_madvise(map_base, map_size, POSIX_MADV_NOREUSE);
-#endif
     uint64_t off = valid_size;
     int added = 0;
     while (off < map_size) {
@@ -424,7 +397,7 @@ static void append_raw(int fd, const char *t, size_t tl, const char *k, size_t k
         uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
         uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.1L);
         double avail = (double)st.f_bavail / st.f_blocks;
-        double keep = exp2(50.0 * (avail - 0.2));
+        double keep = __builtin_exp2(50.0 * (avail - 0.2));
         double gate = (double)(r.check >> 11) * 0x1.0p-53;
         if (free_bytes < reserve_bytes + r.len) {
             return;
@@ -697,7 +670,7 @@ static double parse_f64(const char *s)
     char *end = NULL;
     errno = 0;
     double x = strtod(s, &end);
-    if (!*s || errno || *end || !isfinite(x)) {
+    if (!*s || errno || *end || !__builtin_isfinite(x)) {
         diex("invalid float");
     }
     return x;
@@ -766,7 +739,7 @@ static int do_decay(const char *path, const char *t, const char *k, const char *
         }
     }
 
-    double next = value * exp2((last - ts) / hl) + d;
+    double next = value * __builtin_exp2((last - ts) / hl) + d;
     char val[192];
     snprintf(val, sizeof(val), "%.17g\t%.17g\t%.17g", hl, ts, next);
 
@@ -1184,49 +1157,41 @@ static int do_compact(const char *path)
 typedef float unaligned_f32 __attribute__((aligned(1)));
 typedef _Float16 unaligned_f16 __attribute__((aligned(1)));
 
-#if defined(__x86_64__) || defined(__amd64__)
 __attribute__((target("avx512f,avx512vl")))
 static float vec_dot_f32(const void *a, const void *b, size_t bytes) {
     size_t n = bytes / 4;
-    __m512 d2_vec = _mm512_set1_ps(0.0f);
+    __m512 sum_vec = _mm512_set1_ps(0.0f);
     const unaligned_f32 *fa = a, *fb = b;
     for (size_t i = 0; i < n; i += 16) {
         __mmask16 mask = n - i >= 16 ? 0xFFFF : ((1u << (n - i)) - 1u);
         __m512 va = _mm512_maskz_loadu_ps(mask, fa + i);
         __m512 vb = _mm512_maskz_loadu_ps(mask, fb + i);
-        __m512 d_vec = _mm512_sub_ps(va, vb);
-        d2_vec = _mm512_fmadd_ps(d_vec, d_vec, d2_vec);
+        sum_vec = _mm512_fmadd_ps(va, vb, sum_vec);
     }
-    return -_mm512_reduce_add_ps(d2_vec);
+    return _mm512_reduce_add_ps(sum_vec);
 }
 
 __attribute__((target("avx512fp16,avx512vl,avx512f")))
 static float vec_dot_f16(const void *a, const void *b, size_t bytes) {
     size_t n = bytes / 2;
-    __m512h d2_vec = _mm512_set1_ph(0);
+    __m512h sum_vec = _mm512_set1_ph(0);
     const unaligned_f16 *fa = a, *fb = b;
     for (size_t i = 0; i < n; i += 32) {
         __mmask32 mask = n - i >= 32 ? 0xFFFFFFFF : ((1u << (n - i)) - 1u);
         __m512i va = _mm512_maskz_loadu_epi16(mask, fa + i);
         __m512i vb = _mm512_maskz_loadu_epi16(mask, fb + i);
-        __m512h d_vec = _mm512_sub_ph(_mm512_castsi512_ph(va), _mm512_castsi512_ph(vb));
-        d2_vec = _mm512_fmadd_ph(d_vec, d_vec, d2_vec);
+        sum_vec = _mm512_fmadd_ph(_mm512_castsi512_ph(va), _mm512_castsi512_ph(vb), sum_vec);
     }
-    return -(float)_mm512_reduce_add_ph(d2_vec);
+    return (float)_mm512_reduce_add_ph(sum_vec);
 }
-#else
-static float vec_dot_f32(const void *a, const void *b, size_t bytes) { (void)a; (void)b; (void)bytes; return 0; }
-static float vec_dot_f16(const void *a, const void *b, size_t bytes) { (void)a; (void)b; (void)bytes; return 0; }
-#endif
 
 static float vec_dot_i8(const void *a, const void *b, size_t bytes) {
     int32_t sum = 0;
     const int8_t *ca = a, *cb = b;
     for (size_t i = 0; i < bytes; i++) {
-        int32_t d = (int32_t)ca[i] - (int32_t)cb[i];
-        sum += d * d;
+        sum += (int32_t)ca[i] * cb[i];
     }
-    return -(float)sum;
+    return (float)sum;
 }
 
 static int do_closest(const char *path, const char *type, const char *t, const char *k)
@@ -1302,7 +1267,7 @@ static void batch_flush(int fd, char *buf, size_t *used)
         uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
         uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.1L);
         double avail = (double)st.f_bavail / st.f_blocks;
-        double keep = exp2(50.0 * (avail - 0.2));
+        double keep = __builtin_exp2(50.0 * (avail - 0.2));
         double gate = (double)(fnv_bytes(FNV0, buf, *used) >> 11) * 0x1.0p-53;
         if (free_bytes < reserve_bytes + *used) {
             *used = 0; return;
