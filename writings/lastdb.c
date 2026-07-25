@@ -2574,7 +2574,7 @@ if (match) {
                                 } else {
                                     char val[128]; int vl_out = 0;
 if (max_wl < 0) max_wl = 0;
-                                if (max_wl > 0 && raw_count > 0 && raw_count < (1ULL << max_wl)) { count_est = (double)raw_count; sum = raw_sum; max_wl = 0; }
+                                if (max_wl > 0 && raw_count > 0 && raw_count < (1ULL << max_wl)) { count_est = (double)raw_count; sum = raw_sum; }
                                 if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu\t%d", count_est, (unsigned long long)raw_count, max_wl);
                                 else vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%llu\t%d", sum, raw_sum, (unsigned long long)raw_count, max_wl);
                                     send_response(fd, cipherkey, 0, val, vl_out);
@@ -3071,7 +3071,7 @@ if (threshold > 1.0) threshold = 1.0;
 
                 }
                 if (offs) munmap(offs, count * 8);
-                if (max_wl > 0 && raw_c > 0 && raw_c < (1ULL << max_wl)) { count_est = (double)raw_c; max_wl = 0; }
+                if (max_wl > 0 && raw_c > 0 && raw_c < (1ULL << max_wl)) { count_est = (double)raw_c; }
                 printf("%.4g\t%llu\t%d\n", count_est, (unsigned long long)raw_c, max_wl);
             }
             else if (!strcmp(args[0], "sum") && n >= 2) {
@@ -3119,7 +3119,7 @@ if (threshold > 1.0) threshold = 1.0;
                     }
                 }
                 if (offs) munmap(offs, count * 8);
-                if (max_wl > 0 && raw_s > 0 && raw_s < (1ULL << max_wl)) { s = raw_sum; max_wl = 0; }
+                if (max_wl > 0 && raw_s > 0 && raw_s < (1ULL << max_wl)) { s = raw_sum; }
                 printf("%.17g\t%.17g\t%llu\t%d\n", s, raw_sum, (unsigned long long)raw_s, max_wl);
 
             }
