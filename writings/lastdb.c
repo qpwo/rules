@@ -983,7 +983,7 @@ static int do_verify(const char *path)
 {
     load_db(path);
     uint64_t records = 0;
-    uint64_t puts = 0;
+    uint64_t n_puts = 0;
     uint64_t dels = 0;
     uint64_t put_bytes = 0;
     uint64_t del_bytes = 0;
@@ -999,7 +999,7 @@ static int do_verify(const char *path)
             return 1;
         }
         records++;
-        puts += r->op == OP_PUT;
+        n_puts += r->op == OP_PUT;
         dels += r->op == OP_DEL;
         put_bytes += r->op == OP_PUT ? r->len : 0;
         del_bytes += r->op == OP_DEL ? r->len : 0;
@@ -1022,7 +1022,7 @@ static int do_verify(const char *path)
     printf("valid_bytes\t%llu\n", (unsigned long long)valid_size);
     printf("bad_bytes\t%llu\n", (unsigned long long)(map_size - valid_size));
     printf("records\t%llu\n", (unsigned long long)records);
-    printf("puts\t%llu\n", (unsigned long long)puts);
+    printf("puts\t%llu\n", (unsigned long long)n_puts);
     printf("dels\t%llu\n", (unsigned long long)dels);
     printf("put_bytes\t%llu\n", (unsigned long long)put_bytes);
     printf("del_bytes\t%llu\n", (unsigned long long)del_bytes);
