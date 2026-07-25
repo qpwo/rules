@@ -2471,6 +2471,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 }
 { double _sn = (double)time(NULL); if (eval_now < 1e9 || eval_now > _sn + 86400) eval_now = _sn; }
 double max_w = threshold > 1.0 ? threshold : 13.0;
+double sample_rate = threshold < 1.0 ? threshold : 1.0;
 
                                 double count_est = 0; uint64_t raw_count = 0; double sum = 0; double raw_sum = 0; int max_wl = 0; int has_decay = 0;
 
@@ -2523,8 +2524,12 @@ has_decay = 1;
                                         w_iter += wl + 1;
                                     }
 if (match) {
-                                        double db_w = (double)(1U << (r->weight_log > 13 ? 13 : r->weight_log));
-                                        double w_weight = db_w;
+                                    if ((op == 8 || op == 9) && sample_rate < 1.0 && r->weight_log == 0) {
+                                        if ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > sample_rate) continue;
+                                    }
+                                    double db_w = (double)(1U << (r->weight_log > 13 ? 13 : r->weight_log));
+                                    if ((op == 8 || op == 9) && sample_rate < 1.0 && r->weight_log == 0) db_w /= sample_rate;
+                                    double w_weight = db_w;
 
                                         double disp_w = is_decay ? db_w * __builtin_fabs(cur) : db_w;
                                         if ((op == 4 || op == 5) && disp_w < min_weight) continue;
