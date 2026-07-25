@@ -2493,6 +2493,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         }
                                     }
                                 }
+if (eval_now < 1) eval_now = (double)time(NULL);
 double max_w = threshold > 1.0 ? threshold : 20.0;
 threshold = 1.0;
 
