@@ -1,4 +1,4 @@
-//bin/sh -c 'o=${0%.c}; [ "$o" -nt "$0" ] || ${CC:-gcc} -O3 -march=native -DNDEBUG -fopenmp "$0" -o "$o" -lm || exit; exec "$o" "$@"' "$0" "$@"; exit
+//bin/sh -c 'o=${0%.c}; [ "$o" -nt "$0" ] || { if [ "$(uname -s)" = Darwin ]; then p="$(brew --prefix libomp)"; ${CC:-clang} -O3 -march=native -DNDEBUG -Xpreprocessor -fopenmp -I"$p/include" -L"$p/lib" -Wl,-rpath,"$p/lib" "$0" -lomp -o "$o" -lm; else ${CC:-gcc} -O3 -march=native -DNDEBUG -fopenmp "$0" -o "$o" -lm; fi; } || exit; exec "$o" "$@"' "$0" "$@"; exit
 /** lastdb: one-file durable append-only tenant key/value store, no sqlite, no deps. */
 #define _GNU_SOURCE
 #include <errno.h>
@@ -13,10 +13,14 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#ifdef __linux__
 #include <sys/sysinfo.h>
+#endif
 #include <sys/uio.h>
 #include <unistd.h>
+#if defined(__x86_64__) || defined(__amd64__)
 #include <immintrin.h>
+#endif
 #include <omp.h>
 #include <sched.h>
 
@@ -113,26 +117,32 @@ static uint64_t key_hash(const char *t, uint16_t tl, const char *k, uint16_t kl)
     return h ? h : 1;
 }
 
+static uint64_t ht_lower_bound(uint64_t hash) {
+    if (!ht_len) return 0;
+    uint64_t length = ht_len;
+    Node *begin = ht;
+    Node *end = ht + length;
+    uint64_t step = 1ULL << (63 - __builtin_clzll(length));
+    if (step != length && begin[step].hash < hash) {
+        length -= step + 1;
+        if (length == 0) return ht_len;
+        step = length <= 1 ? 1 : 1ULL << (64 - __builtin_clzll(length - 1));
+        begin = end - step;
+    }
+    for (step /= 2; step != 0; step /= 2) {
+        if (begin[step].hash < hash) begin += step;
+    }
+    return (begin - ht) + (begin->hash < hash);
+}
+
 static void ht_tenant_range(const char *t, uint16_t tl, uint64_t *start_idx, uint64_t *end_idx) {
     if (!ht_len) { *start_idx = 0; *end_idx = 0; return; }
     uint64_t th = fnv_bytes(FNV0, t, tl);
     uint64_t h_start = (th << 32);
     uint64_t h_end = h_start | 0xFFFFFFFFULL;
     if (h_start == 0) h_start = 1;
-    uint64_t l = 0, r = ht_len;
-    while (l < r) {
-        uint64_t m = l + (r - l) / 2;
-        if (ht[m].hash < h_start) l = m + 1;
-        else r = m;
-    }
-    *start_idx = l;
-    r = ht_len;
-    while (l < r) {
-        uint64_t m = l + (r - l) / 2;
-        if (ht[m].hash <= h_end) l = m + 1;
-        else r = m;
-    }
-    *end_idx = l;
+    *start_idx = ht_lower_bound(h_start);
+    *end_idx = ht_lower_bound(h_end + 1);
 }
 
 static uint64_t rec_check(const Record *r, const char *t, const char *k, const char *v)
@@ -222,6 +232,7 @@ static int key_eq(uint64_t off, const char *t, uint16_t tl, const char *k, uint1
 
 static void reserve_ram(size_t bytes)
 {
+#ifdef __linux__
     struct sysinfo si;
     if (sysinfo(&si)) {
         die("sysinfo");
@@ -232,6 +243,9 @@ static void reserve_ram(size_t bytes)
     if (freeish < total / 10 + bytes) {
         diex("ram reserve below 10 percent");
     }
+#else
+    (void)bytes;
+#endif
 }
 
 static int worker_threads(void)
@@ -303,26 +317,9 @@ static Node *ht_get(const char *t, uint16_t tl, const char *k, uint16_t kl)
 {
     if (!ht_len) return NULL;
     uint64_t hash = key_hash(t, tl, k, kl);
-    uint64_t length = ht_len;
-    Node *begin = ht;
-    Node *end = ht + length;
-    uint64_t step = 1ULL << (63 - __builtin_clzll(length));
-    if (step != length && begin[step].hash < hash) {
-        length -= step + 1;
-        if (length == 0) {
-            begin = end;
-            goto done;
-        }
-        step = length <= 1 ? 1 : 1ULL << (64 - __builtin_clzll(length - 1));
-        begin = end - step;
-    }
-    for (step /= 2; step != 0; step /= 2) {
-        if (begin[step].hash < hash) {
-            begin += step;
-        }
-    }
-    begin += (begin->hash < hash);
-done:
+    uint64_t idx = ht_lower_bound(hash);
+    Node *begin = ht + idx;
+    Node *end = ht + ht_len;
     while (begin < end && begin->hash == hash) {
         if (key_eq(begin->off1 - 1, t, tl, k, kl)) return begin;
         begin++;
@@ -1073,6 +1070,7 @@ static int do_compact(const char *path)
 typedef float unaligned_f32 __attribute__((aligned(1)));
 typedef _Float16 unaligned_f16 __attribute__((aligned(1)));
 
+#if defined(__x86_64__) || defined(__amd64__)
 __attribute__((target("avx512f,avx512vl")))
 static float vec_dot_f32(const void *a, const void *b, size_t bytes) {
     size_t n = bytes / 4;
@@ -1102,6 +1100,10 @@ static float vec_dot_f16(const void *a, const void *b, size_t bytes) {
     }
     return -(float)_mm512_reduce_add_ph(d2_vec);
 }
+#else
+static float vec_dot_f32(const void *a, const void *b, size_t bytes) { (void)a; (void)b; (void)bytes; return 0; }
+static float vec_dot_f16(const void *a, const void *b, size_t bytes) { (void)a; (void)b; (void)bytes; return 0; }
+#endif
 
 static float vec_dot_i8(const void *a, const void *b, size_t bytes) {
     int32_t sum = 0;
