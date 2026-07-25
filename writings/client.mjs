@@ -73,13 +73,15 @@ export async function drop_prefix(client, color, tenant, prefix) {
     return request(client, 'del', color, tenant, prefix, '*');
 }
 
-export async function scan(client, color, tenant, prefix = '', threshold = 1.0, now = null) {
+export async function scan(client, color, tenant, prefix = '', threshold = 1.0, now = null, min_weight = null) {
     var k = prefix + '\t' + threshold + '\t' + (now === null ? Date.now() / 1000.0 : now);
+    if (min_weight !== null) k += '\t' + min_weight;
     return parseWeighted(await request(client, 'scan', color, tenant, k, ''));
 }
 
-export async function search(client, color, tenant, words, threshold = 1.0, now = null) {
+export async function search(client, color, tenant, words, threshold = 1.0, now = null, min_weight = null) {
     var k = '\t' + threshold + '\t' + (now === null ? Date.now() / 1000.0 : now);
+    if (min_weight !== null) k += '\t' + min_weight;
     return parseWeighted(await request(client, 'search', color, tenant, k, Array.isArray(words) ? words.join('\t') : words));
 }
 
@@ -95,15 +97,17 @@ function parseWeighted(res) {
     return out.sort((a, b) => b.weight - a.weight);
 }
 
-export async function count(client, color, tenant, words = '', prefix = '', threshold = 1.0, now = null) {
+export async function count(client, color, tenant, words = '', prefix = '', threshold = 1.0, now = null, min_weight = null) {
     var k = prefix + '\t' + threshold + '\t' + (now === null ? Date.now() / 1000.0 : now);
+    if (min_weight !== null) k += '\t' + min_weight;
     var res = await request(client, 'count', color, tenant, k, Array.isArray(words) ? words.join('\t') : words);
     var p = res.toString().split('\t');
     return { estimated: Number(p[0]), raw: Number(p[1]) };
 }
 
-export async function sum(client, color, tenant, words = '', prefix = '', threshold = 1.0, now = null) {
+export async function sum(client, color, tenant, words = '', prefix = '', threshold = 1.0, now = null, min_weight = null) {
     var k = prefix + '\t' + threshold + '\t' + (now === null ? Date.now() / 1000.0 : now);
+    if (min_weight !== null) k += '\t' + min_weight;
     var res = await request(client, 'sum', color, tenant, k, Array.isArray(words) ? words.join('\t') : words);
     var p = res.toString().split('\t');
     if (p.length >= 3) return { estimated: Number(p[0]), raw_sum: Number(p[1]), raw_count: Number(p[2]) };
@@ -314,18 +318,24 @@ async function cli(client, a) {
     if (a[0] === 'drop_prefix' && a.length === 4) {
         return drop_prefix(client, parseI32(a[1]), a[2], a[3]);
     }
-    if (a[0] === 'scan' && (a.length >= 3 && a.length <= 6)) {
-        return scan(client, parseI32(a[1]), a[2], a[3] ?? '', a[4] ? Number(a[4]) : 1.0, a[5] ? Number(a[5]) : null);
+    if (a[0] === 'scan' && (a.length >= 3 && a.length <= 7)) {
+        return scan(client, parseI32(a[1]), a[2], a[3] ?? '', a[4] ? Number(a[4]) : 1.0, a[5] ? Number(a[5]) : null, a[6] ? Number(a[6]) : null);
     }
     if (a[0] === 'search' && a.length >= 4) {
-        var th = Number(a[a.length - 1]);
-        if (!Number.isNaN(th) && th > 0) {
-            return search(client, parseI32(a[1]), a[2], a.slice(3, -1), th);
+        var mw = Number(a[a.length - 1]);
+        var n = Number(a[a.length - 2]);
+        var th3 = Number(a[a.length - 3]);
+        if (!Number.isNaN(mw) && mw >= 0 && !Number.isNaN(n) && n > 1e9 && !Number.isNaN(th3) && th3 > 0) {
+            return search(client, parseI32(a[1]), a[2], a.slice(3, -3), th3, n, mw);
         }
         var now = Number(a[a.length - 1]);
         var th2 = Number(a[a.length - 2]);
         if (!Number.isNaN(now) && now > 1000000000 && !Number.isNaN(th2) && th2 > 0) {
             return search(client, parseI32(a[1]), a[2], a.slice(3, -2), th2, now);
+        }
+        var th = Number(a[a.length - 1]);
+        if (!Number.isNaN(th) && th > 0) {
+            return search(client, parseI32(a[1]), a[2], a.slice(3, -1), th);
         }
         return search(client, parseI32(a[1]), a[2], a.slice(3));
     }
@@ -341,11 +351,11 @@ async function cli(client, a) {
     if (a[0] === 'closest' && a.length === 5) {
         return closest(client, parseI32(a[1]), a[2], a[3], a[4]);
     }
-    if (a[0] === 'count' && (a.length >= 3 && a.length <= 7)) {
-        return count(client, parseI32(a[1]), a[2], a[3] ?? '', a[4] ?? '', a[5] ? Number(a[5]) : 1.0, a[6] ? Number(a[6]) : null);
+    if (a[0] === 'count' && (a.length >= 3 && a.length <= 8)) {
+        return count(client, parseI32(a[1]), a[2], a[3] ?? '', a[4] ?? '', a[5] ? Number(a[5]) : 1.0, a[6] ? Number(a[6]) : null, a[7] ? Number(a[7]) : null);
     }
-    if (a[0] === 'sum' && (a.length >= 3 && a.length <= 7)) {
-        return sum(client, parseI32(a[1]), a[2], a[3] ?? '', a[4] ?? '', a[5] ? Number(a[5]) : 1.0, a[6] ? Number(a[6]) : null);
+    if (a[0] === 'sum' && (a.length >= 3 && a.length <= 8)) {
+        return sum(client, parseI32(a[1]), a[2], a[3] ?? '', a[4] ?? '', a[5] ? Number(a[5]) : 1.0, a[6] ? Number(a[6]) : null, a[7] ? Number(a[7]) : null);
     }
     if (a[0] === 'incr' && a.length === 5) {
         return incr(client, parseI32(a[1]), a[2], a[3], a[4]);

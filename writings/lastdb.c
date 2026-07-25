@@ -64,6 +64,7 @@ static uint64_t compute_bf(const char *data, size_t len) {
 typedef struct {
     uint64_t hash;
     uint64_t off1;
+    int8_t dist;
 } Node;
 
 static uint8_t *map_base;
@@ -72,9 +73,9 @@ static size_t valid_size;
 static Node *ht;
 static uint64_t ht_cap;
 static uint64_t ht_len;
-static uint64_t ht_sorted_len;
+static int8_t ht_max_probe;
 
-static void deduplicate_ht(void);
+static void ht_put(uint64_t hash, uint64_t off);
 
 static void die(const char *msg)
 {
@@ -131,35 +132,7 @@ static uint64_t key_hash(const char *t, uint16_t tl, const char *k, uint16_t kl)
     return h ? h : 1;
 }
 
-static uint64_t ht_lower_bound(uint64_t hash) {
-    uint64_t length = ht_sorted_len;
-    if (length == 0) return 0;
-    uint64_t step = 1ULL << (63 - __builtin_clzll(length));
-    uint64_t begin = 0;
-    if (step != length && ht[step].hash < hash) {
-        length -= step + 1;
-        if (length == 0) return ht_sorted_len;
-        step = length == 1 ? 1 : 1ULL << (64 - __builtin_clzll(length - 1));
-        begin = ht_sorted_len - step;
-    }
-    for (step >>= 1; step != 0; step >>= 1) {
-        if (ht[begin + step].hash < hash) begin += step;
-    }
-    return begin + (ht[begin].hash < hash);
-}
 
-static void ht_tenant_range(const char *t, uint16_t tl, uint64_t *start_idx, uint64_t *end_idx) {
-    if (ht_sorted_len != ht_len) {
-        deduplicate_ht(); /* only safe if caller holds write lock or is single-threaded */
-    }
-    if (!ht_sorted_len) { *start_idx = 0; *end_idx = 0; return; }
-    uint64_t th = fnv_bytes(FNV0, t, tl);
-    uint64_t h_start = th << 32;
-    uint64_t h_end = h_start | 0xFFFFFFFFULL;
-    if (h_start == 0) h_start = 1;
-    *start_idx = ht_lower_bound(h_start);
-    *end_idx = h_end == UINT64_MAX ? ht_sorted_len : ht_lower_bound(h_end + 1);
-}
 
 static uint64_t rec_check(const Record *r, const char *t, const char *k, const char *v)
 {
@@ -283,56 +256,95 @@ static int worker_threads(void)
 
 static uint64_t ht_target_cap(uint64_t need)
 {
-    uint64_t ncap = ht_cap ? ht_cap : 4096;
+    uint64_t ncap = 256;
     while (ncap < need) {
         if (ncap > UINT64_MAX / 2) {
             diex("ht too large");
         }
         ncap *= 2;
     }
-    return ncap + 64;
+    return ncap;
 }
 
 static void ht_reserve(uint64_t need)
 {
-    if (need + 64 <= ht_cap) {
-        return;
-    }
+    if (need <= ht_cap / 2) return;
 
-    uint64_t ncap = ht_target_cap(need);
-    size_t old_bytes = ht_cap * sizeof(*ht);
-    size_t bytes = ncap * sizeof(*ht);
-    if (bytes / sizeof(*ht) != ncap) {
+    uint64_t ncap = ht_target_cap(need * 2);
+    if (ncap <= ht_cap) return;
+
+    int8_t max_probe = 0;
+    uint64_t x = ncap;
+    while (x) { max_probe++; x >>= 1; }
+
+    size_t bytes = (ncap + max_probe) * sizeof(*ht);
+    if (bytes / sizeof(*ht) != (ncap + max_probe)) {
         diex("ht too large");
     }
-
-    reserve_ram(bytes - old_bytes);
-    if (ht) {
-        Node *nht = mremap(ht, old_bytes, bytes, MREMAP_MAYMOVE);
-        if (nht == MAP_FAILED) {
-            die("mremap ht");
-        }
-        ht = nht;
-    } else {
-        ht = mmap(NULL, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-        if (ht == MAP_FAILED) {
-            die("mmap ht");
-        }
+    reserve_ram(bytes);
+    Node *nht = mmap(NULL, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (nht == MAP_FAILED) {
+        die("mmap ht");
     }
-    madvise(ht, bytes, MADV_HUGEPAGE);
+    madvise(nht, bytes, MADV_HUGEPAGE);
+    for (uint64_t i = 0; i < ncap + max_probe; i++) {
+        nht[i].dist = -1;
+    }
+
+    Node *oht = ht;
+    uint64_t old_cap = ht_cap;
+    int8_t old_mp = ht_max_probe;
+
+    ht = nht;
     ht_cap = ncap;
+    ht_max_probe = max_probe;
+    ht_len = 0;
+
+    if (oht) {
+        for (uint64_t i = 0; i < old_cap + old_mp; i++) {
+            if (oht[i].dist >= 0) {
+                ht_put(oht[i].hash, oht[i].off1 - 1);
+            }
+        }
+        munmap(oht, (old_cap + old_mp) * sizeof(*oht));
+    }
 }
 
 static void ht_put(uint64_t hash, uint64_t off)
 {
-    if ((ht_len >= ht_cap && ht_len >= 1048576) || ht_len - ht_sorted_len >= ht_sorted_len / 16 + 65536) {
-        deduplicate_ht();
-    }
     ht_reserve(ht_len + 1);
-    int stays_sorted = ht_len == ht_sorted_len && (!ht_len || ht[ht_len - 1].hash <= hash);
-    ht[ht_len++] = (Node){hash, off + 1};
-    if (stays_sorted) {
-        ht_sorted_len = ht_len;
+
+    Node elem = {hash, off + 1, 0};
+    uint64_t mask = ht_cap - 1;
+    uint64_t idx = hash & mask;
+
+    while (1) {
+        if (ht[idx].dist < 0) {
+            ht[idx] = elem;
+            ht_len++;
+            return;
+        }
+
+        if (ht[idx].hash == elem.hash) {
+            Record *r1 = rec_at(ht[idx].off1 - 1);
+            Record *r2 = rec_at(elem.off1 - 1);
+            if (r1->t_len == r2->t_len && r1->k_len == r2->k_len &&
+                !memcmp(rec_t(r1), rec_t(r2), r1->t_len) &&
+                !memcmp(rec_k(r1), rec_k(r2), r1->k_len)) {
+
+                ht[idx] = elem;
+                return;
+            }
+        }
+
+        if (ht[idx].dist < elem.dist) {
+            Node tmp = ht[idx];
+            ht[idx] = elem;
+            elem = tmp;
+        }
+
+        idx++;
+        elem.dist++;
     }
 }
 
@@ -2429,18 +2441,27 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     w += wl + 1;
                                 }
 
+                                double min_weight = (op == 4 || op == 5) ? 0.5 : 0.0;
                                 double threshold = 1.0; double eval_now = (double)time(NULL);
                                 char *pref = k; size_t pref_len = kl;
                                 if (kl > 0) {
-                                    char *tab2 = memrchr(k, '\t', kl);
-                                    if (tab2) {
-                                        char *tab1 = memrchr(k, '\t', tab2 - k);
-                                        if (tab1) {
-                                            *tab1 = 0;
-                                            *tab2 = 0;
-                                            pref_len = tab1 - k;
-                                            threshold = strtod(tab1 + 1, NULL);
-                                            eval_now = strtod(tab2 + 1, NULL);
+                                    char *tab3 = memrchr(k, '\t', kl);
+                                    if (tab3) {
+                                        char *tab2 = memrchr(k, '\t', tab3 - k);
+                                        if (tab2) {
+                                            char *tab1 = memrchr(k, '\t', tab2 - k);
+                                            if (tab1) {
+                                                *tab1 = *tab2 = *tab3 = 0;
+                                                pref_len = tab1 - k;
+                                                threshold = strtod(tab1 + 1, NULL);
+                                                eval_now = strtod(tab2 + 1, NULL);
+                                                min_weight = strtod(tab3 + 1, NULL);
+                                            } else {
+                                                *tab2 = *tab3 = 0;
+                                                pref_len = tab2 - k;
+                                                threshold = strtod(tab2 + 1, NULL);
+                                                eval_now = strtod(tab3 + 1, NULL);
+                                            }
                                         }
                                     }
                                 }
@@ -2502,7 +2523,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
                                         double w_weight = db_w > qw ? db_w : qw;
                                         double eff_w = is_decay ? w_weight * cur : w_weight;
-                                        if (eff_w < 0.5) continue;
+                                        if (eff_w < min_weight) continue;
                                         if (op == 4 || op == 5) {
                                             char weight[32];
                                             int wlen = snprintf(weight, sizeof(weight), "%.5g\t", eff_w);
