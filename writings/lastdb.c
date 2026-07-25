@@ -250,13 +250,8 @@ static int worker_threads(void)
     }
 
     int n = omp_get_num_procs();
-    double load[1];
-    if (getloadavg(load, 1) == 1) {
-        int budget = (int)(n * 0.9 - load[0] + 0.5);
-        return budget > 0 ? budget : 1;
-    }
-    int keep = (n + 9) / 10;
-    return n > keep ? n - keep : 1;
+    int budget = n * 9 / 10;
+    return budget > 0 ? budget : 1;
 }
 
 static uint64_t ht_target_cap(uint64_t need)
@@ -2278,19 +2273,19 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                 while (1) {
                     usleep(1000000);
                     int need_compact = 0;
-                    int sync_fd = -1;
-                    { SRV_READ_LOCK(db_path);
-                        if (srv_db_fd >= 0) {
-                            struct statvfs st;
-                            if (!fstatvfs(srv_db_fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
-                                uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
-                                uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.15L);
-                                if (free_bytes < reserve_bytes) need_compact = 1;
-                            }
-                            sync_fd = srv_db_fd;
-                        }
-                    }
-                    if (sync_fd >= 0) (void)fdatasync(sync_fd);
+        int sfd = -1;
+        { SRV_READ_LOCK(db_path);
+            if (srv_db_fd >= 0) {
+                struct statvfs st;
+                if (!fstatvfs(srv_db_fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
+                    uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
+                    uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.15L);
+                    if (free_bytes < reserve_bytes) need_compact = 1;
+                }
+                sfd = srv_db_fd;
+            }
+        }
+        if (sfd >= 0) (void)fdatasync(sfd);
                     if (need_compact) { SRV_WRITE_LOCK(db_path); do_compact(db_path); if (srv_db_fd >= 0) { close(srv_db_fd); srv_db_fd = -1; } }
                 }
             }
