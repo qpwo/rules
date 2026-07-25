@@ -2584,7 +2584,7 @@ w2_sum += eff_w * eff_w;
                                 if (max_wl < 0) max_wl = 0;
 double ess = count_est > 0 && w2_sum > 0 ? count_est * count_est / w2_sum : (count_est > 0 ? count_est : 0);
 double confidence = ess >= 1000 ? 1.0 : ess / 1000.0;
-if (max_wl > 0) confidence *= __builtin_exp2(-(double)max_wl * 0.25);
+if (max_wl > 0) confidence *= __builtin_exp2(-(double)max_wl * 0.125);
                                 if (count_est < 0.5) count_est = 0;
                                 if (__builtin_fabs(sum) < 5e-15) sum = 0;
                                 if (raw_count < 5) confidence *= (double)raw_count / 5.0;
@@ -3089,7 +3089,7 @@ if (threshold > 1.0) threshold = 1.0;
                 if (offs) munmap(offs, count * 8);
                 double conf = count_est > 0 ? (double)raw_c / __builtin_sqrt(count_est) : 1.0;
                 if (conf > 1.0) conf = 1.0;
-                if (max_wl > 0) conf *= __builtin_exp2(-(double)max_wl * 0.25);
+                if (max_wl > 0) conf *= __builtin_exp2(-(double)max_wl * 0.125);
                 if (count_est < 0.5) count_est = 0;
                 if (raw_c < 5) conf *= (double)raw_c / 5.0;
                 if (conf < 0.15) { count_est = 0; conf = 0; }
@@ -3142,7 +3142,7 @@ if (threshold > 1.0) threshold = 1.0;
                 }
                 if (offs) munmap(offs, count * 8);
                 if (__builtin_fabs(s) < 5e-15) s = 0;
-                double conf = max_wl > 0 ? __builtin_exp2(-(double)max_wl * 0.25) : 1.0;
+                double conf = max_wl > 0 ? __builtin_exp2(-(double)max_wl * 0.125) : 1.0;
                 if (raw_s < 5) conf *= (double)raw_s / 5.0;
                 if (conf < 0.15) { s = 0; raw_sum = 0; conf = 0; }
                 printf("%.17g\t%.17g\t%llu\t%d\t%.4g\n", s, raw_sum, (unsigned long long)raw_s, max_wl, conf);
