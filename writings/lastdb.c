@@ -1801,7 +1801,7 @@ static void usage(const char *prog)
     fputs("  batch TENANT     # stdin: key<TAB>value\n", stderr);
     fputs("  compact\n", stderr);
     fputs("  closest TYPE TENANT KEY\n", stderr);
-    fputs("  serve PORT CIPHERKEY\n", stderr);
+    fputs("  serve CIPHERKEY     # always port 51515\n", stderr);
     exit(2);
 }
 
@@ -1814,8 +1814,8 @@ int main(int argc, char **argv)
     const char *db = argv[1];
     const char *cmd = argv[2];
 
-    if (!strcmp(cmd, "serve") && argc == 5) {
-        do_serve(db, atoi(argv[3]), atoi(argv[4]));
+    if (!strcmp(cmd, "serve") && argc == 4) {
+        do_serve(db, 51515, atoi(argv[3]));
         return 0;
     }
 
