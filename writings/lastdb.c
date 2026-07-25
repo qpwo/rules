@@ -262,7 +262,7 @@ static void reserve_ram(size_t bytes)
 
 static int worker_threads(void)
 {
-    if (omp_in_parallel()) {
+    if (omp_get_active_level() > 1) {
         return 1;
     }
 
