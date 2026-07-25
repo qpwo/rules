@@ -1371,7 +1371,7 @@ static int do_compact(const char *path)
 
     (void)posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
     reserve_ram(COMPACT_WRITE_BYTES);
-    char *buf = mmap(NULL, COMPACT_WRITE_BYTES, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
+    char *buf = mmap(NULL, COMPACT_WRITE_BYTES, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (buf == MAP_FAILED) {
         die("mmap compact");
     }
@@ -1964,7 +1964,7 @@ static inline Chunk *chunk_pop(void) {
     if (total && freeish < total / 10 + sizeof(Chunk)) return NULL;
     double load[1];
     if (getloadavg(load, 1) == 1 && load[0] > omp_get_num_procs() * 0.9) return NULL;
-    Chunk *chunk = mmap(NULL, sizeof(*chunk), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
+    Chunk *chunk = mmap(NULL, sizeof(*chunk), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (chunk == MAP_FAILED) return NULL;
     madvise(chunk, sizeof(*chunk), MADV_HUGEPAGE);
     return chunk;
@@ -2038,6 +2038,10 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
     omp_set_max_active_levels(2);
 
     struct rlimit rl;
+    if (!getrlimit(RLIMIT_NOFILE, &rl)) {
+        rl.rlim_cur = rl.rlim_max;
+        setrlimit(RLIMIT_NOFILE, &rl);
+    }
     if (getrlimit(RLIMIT_NOFILE, &rl)) die("getrlimit");
     int max_conn = (rl.rlim_cur > 100 ? rl.rlim_cur : 100) * 9 / 10;
     _Atomic int active_conn = 0;
@@ -2067,6 +2071,9 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                         continue;
                     }
                     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
+#ifdef TCP_QUICKACK
+                    setsockopt(fd, IPPROTO_TCP, TCP_QUICKACK, &opt, sizeof(opt));
+#endif
                     struct timeval tv = {30, 0};
                     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
                     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
