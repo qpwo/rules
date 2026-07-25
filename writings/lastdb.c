@@ -2553,7 +2553,7 @@ if (match) {
                                         } else {
 count_est += db_w;
 w2_sum += db_w * db_w;
-if (is_decay) decay_est += db_w;
+if (is_decay) decay_est += db_w * __builtin_fabs(cur);
                                     raw_count++;
                                             if (op == 9 && r->v_len > 0) {
                                                 if (is_decay) {
