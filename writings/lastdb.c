@@ -1185,13 +1185,18 @@ static float vec_dot_f16(const void *a, const void *b, size_t bytes) {
     return (float)_mm512_reduce_add_ph(sum_vec);
 }
 
+__attribute__((target("avx512f,avx512vl,avx512bw,avx512vnni")))
 static float vec_dot_i8(const void *a, const void *b, size_t bytes) {
-    int32_t sum = 0;
+    size_t n = bytes;
+    __m512i sum_vec = _mm512_setzero_si512();
     const int8_t *ca = a, *cb = b;
-    for (size_t i = 0; i < bytes; i++) {
-        sum += (int32_t)ca[i] * cb[i];
+    for (size_t i = 0; i < n; i += 64) {
+        __mmask64 mask = n - i >= 64 ? -1ULL : ((1ULL << (n - i)) - 1ULL);
+        __m512i va = _mm512_maskz_loadu_epi8(mask, ca + i);
+        __m512i vb = _mm512_maskz_loadu_epi8(mask, cb + i);
+        sum_vec = _mm512_dpbusd_epi32(sum_vec, va, vb);
     }
-    return (float)sum;
+    return (float)_mm512_reduce_add_epi32(sum_vec);
 }
 
 static int do_closest(const char *path, const char *type, const char *t, const char *k)
@@ -1471,6 +1476,7 @@ static inline Chunk *chunk_pop(void) {
     return chunk;
 }
 
+static int srv_db_fd = -1;
 static void do_serve(const char *db_path, int port, int32_t cipherkey) {
     int srv = socket(AF_INET, SOCK_STREAM, 0);
     if (srv < 0) die("socket");
@@ -1622,13 +1628,9 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 if (!(perms & req)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
                                 #pragma omp critical (db)
                                 {
-                                    int lockfd = open_lockfile(db_path);
+                                    if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
+                                    append_raw(srv_db_fd, full_tenant, ft_len, k, kl, v, vl, op == 2 ? OP_PUT : OP_DEL);
                                     load_db(db_path);
-                                    int db_fd = open_append(db_path);
-                                    append_raw(db_fd, full_tenant, ft_len, k, kl, v, vl, op == 2 ? OP_PUT : OP_DEL);
-                                    sync_fd(db_fd);
-                                    close(db_fd);
-                                    close(lockfd);
                                 }
                                 send_response(fd, cipherkey, 0, "ok", 2);
                             }
@@ -1727,7 +1729,8 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         count++;
                                         if (op == 9 && r->v_len > 0 && r->v_len < 64) {
                                             char buf2[64] = {0}; memcpy(buf2, rec_v(r), r->v_len);
-                                            sum += strtod(buf2, NULL);
+                                            char *p = buf2; while (*p && *p != '-' && *p != '.' && (*p < '0' || *p > '9')) p++;
+                                            sum += strtod(p, NULL);
                                         }
                                     }
                                 }
@@ -1738,8 +1741,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 char val[64]; int vl_out = 0;
                                 #pragma omp critical (db)
                                 {
-                                    int lockfd = open_lockfile(db_path);
-                                    load_db(db_path);
+                                    if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
                                     long long cur = 0;
                                     Node *n = ht_get(full_tenant, ft_len, k, kl);
                                     if (n) { Record *r = rec_at(n->off1 - 1); if (r->op != OP_DEL && r->v_len < 64) { char buf[64]={0}; memcpy(buf, rec_v(r), r->v_len); cur = strtoll(buf, NULL, 10); } }
@@ -1747,11 +1749,8 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     long long d = strtoll(d_buf, NULL, 10);
                                     long long next = cur + d;
                                     vl_out = snprintf(val, sizeof(val), "%lld", next);
-                                    int db_fd = open_append(db_path);
-                                    append_raw(db_fd, full_tenant, ft_len, k, kl, val, vl_out, OP_PUT);
-                                    sync_fd(db_fd);
-                                    close(db_fd);
-                                    close(lockfd);
+                                    append_raw(srv_db_fd, full_tenant, ft_len, k, kl, val, vl_out, OP_PUT);
+                                    load_db(db_path);
                                 }
                                 send_response(fd, cipherkey, 0, val, vl_out);
                             } else {
@@ -1849,7 +1848,8 @@ int main(int argc, char **argv)
                     if (r->v_len > 0 && r->v_len < 64) {
                         char buf[64] = {0};
                         memcpy(buf, rec_v(r), r->v_len);
-                        s += strtod(buf, NULL);
+                        char *p = buf; while (*p && *p != '-' && *p != '.' && (*p < '0' || *p > '9')) p++;
+                        s += strtod(p, NULL);
                     }
                 }
                 printf("%.17g\n", s);
