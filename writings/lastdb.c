@@ -2157,28 +2157,45 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             } else if (op == 16) {
                                 if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
                                 int wrote = 0;
+                                int shed = 0;
+                                int bad = 0;
+                                char *end = v + vl;
+                                for (char *p = v; p < end && !bad; ) {
+                                    char *nl = memchr(p, '\n', end - p);
+                                    size_t line_len = nl ? (size_t)(nl - p) : (size_t)(end - p);
+                                    char *tab = memchr(p, '\t', line_len);
+                                    bad = !tab || (size_t)(tab - p) > UINT16_MAX || line_len - (size_t)(tab - p) - 1 > UINT32_MAX;
+                                    p += line_len + (nl ? 1 : 0);
+                                }
                                 #pragma omp critical (db)
                                 {
-                                    if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
-                                    char *p = v; char *end = v + vl;
-                                    while (p < end) {
-                                        char *nl = memchr(p, '\n', end - p);
-                                        size_t line_len = nl ? (size_t)(nl - p) : (size_t)(end - p);
-                                        char *tab = memchr(p, '\t', line_len);
-                                        if (tab) {
+                                    if (!bad) {
+                                        if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
+                                        for (char *p = v; p < end && !shed; ) {
+                                            char *nl = memchr(p, '\n', end - p);
+                                            size_t line_len = nl ? (size_t)(nl - p) : (size_t)(end - p);
+                                            char *tab = memchr(p, '\t', line_len);
                                             size_t b_kl = tab - p;
                                             size_t b_vl = line_len - b_kl - 1;
-                                            if (b_kl <= UINT16_MAX && b_vl <= UINT32_MAX) {
-                                                if (append_raw(srv_db_fd, full_tenant, ft_len, p, b_kl, tab + 1, b_vl, OP_PUT)) wrote++;
-                                            }
+                                            if (append_raw(srv_db_fd, full_tenant, ft_len, p, b_kl, tab + 1, b_vl, OP_PUT)) wrote++;
+                                            else shed = 1;
+                                            p += line_len + (nl ? 1 : 0);
                                         }
-                                        p += line_len + (nl ? 1 : 0);
+                                        if (wrote) sync_fd(srv_db_fd);
+                                        load_db(db_path);
                                     }
-                                    if (wrote) sync_fd(srv_db_fd);
-                                    load_db(db_path);
                                 }
-                                char res[32]; int rl = snprintf(res, sizeof(res), "%d", wrote);
-                                send_response(fd, cipherkey, 0, res, rl);
+                                char res[64];
+                                int status = 0;
+                                int rl = snprintf(res, sizeof(res), "%d", wrote);
+                                if (bad) {
+                                    status = 1;
+                                    rl = snprintf(res, sizeof(res), "bad batch");
+                                } else if (shed) {
+                                    status = 3;
+                                    rl = snprintf(res, sizeof(res), "shed after %d", wrote);
+                                }
+                                send_response(fd, cipherkey, status, res, rl);
                             } else {
                                 send_response(fd, cipherkey, 1, "bad op", 6);
                             }
