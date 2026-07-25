@@ -1133,8 +1133,14 @@ static void batch_flush(int fd, char *buf, size_t *used)
     if (!fstatvfs(fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
         uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
         uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.1L);
+        double avail = (double)st.f_bavail / st.f_blocks;
+        double keep = exp2(50.0 * (avail - 0.2));
+        double gate = (double)(fnv_bytes(FNV0, buf, *used) >> 11) * 0x1.0p-53;
         if (free_bytes < reserve_bytes + *used) {
             diex("disk reserve below 10 percent");
+        }
+        if (avail < 0.2 && gate > keep) {
+            diex("disk pressure decay rejected batch");
         }
     }
 
