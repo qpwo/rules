@@ -1006,33 +1006,32 @@ static int do_compact(const char *path)
 typedef float unaligned_f32 __attribute__((aligned(1)));
 typedef _Float16 unaligned_f16 __attribute__((aligned(1)));
 
+__attribute__((target("avx512f,avx512vl")))
 static float vec_dot_f32(const void *a, const void *b, size_t bytes) {
     size_t n = bytes / 4;
-    size_t i = 0;
-    __m256 s0 = _mm256_setzero_ps();
-    __m256 s1 = _mm256_setzero_ps();
+    __m512 s = _mm512_set1_ps(0.0f);
     const unaligned_f32 *fa = a, *fb = b;
-    for (; i + 16 <= n; i += 16) {
-        s0 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i), _mm256_loadu_ps(fb + i), s0);
-        s1 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i + 8), _mm256_loadu_ps(fb + i + 8), s1);
+    for (size_t i = 0; i < n; i += 16) {
+        __mmask16 mask = n - i >= 16 ? 0xFFFF : ((1u << (n - i)) - 1u);
+        __m512 va = _mm512_maskz_loadu_ps(mask, fa + i);
+        __m512 vb = _mm512_maskz_loadu_ps(mask, fb + i);
+        s = _mm512_fmadd_ps(va, vb, s);
     }
-    s0 = _mm256_add_ps(s0, s1);
-    __m128 lo = _mm256_castps256_ps128(s0);
-    __m128 hi = _mm256_extractf128_ps(s0, 1);
-    lo = _mm_add_ps(lo, hi);
-    lo = _mm_hadd_ps(lo, lo);
-    lo = _mm_hadd_ps(lo, lo);
-    float sum = _mm_cvtss_f32(lo);
-    for (; i < n; i++) sum += fa[i] * fb[i];
-    return sum;
+    return _mm512_reduce_add_ps(s);
 }
 
+__attribute__((target("avx512fp16,avx512vl,avx512f")))
 static float vec_dot_f16(const void *a, const void *b, size_t bytes) {
     size_t n = bytes / 2;
-    float sum = 0;
+    __m512h s = _mm512_set1_ph(0);
     const unaligned_f16 *fa = a, *fb = b;
-    for (size_t i = 0; i < n; i++) sum += (float)fa[i] * (float)fb[i];
-    return sum;
+    for (size_t i = 0; i < n; i += 32) {
+        __mmask32 mask = n - i >= 32 ? 0xFFFFFFFF : ((1u << (n - i)) - 1u);
+        __m512i va = _mm512_maskz_loadu_epi16(mask, fa + i);
+        __m512i vb = _mm512_maskz_loadu_epi16(mask, fb + i);
+        s = _mm512_fmadd_ph(_mm512_castsi512_ph(va), _mm512_castsi512_ph(vb), s);
+    }
+    return (float)_mm512_reduce_add_ph(s);
 }
 
 static float vec_dot_i8(const void *a, const void *b, size_t bytes) {
