@@ -2548,7 +2548,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
                                         w_iter += wl + 1;
                                     }
                                     if (match) {
-                                        double db_w = (double)(1U << (r->weight_log > 20 ? 20 : r->weight_log));
+                                        double db_w = (threshold < 1.0) ? 1.0 : (double)(1U << (r->weight_log > 20 ? 20 : r->weight_log));
                                         double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
                                         double w_weight = db_w * qw;
                                         double eff_w = is_decay ? w_weight * cur : w_weight;
@@ -3082,7 +3082,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
             if (threshold < 1.0) {
                 if ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
             }
-            double db_w = (double)(1U << (r->weight_log > 20 ? 20 : r->weight_log));
+            double db_w = (threshold < 1.0) ? 1.0 : (double)(1U << (r->weight_log > 20 ? 20 : r->weight_log));
             
             double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
             double w = db_w * qw;
@@ -3122,7 +3122,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
             if (threshold < 1.0) {
                 if ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
             }
-            double db_w = (double)(1U << (r->weight_log > 20 ? 20 : r->weight_log));
+            double db_w = (threshold < 1.0) ? 1.0 : (double)(1U << (r->weight_log > 20 ? 20 : r->weight_log));
             
             double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
             double w = db_w * qw;
