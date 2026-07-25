@@ -2570,7 +2570,7 @@ if (match) {
                                                 out[my_off++] = '\n';
                                             }
                                         } else {
-                                    count_est += db_w;
+                                    count_est += disp_w;
                                     raw_count++;
                                             if (op == 9 && r->v_len > 0) {
                                                 if (is_decay) {
