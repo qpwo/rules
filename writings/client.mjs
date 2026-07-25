@@ -92,7 +92,7 @@ function parseWeighted(res) {
         var t2 = lines[i].indexOf('\t', t1 + 1);
         if (t1 > 0 && t2 > t1) out.push({weight: Number(lines[i].slice(0, t1)), key: lines[i].slice(t1 + 1, t2), value: lines[i].slice(t2 + 1)});
     }
-    return out;
+    return out.sort((a, b) => b.weight - a.weight);
 }
 
 export async function count(client, color, tenant, words = '', prefix = '', threshold = 1.0, now = null) {
@@ -109,14 +109,7 @@ export async function sum(client, color, tenant, words = '', prefix = '', thresh
     return { estimated: Number(p[0]), raw: Number(p[1]) };
 }
 
-export async function sum(client, color, tenant, prefix = '', threshold = 1.0, now = null) {
-    if (now === null) now = Date.now() / 1000.0;
-    var val = String(threshold);
-    if (now !== null) val += '\t' + String(now);
-    var res = await request(client, 'sum', color, tenant, prefix, val);
-    var p = res.toString().split('\t');
-    return { estimated: Number(p[0]), raw: Number(p[1]) };
-}
+
 
 export async function incr(client, color, tenant, key, delta) {
     return request(client, 'incr', color, tenant, key, String(delta));

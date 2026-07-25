@@ -1257,7 +1257,9 @@ static void write_weighted_record(Record *r, double now)
         vl = (size_t)n;
     }
 
-    if (printf("%u\t", 1U << r->weight_log) < 0) {
+    double print_w = (double)(1U << r->weight_log);
+    if (cur > 0) print_w *= cur;
+    if (printf("%.5g\t", print_w) < 0) {
         die("printf");
     }
     if (fwrite(rec_k(r), 1, r->k_len, stdout) != r->k_len) {
@@ -2449,6 +2451,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         double db_w = (double)(1U << r->weight_log);
                                         double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
                                         double w_weight = db_w > qw ? db_w : qw;
+                                        if (is_decay) w_weight *= cur;
                                         if (op == 4 || op == 5) {
                                             char weight[32];
                                             int wlen = snprintf(weight, sizeof(weight), "%.5g\t", w_weight);
