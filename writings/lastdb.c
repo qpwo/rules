@@ -1224,7 +1224,25 @@ static int cmp_u64(const void *a, const void *b) {
 }
 
 static void radix_sort_u64(uint64_t *a, size_t n) {
-    qsort(a, n, sizeof(uint64_t), cmp_u64);
+    if (n < 64) { if (n > 1) qsort(a, n, sizeof(uint64_t), cmp_u64); return; }
+    uint64_t maxval = 0;
+    for (size_t i = 0; i < n; i++) if (a[i] > maxval) maxval = a[i];
+    if (!maxval) return;
+    int tops = 56;
+    while (tops > 0 && !(maxval >> tops)) tops -= 8;
+    uint64_t *tmp = mmap(NULL, n * 8, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (tmp == MAP_FAILED) { qsort(a, n, sizeof(uint64_t), cmp_u64); return; }
+    uint64_t *src = a, *dst = tmp;
+    for (int shift = 0; shift <= tops; shift += 8) {
+        size_t cnt[256] = {0};
+        for (size_t i = 0; i < n; i++) cnt[(src[i] >> shift) & 255]++;
+        size_t pos[256], acc = 0;
+        for (int b = 0; b < 256; b++) { pos[b] = acc; acc += cnt[b]; }
+        for (size_t i = 0; i < n; i++) dst[pos[(src[i] >> shift) & 255]++] = src[i];
+        uint64_t *t = src; src = dst; dst = t;
+    }
+    if (src != a) memcpy(a, src, n * 8);
+    munmap(tmp, n * 8);
 }
 
 static uint64_t *get_sorted_offs(uint64_t start_idx, uint64_t count) {
