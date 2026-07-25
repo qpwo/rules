@@ -227,6 +227,8 @@ static int worker_threads(void)
     return n > keep ? n - keep : 1;
 }
 
+static void deduplicate_ht(void);
+
 static void ht_put(uint64_t hash, uint64_t off)
 {
     if (ht_len >= ht_cap) {
@@ -247,6 +249,9 @@ static void ht_put(uint64_t hash, uint64_t off)
         ht_cap = ncap;
     }
     ht[ht_len++] = (Node){hash, off + 1};
+    if (ht_len == ht_cap && ht_len >= 1048576) {
+        deduplicate_ht();
+    }
 }
 
 static int cmp_node(const void *a, const void *b) {
