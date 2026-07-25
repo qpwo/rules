@@ -2302,6 +2302,42 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     } else send_response(fd, cipherkey, 2, "not found", 9);
                                 }
                             }
+                            else if (op == 2 || op == 3) {
+                                if (op == 2 && !(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
+                                if (op == 3 && !(perms & 4)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
+                                int wrote = 0;
+                                int shed = 0;
+                                if (op == 2) {
+                                    { SRV_WRITE_LOCK(db_path);
+                                        wrote = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, v, vl, OP_PUT);
+                                        if (wrote) load_db(db_path);
+                                    }
+                                    if (wrote) send_response(fd, cipherkey, 0, v, vl);
+                                    else send_response(fd, cipherkey, 3, "shed", 4);
+                                } else if (vl == 1 && v[0] == '*') {
+                                    { SRV_WRITE_LOCK(db_path);
+                                        uint64_t start_idx, end_idx;
+                                        ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
+                                        for (uint64_t i = start_idx; i < end_idx; i++) {
+                                            Record *r = rec_at(ht[i].off1 - 1);
+                                            if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
+                                            if (kl && (r->k_len < kl || memcmp(rec_k(r), k, kl))) continue;
+                                            if (!append_raw(srv_db_fd, full_tenant, ft_len, rec_k(r), r->k_len, NULL, 0, OP_DEL)) { shed = 1; break; }
+                                            wrote++;
+                                        }
+                                        if (wrote && !shed) load_db(db_path);
+                                    }
+                                    char res[64];
+                                    int rl = snprintf(res, sizeof(res), "%d", wrote);
+                                    send_response(fd, cipherkey, shed ? 3 : 0, shed ? "shed" : res, shed ? 4 : rl);
+                                } else {
+                                    { SRV_WRITE_LOCK(db_path);
+                                        wrote = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, NULL, 0, OP_DEL);
+                                        if (wrote) load_db(db_path);
+                                    }
+                                    send_response(fd, cipherkey, wrote ? 0 : 3, wrote ? "ok" : "shed", wrote ? 2 : 4);
+                                }
+                            }
                             else if (op == 4 || op == 5 || op == 8 || op == 9) {
                                 if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
                                 Chunk *out_c = NULL;
