@@ -1465,7 +1465,7 @@ static int do_compact(const char *path)
                     Record *r = rec_at(ht[i].off1 - 1);
                     if (r->op == OP_DEL) continue;
                     int twl = r->weight_log;
-                    if (r->t_len > 0 && rec_t(r)[0] != '0') {
+                    if (r->t_len > 0 && rec_t(r)[0] != '0' && !(r->v_len > 0 && r->v_len < 192 && rec_v(r)[0] == '\x1F')) {
                         int ewl = (int)((valid_size - (ht[i].off1 - 1)) * mid);
                         if (ewl > 13) ewl = 13;
                         if (ewl > twl) twl = ewl;
@@ -1495,7 +1495,7 @@ static int do_compact(const char *path)
         if (n && (n->off1 - 1) == off && r->op != OP_DEL) {
             int keep = 1;
             uint8_t new_wl = r->weight_log;
-            if (decay_factor > 0 && r->t_len > 0 && rec_t(r)[0] != '0') {
+            if (decay_factor > 0 && r->t_len > 0 && rec_t(r)[0] != '0' && !(r->v_len > 0 && r->v_len < 192 && rec_v(r)[0] == '\x1F')) {
                 int ewl = (int)((valid_size - off) * decay_factor);
                 if (ewl > 13) ewl = 13;
                 uint8_t twl = r->weight_log > ewl ? r->weight_log : ewl;
