@@ -1251,6 +1251,7 @@ static int read_full(int fd, void *buf, size_t n) {
     char *p = buf;
     while (n > 0) {
         ssize_t r = read(fd, p, n);
+        if (r < 0 && errno == EINTR) continue;
         if (r <= 0) return 0;
         p += r;
         n -= r;
@@ -1262,6 +1263,7 @@ static int write_full(int fd, const void *buf, size_t n) {
     const char *p = buf;
     while (n > 0) {
         ssize_t r = write(fd, p, n);
+        if (r < 0 && errno == EINTR) continue;
         if (r <= 0) return 0;
         p += r;
         n -= r;
