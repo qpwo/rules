@@ -2204,6 +2204,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     }
                                         if (match) {
                                             double db_w = (double)(1U << r->weight_log);
+                                            if (threshold >= 1.0 && db_w > threshold) continue;
                                             double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
                                             double w = db_w > qw ? db_w : qw;
                                             if (is_decay) { w *= cur; if (threshold >= 1.0 && w < threshold) continue; }
@@ -2589,7 +2590,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         for (uint64_t i = 0; i < count; i++) {
                                             uint64_t idx = start_idx + ((start_offset + i) % count);
                                             Record *r = rec_at(ht[idx].off1 - 1);
-                                            if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
+                                            if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len) || r->weight_log > 0) continue;
                                             if (kl && (r->k_len < kl || memcmp(rec_k(r), k, kl))) continue;
 
                                             Chunk *out_c = chunk_pop();
