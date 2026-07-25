@@ -1795,7 +1795,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 if (kl > 30 || vl > 62) { send_response(fd, cipherkey, 1, "bad grant", 9); chunk_push(c); continue; }
                                 memcpy(target_buf, k, kl);
                                 memcpy(grant_buf, v, vl);
-                                if (sscanf(target_buf, "%d", &target) != 1 || sscanf(grant_buf, "%d,%d", &new_pass, &grant) != 2 || grant < 0 || grant > 7 || (grant & ~perms)) {
+                                if (perms == 0 || sscanf(target_buf, "%d", &target) != 1 || sscanf(grant_buf, "%d,%d", &new_pass, &grant) != 2 || grant < 0 || grant > 7 || (grant & ~perms)) {
                                     send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue;
                                 }
                                 char user_key[64];
