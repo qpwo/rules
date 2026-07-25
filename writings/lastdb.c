@@ -2513,6 +2513,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
                                     if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
                                     if (pref_len > 0 && (r->k_len < pref_len || memcmp(rec_k(r), pref, pref_len))) continue;
                                     if (threshold < 1.0 && r->weight_log < max_w && ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold)) continue;
+                                    if (threshold >= 1.0 && r->weight_log > max_w) continue;
 
                                     const char *out_val = rec_v(r);
                                     size_t out_vl = r->v_len;
@@ -3094,7 +3095,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
                 Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
                 if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
                     if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
-                if (r->weight_log > max_w) continue;
+                if (threshold >= 1.0 && r->weight_log > max_w) continue;
             if (threshold < 1.0) {
                 if ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
             }
@@ -3132,7 +3133,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
                 Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
                 if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
                     if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
-                if (r->weight_log > max_w) continue;
+                if (threshold >= 1.0 && r->weight_log > max_w) continue;
             if (threshold < 1.0) {
                 if ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
             }
