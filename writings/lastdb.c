@@ -790,12 +790,12 @@ static double parse_f64(const char *s)
 
 static int decay_value_at(const char *s, size_t n, double now, double *out)
 {
-    if (!n || n >= 192) {
+    if (!n || n >= 192 || s[0] != '\x1F') {
         return 0;
     }
 
     char buf[192] = {0};
-    memcpy(buf, s, n);
+    memcpy(buf, s + 1, n - 1);
     char *t1 = strchr(buf, '\t');
     char *t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
     if (!t1 || !t2) {
@@ -844,12 +844,12 @@ static int current_decay(const char *t, const char *k, double *half_life, double
     if (r->op == OP_DEL) {
         return 0;
     }
-    if (r->v_len >= 192) {
-        diex("stored decay state too long");
+    if (r->v_len >= 192 || r->v_len == 0 || rec_v(r)[0] != '\x1F') {
+        diex("stored decay state malformed");
     }
 
     char buf[192] = {0};
-    memcpy(buf, rec_v(r), r->v_len);
+    memcpy(buf, rec_v(r) + 1, r->v_len - 1);
     char *tab1 = strchr(buf, '\t');
     if (!tab1) {
         diex("stored decay state malformed");
@@ -913,7 +913,7 @@ static int do_decay(const char *path, const char *t, const char *k, const char *
     }
 
     char val[192];
-    snprintf(val, sizeof(val), "%.17g\t%.17g\t%.17g", hl, ts, next);
+    snprintf(val, sizeof(val), "\x1F%.17g\t%.17g\t%.17g", hl, ts, next);
 
     int fd = open_append(path);
     append_fd(fd, t, k, val, OP_PUT);
@@ -1199,9 +1199,14 @@ static int rec_has_terms(Record *r, int num_words, char **words, size_t *lens, u
     }
 
     for (int j = 0; j < num_words; j++) {
-        if ((r->bf & term_bfs[j]) != term_bfs[j]) return 0;
-        int found = (!is_decay_val && memmem_pivot(rec_v(r), r->v_len, words[j], lens[j])) || memmem_pivot(rec_k(r), r->k_len, words[j], lens[j]);
-        if (!found) return 0;
+        int inv = words[j][0] == '-';
+        char *kw = words[j] + inv;
+        size_t kwl = lens[j] - inv;
+        if (kwl == 0) continue;
+        int bf_match = (r->bf & term_bfs[j]) == term_bfs[j];
+        int found = 0;
+        if (bf_match) found = (!is_decay_val && memmem_pivot(rec_v(r), r->v_len, kw, kwl)) || memmem_pivot(rec_k(r), r->k_len, kw, kwl);
+        if (inv ? found : !found) return 0;
     }
     return 1;
 }
@@ -1221,7 +1226,9 @@ static int do_search(const char *t, int num_words, char **words)
 
     uint64_t term_bfs[num_words];
     for (int i = 0; i < num_words; i++) {
-        term_bfs[i] = compute_bf(words[i], lens[i]);
+        int inv = words[i][0] == '-';
+        if (lens[i] > (size_t)inv) term_bfs[i] = compute_bf(words[i] + inv, lens[i] - inv);
+        else term_bfs[i] = 0;
     }
 
     double now = (double)time(NULL);
@@ -2379,11 +2386,17 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 }
                                 #define OUT_CAP (60u * 1024u * 1024u)
                                 uint64_t query_bfs[64] = {0};
+                                int query_inv[64] = {0};
                                 int num_words = 0; char *w = v; char *end = v + vl;
                                 while (w < end && num_words < 64) {
                                     char *tab = memchr(w, '\t', end - w);
                                     size_t wl = tab ? tab - w : end - w;
-                                    if (wl > 0) query_bfs[num_words++] = compute_bf(w, wl);
+                                    if (wl > 0) {
+                                        int inv = w[0] == '-';
+                                        query_inv[num_words] = inv;
+                                        if (wl > inv) query_bfs[num_words] = compute_bf(w + inv, wl - inv);
+                                        num_words++;
+                                    }
                                     w += wl + 1;
                                 }
 
@@ -2441,10 +2454,14 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         char *tab = memchr(w_iter, '\t', end - w_iter);
                                         size_t wl = tab ? tab - w_iter : end - w_iter;
                                         if (wl > 0) {
-                                            if (word_idx < 64 && (r->bf & query_bfs[word_idx]) != query_bfs[word_idx]) match = 0;
-                                            else {
-                                                int found = (!is_decay && memmem_pivot(out_val, out_vl, w_iter, wl)) || memmem_pivot(rec_k(r), r->k_len, w_iter, wl);
-                                                if (!found) match = 0;
+                                            int inv = word_idx < 64 ? query_inv[word_idx] : (w_iter[0] == '-');
+                                            char *kw = w_iter + inv;
+                                            size_t kwl = wl - inv;
+                                            if (kwl > 0) {
+                                                int bf_match = word_idx < 64 ? ((r->bf & query_bfs[word_idx]) == query_bfs[word_idx]) : ((r->bf & compute_bf(kw, kwl)) == compute_bf(kw, kwl));
+                                                int found = 0;
+                                                if (bf_match) found = (!is_decay && memmem_pivot(out_val, out_vl, kw, kwl)) || memmem_pivot(rec_k(r), r->k_len, kw, kwl);
+                                                if (inv ? found : !found) match = 0;
                                             }
                                             word_idx++;
                                         }
@@ -2632,8 +2649,8 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     Node *n = ht_get(full_tenant, ft_len, k, kl);
                                     if (n) {
                                         Record *r = rec_at(n->off1 - 1);
-                                        if (r->op != OP_DEL && r->v_len < 192) {
-                                            char buf[192] = {0}; memcpy(buf, rec_v(r), r->v_len);
+                                        if (r->op != OP_DEL && r->v_len > 0 && r->v_len < 192 && rec_v(r)[0] == '\x1F') {
+                                            char buf[192] = {0}; memcpy(buf, rec_v(r) + 1, r->v_len - 1);
                                             char *t1 = strchr(buf, '\t'); char *t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
                                             if (t1 && t2) {
                                                 *t1 = 0; *t2 = 0;
@@ -2660,7 +2677,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                             }
                                             strcpy(val, "0"); vl_out = 1;
                                         } else {
-                                            vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%.17g", hl, ts, next);
+                                            vl_out = snprintf(val, sizeof(val), "\x1F%.17g\t%.17g\t%.17g", hl, ts, next);
                                             ok = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, val, vl_out, OP_PUT);
                                             if (ok) (void)0;
                                             else shed = 1;
