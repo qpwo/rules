@@ -2327,6 +2327,11 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             else if (op == 2 || op == 3) {
                                 int req = op == 2 ? 2 : 4;
                                 if (!(perms & req)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
+                                if (op == 3 && vl == 1 && v[0] == '*' && !kl) {
+                                    send_response(fd, cipherkey, 1, "empty prefix", 12);
+                                    chunk_push(c);
+                                    continue;
+                                }
                                 int wrote = 0;
                                 { SRV_WRITE_LOCK(db_path);
                                     if (op == 3 && vl == 1 && v[0] == '*') {
