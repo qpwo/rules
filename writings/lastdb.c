@@ -126,7 +126,7 @@ static char *rec_v(Record *r)
 
 static int rec_valid(uint64_t off)
 {
-    if (off + sizeof(Record) > map_size) {
+    if (off > map_size || map_size - off < sizeof(Record)) {
         return 0;
     }
 
@@ -135,15 +135,12 @@ static int rec_valid(uint64_t off)
         return 0;
     }
 
-    if (r->len < sizeof(Record)) {
+    uint64_t body = (uint64_t)r->t_len + r->k_len + r->v_len;
+    if (r->len < sizeof(Record) || r->len - sizeof(Record) != body) {
         return 0;
     }
 
-    if (off + r->len > map_size) {
-        return 0;
-    }
-
-    if (r->len != sizeof(Record) + (uint64_t)r->t_len + r->k_len + r->v_len) {
+    if (map_size - off < r->len) {
         return 0;
     }
 
@@ -577,6 +574,82 @@ static int do_take(const char *path, const char *t, const char *k)
     return 0;
 }
 
+static unsigned long long parse_u64(const char *s)
+{
+    char *end = NULL;
+    errno = 0;
+    unsigned long long x = strtoull(s, &end, 10);
+    if (!*s || errno || *end) {
+        diex("invalid offset");
+    }
+    return x;
+}
+
+static int do_verify(const char *path)
+{
+    load_db(path);
+    uint64_t records = 0;
+    uint64_t puts = 0;
+    uint64_t dels = 0;
+
+    for (uint64_t off = 0; off < valid_size;) {
+        Record *r = rec_at(off);
+        records++;
+        puts += r->op == OP_PUT;
+        dels += r->op == OP_DEL;
+        off += r->len;
+    }
+
+    uint64_t live_keys = 0;
+    for (uint64_t i = 0; i < ht_cap; i++) {
+        if (ht[i].off1) {
+            live_keys += rec_at(ht[i].off1 - 1)->op != OP_DEL;
+        }
+    }
+
+    printf("file_bytes\t%llu\n", (unsigned long long)map_size);
+    printf("valid_bytes\t%llu\n", (unsigned long long)valid_size);
+    printf("bad_bytes\t%llu\n", (unsigned long long)(map_size - valid_size));
+    printf("records\t%llu\n", (unsigned long long)records);
+    printf("puts\t%llu\n", (unsigned long long)puts);
+    printf("dels\t%llu\n", (unsigned long long)dels);
+    printf("keys\t%llu\n", (unsigned long long)ht_len);
+    printf("live_keys\t%llu\n", (unsigned long long)live_keys);
+    if (map_size != valid_size) {
+        printf("bad_offset\t%llu\n", (unsigned long long)valid_size);
+        return 1;
+    }
+    return 0;
+}
+
+static int do_tail(const char *path, const char *start)
+{
+    load_db(path);
+    uint64_t off = start ? (uint64_t)parse_u64(start) : 0;
+    if (off > valid_size) {
+        diex("offset past valid log");
+    }
+
+    while (off < valid_size) {
+        if (!rec_valid(off)) {
+            diex("offset is not a record boundary");
+        }
+        Record *r = rec_at(off);
+        uint64_t next = off + r->len;
+        printf("%llu\t%llu\t%s\t", (unsigned long long)next, (unsigned long long)off, r->op == OP_PUT ? "put" : "del");
+        fwrite(rec_t(r), 1, r->t_len, stdout);
+        putchar('\t');
+        fwrite(rec_k(r), 1, r->k_len, stdout);
+        putchar('\t');
+        if (r->op == OP_PUT) {
+            fwrite(rec_v(r), 1, r->v_len, stdout);
+        }
+        putchar('\n');
+        off = next;
+    }
+    return 0;
+}
+
 static int key_cmp_off(const void *pa, const void *pb)
 {
     uint64_t a = *(const uint64_t *)pa;
@@ -699,16 +772,13 @@ static int do_compact(const char *path)
         die("open tmp");
     }
 
-    for (uint64_t i = 0; i < ht_cap; i++) {
-        if (!ht[i].off1) {
-            continue;
+    for (uint64_t off = 0; off < valid_size;) {
+        Record *r = rec_at(off);
+        Node *n = ht_get(rec_t(r), r->t_len, rec_k(r), r->k_len);
+        if (n && (n->off1 - 1) == off && r->op != OP_DEL) {
+            write_all(fd, r, r->len);
         }
-
-        Record *r = rec_at(ht[i].off1 - 1);
-        if (r->op == OP_DEL) {
-            continue;
-        }
-        write_all(fd, r, r->len);
+        off += r->len;
     }
 
     sync_fd(fd);
@@ -765,6 +835,8 @@ static void usage(const char *prog)
     fputs("  del TENANT KEY\n", stderr);
     fputs("  delif TENANT KEY VALUE\n", stderr);
     fputs("  scan TENANT [PREFIX]\n", stderr);
+    fputs("  tail [OFFSET]\n", stderr);
+    fputs("  verify\n", stderr);
     fputs("  incr TENANT KEY DELTA\n", stderr);
     fputs("  take TENANT KEY\n", stderr);
     fputs("  batch TENANT     # stdin: key<TAB>value\n", stderr);
@@ -803,6 +875,12 @@ int main(int argc, char **argv)
     if (!strcmp(cmd, "scan") && (argc == 4 || argc == 5)) {
         load_db(db);
         return do_scan(argv[3], argc == 5 ? argv[4] : NULL);
+    }
+    if (!strcmp(cmd, "tail") && (argc == 3 || argc == 4)) {
+        return do_tail(db, argc == 4 ? argv[3] : NULL);
+    }
+    if (!strcmp(cmd, "verify") && argc == 3) {
+        return do_verify(db);
     }
     if (!strcmp(cmd, "incr") && argc == 6) {
         return do_incr(db, argv[3], argv[4], argv[5]);

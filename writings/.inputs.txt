@@ -235,3 +235,94 @@ headtail -h
 headtail --help
 halp -y -h headtail n50 the deleted
  git add .
+git commit -m m
+git push
+halp -y -h oops ammend plz no writings/localtest.db writings/localtest.db.lock ... and gitignore
+git status
+git status .
+git log --name-status -3
+pbpaste
+halp -y -h oops try again headtailllll those somehowwwwwwwwwww
+cat rseq.txt
+halp -h who actually deserved to be deleted for contradicting rseq and locklessness and who was erroneously removed
+echo need to solve/obviate/sidestep/reduce/prevent/avoid/solve these problems:; shuf needs.log
+cat things.log
+echo need to obviate those things
+echo which files most relevant. i know rseq.txt is
+echo i am going to obviate those. i am going to make lastdb
+echo which files most relevant. i know rseq.txt is
+ls
+headtail -n20 *txt --shuffle | ag -v http
+echo which files most relevant. i know rseq.txt is
+echo i know infinigram-mini.pdf.txt is
+halp -h write relevant.log one filename per line .... thats it ... do nothing else ... one turn
+ls *txt | shuf
+echo i am going to obviate these. i am going to make lastdb; shuf needs.log
+echo going to obviate these:; cat things.log
+ls
+cat relevant.log
+halp -h if we missed any then append
+bak relevant.log
+clear
+cat relevant.log
+echo going to obviate these:; cat things.log
+echo need to solve/obviate/sidestep/reduce/prevent/avoid/solve these problems:; shuf needs.log
+cat relevant.log
+headtail -m -s -n50 $(cat relevant.log )
+halp -y -55 -xh keepgoing. read. and read. and write and scp and test. modify and scp and test. linux only motherfucker
+ssh servero mkdir lastdb
+halp -y -55 -xh keepgoing. read. and read. and write and scp and test. modify and scp and test. linux only motherfucker
+clear
+echo need to solve/obviate/sidestep/reduce/prevent/avoid/solve these problems. across 100 cpu core. across 4 ssd and 4 hdd. need to permanently completley eliminate the rootcause problems.:; shuf needs.log
+echo i am cheating by stealing from geniuses.
+echo this is for fun. its just using their ideas lol its all mit license
+headtail -m -s -n50 $(cat relevant.log )
+echo need to solve/obviate/sidestep/reduce/prevent/avoid/solve these problems. across 100 cpu core. across 4 ssd and 4 hdd. across 10TB of data. need to permanently completley eliminate the rootcause problems.:; shuf needs.log
+echo we are cheating by learning from geniuses.
+ls
+head *txt
+tail *txt
+halp -y -55 -xh keepgoing. read. and read. and write and scp and test. modify and scp and test. linux only motherfucker
+ssh servero mkdir lastdb
+halp -y -55 -xh keepgoing. read. and read. and write and scp and test. modify and scp and test. linux only motherfucker
+ls
+cat ~/tmp/chatgpt-export/renamed/2026-07-22_linux_rseq_explodes_performance_multicore_cpus_43x_ditching_locks_atomics_avoid_dinosaur_6a60f0df.txt
+halp -h any important links worth grabbing we forgot or not
+halp -h any important links worth grabbing we forgot or not. dont shell. dont modify. dont write. just answer directly. explain.
+cat lastdb.c
+halp -y -55 -xh keepgoing. read. and read. and write and scp and test. modify and scp and test. linux only motherfucker
+head *txt
+cat $loggoinputs
+cat relevant.log
+halp -h if we missed any then append
+halp -h if we missed any then append -NT
+halp -h if we missed any then append... only if worth read... idfk -NT
+trash lastdb
+cat lastdb.c
+ssh servero mkdir lastdb
+halp -y -55 -xh keepgoing. read. and read. and write and scp and test. modify and scp and test. linux only motherfucker
+echo i cannot add without removing
+ls
+echo anyone ffrom there worth replacing a guy here
+halp -h
+ pbpaste > todo.log
+cat todo.log
+cat cdpturn
+cat todo.log
+pdf2md -h
+pdf2md --help
+serp --help
+halp -y -h begin
+halp -y -h restore erroneously-deleted and commit and push
+while true; do clear; fakeinput echo improve one thing about lastdb.c; fakeinput cat $(shuf -n1 relevant.log ); fakeinput cat lastdb.c ; fakeinput echo just a myreplace thats all dont compile it. just like one myreplace lol; fakeinput myreplace -h; fakeinput realtimeout 300 halp -y -h -55 -3 ; sleep 1; done
+git status -- .
+git rm default.profraw
+echo default.profraw >> ~/.gitignore
+echo .inputs.txt >> ~/.gitignore
+git rm .inputs.txt
+git rm --cached -f .inputs.txt
+echo .inputs.txt >> .gitignore
+git rm -f lastdb
+git status
+git status -- .
+git-acp .

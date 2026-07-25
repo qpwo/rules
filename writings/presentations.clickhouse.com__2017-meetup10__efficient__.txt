@@ -1,0 +1,655 @@
+begin https://presentations.clickhouse.com/2017-meetup10/efficient/
+Effective Use of ClickHouse
+
+Author: Alexey Milovidov, 2017-12-06.
+
+Effective Use of
+ClickHouse
+About Me
+
+Alexey, ClickHouse developer.
+
+How to Misuse ClickHouse
+
+Common mistakes we've encountered in practice.
+
+which scenario is suboptimal for ClickHouse;
+what architectural reasons lead to this suboptimality;
+and what best practices exist to avoid suboptimalities.
+1. Too Frequent Inserts with Small Batch Size
+
+Example:
+
+Table hits: 105 columns,
+row size in uncompressed binary format — 718 bytes.
+
+Batch size 1000000 rows:
+
+Insert into MergeTree table
+— 506,650 rows per second;
+
+Insert into ReplicatedMergeTree with two replicas
+— 393,940 rows per second;
+
+Insert into ReplicatedMergeTree
+with two replicas and insert_quorum = 2
+— 259,660 rows per second;
+
+1. Too Frequent Inserts with Small Batch Size
+
+Example:
+
+Table hits: 105 columns,
+row size in uncompressed binary format — 718 bytes.
+
+Batch size — one row:
+
+Insert into MergeTree table
+— 59 rows per second;
+
+Insert into ReplicatedMergeTree with two replicas
+— 6 rows per second;
+
+Insert into ReplicatedMergeTree
+with two replicas and insert_quorum = 2
+— 2 rows per second;
+
+1. Too Frequent Inserts with Small Batch Size
+
+— 10,000 .. 100,000 times slower.
+
+Why does this happen?
+
+This is a ClickHouse limitation.
+
+MergeTree tables don't contain log and memtable.
+
+Data is immediately written to the file system,
+laid out by columns.
+
+How to Do It Right?
+
+Method 1.
+
+Use a distributed queue (Kafka).
+
+Pull data from the queue in batches once per second
+and write to ClickHouse.
+
+Disadvantages:
+
+— cumbersome construction;
+
+— another complex distributed system.
+
+How to Do It Right?
+
+Method 2.
+
+Write logs to a file.
+
+Once per second, rename the file and open a new one.
+
+A separate process takes the oldest file and inserts it into ClickHouse.
+
+Disadvantages:
+
+— possibility of data loss on hardware failure.
+
+How to Do It Right?
+
+Method 3.
+
+Server process accumulates a batch of logs in an internal buffer.
+
+Periodically, the accumulated buffer swaps with an empty one
+and a separate thread writes the accumulated data to ClickHouse.
+
+Disadvantages:
+
+— data loss on kill -9 of the process;
+
+— data loss or OOM when unable to write to ClickHouse;
+
+How to Do It Right?
+
+Method 4.
+
+Server process keeps a connection to ClickHouse open,
+in which an INSERT query is made and rows are sent one by one
+or in small batches with Transfer-Encoding: chunked.
+
+Periodically, the data stream ends
+and a new INSERT query is executed.
+
+In this case, ClickHouse will buffer the data
+on its side itself.
+
+Disadvantages:
+
+— data loss on kill -9 of the process;
+
+How to Do It Right?
+
+Method 5.
+
+https://github.com/nikepan/clickhouse-bulk
+
+— intermediate server for grouping INSERTs into batches;
+
+How to Do It Right?
+
+Method 6.
+
+Buffer tables.
+
+Advantages:
+
+— very easy to start using;
+
+Disadvantages:
+
+— doesn't fully solve the problem, batches still needed;
+
+— adds other problems (no log, possible data loss).
+
+Bonus
+
+Support for importing from Kafka directly inside ClickHouse.
+
+More Pitfalls
+
+— inserting data in VALUES format with computed expressions;
+
+— inserting data belonging to a large
+number of partitions in each batch.
+
+2. String Typing
+
+Example:
+
+Country String,
+City String,
+Browser String,
+IPAddress String,
+...
+
+How Bad Is It?
+
+Strings compress almost as well as numeric identifiers.
+
+There's almost no difference in disk and IO.
+But when processing a query, the CPU difference is at least several times.
+Example:
+
+SELECT uniqExact(IPAddress) FROM ip_address_num
+— 0.073 sec, 137.79 million rows/s.
+
+SELECT uniqExact(IPAddress) FROM ip_address_string
+— 0.265 sec, 37.70 million rows/s.
+
+SELECT formatReadableSize(sum(data_compressed_bytes)) FROM system.columns WHERE table = 'ip_address_num'
+— 30.92 MiB vs. 43.65 MiB.
+
+How to Do It Right?
+
+1. If there are few different values,
+just write numeric identifiers.
+
+Converting to strings and back can be done on the application side.
+
+This — is typical practice applicable to almost all DBMS.
+
+Example:
+
+Region String
+'Moscow and Moscow Region'
+
+RegionID UInt32
+250
+
+How to Do It Right?
+
+2. If there are few different values, you can use the Enum data type.
+
+Enum works as efficiently as a numeric identifier.
+
+Disadvantage: sometimes you need to do ALTER.
+ALTER is free, but waits for executing queries on lock.
+
+Example:
+
+DeviceType String
+'mobile'
+
+DeviceType Enum8('desktop' = 1, 'mobile' = 2, 'tablet' = 3, 'tv' = 4)
+
+How to Do It Right?
+
+3. If there aren't too many different values,
+just write numeric identifiers.
+
+For convenience, you can connect external dictionaries.
+From ClickHouse, MySQL, Mongo, Postgres, ODBC, file, HTTP server...
+
+Example: advertising campaigns and banners in Yandex.Direct.
+
+ClickHouse stores CampaignID UInt32, BannerID UInt64.
+
+Dictionaries from MySQL are connected.
+Campaigns — always in RAM. Banners — cache dictionary.
+
+Bonus: easy to change strings.
+
+Features: cache dictionary from MySQL
+works normally only with hit rate ~ 100%.
+
+How to Do It Right?
+
+4. If there's no way to do auto-increment, you can hash.
+
+When using 64bit hash, there will be collisions
+(p ~ 1/2 at N ~ 1000000000).
+
+To be safe, add
+client identifier to the dictionary key.
+
+Bonus — for many operations, hashes alone are enough.
+
+How to Do It Right?
+
+5. Short strings are fine to store as is.
+
+Example:
+
+URLDomain String
+'yandex.ru'
+
+BrowserLanguage String
+'ru'
+
+How to Do It Right?
+
+6. If the set of strings is large and unlimited,
+and a significant portion is unique.
+
+Example: URL, Referer, SearchPhrase, Title.
+
+Then making dictionaries is completely pointless and contraindicated.
+
+Store as is!
+
+No need to try to move to a separate table and normalize data.
+
+How to Do It Right?
+
+7. Sometimes it's reasonable to store redundant columns with data extracts.
+
+Example: there is a URL column.
+Add a URLDomain column.
+
+Example:
+
+SELECT domain(URL) AS k, count() AS c FROM test.hits GROUP BY k
+— 0.166 sec. Processed 762.68 MB (53.60 million rows/s., 4.61 GB/s.)
+
+SELECT URLDomain AS k, count() AS c FROM test.hits GROUP BY k
+— 0.067 sec. Processed 188.06 MB (132.44 million rows/s., 2.81 GB/s.)
+
+On disk: URL - 126.80 MiB, URLDomain - 5.61 MiB.
+
+How to Do It Right?
+
+8. Use the right data types.
+
+ClientIP String '5.255.255.5'
+ClientIPv6 String '2a02:6b8:a::a'
+DeviceID String 'c9792d6e-ab40-42e6-b171-aa872e880dbd'
+
+ClientIP UInt32
+ClientIPv6 FixedString(16)
+DeviceID FixedString(16)
+
+How to Do It Right?
+
+9. Sometimes it's better to preprocess strings in advance.
+
+BrowserVersion String
+'12.3.67542.29'
+
+splitByChar('.', BrowserVersion)[1]
+
+BrowserVersion1 UInt8
+BrowserVersion2 UInt16
+BrowserVersion3 UInt32
+BrowserVersion4 UInt16
+
+How to Do It Right?
+
+10. Very long strings and very long arrays.
+
+Don't store in ClickHouse at all.
+
+Two options:
+
+1. Truncate on insert.
+
+Example: in one service, only
+the first 512 user event parameters are stored;
+
+2. Store outside, and in ClickHouse — hashes.
+
+Bonus:
+
+You can load data into a Log-type table with String fields,
+then analyze them already in ClickHouse,
+and determine the correct types before loading further.
+
+3. Large Number of Small Tables.
+:) SHOW TABLES
+
+┌─name──────┐
+│ stats_0   │
+│ stats_1   │
+│ stats_2   │
+│ stats_3   │
+│ stats_4   │
+│ stats_5   │
+│ stats_6   │
+│ stats_7   │
+│ stats_8   │
+│ stats_9   │
+│ stats_10  │
+  ...
+│ stats_999 │
+└───────────┘
+
+Reasons for Using:
+
+Old habits from MySQL experience:
+
+— absence of clustered primary key in MyISAM tables in MySQL;
+
+— simpler maintenance operations with small tables;
+
+— microsharding.
+
+Why Not to Do This in ClickHouse?
+
+1. Data in the table is ordered by primary key.
+
+Reading a range is efficient regardless of the total
+amount of data in the table. Primary key is clustered.
+
+2. The table already contains partitioning inside itself.
+
+Each table — is a rather bulky object.
+
+For each table, some background merge work
+must be constantly performed.
+
+Why Not to Do This in ClickHouse?
+
+3. No problems with maintenance operations.
+
+ALTER ADD/DROP COLUMN executes in O(1)
+
+Table consists of immutable pieces and recovery after failure is trivial.
+
+4. ClickHouse — is about throughput.
+
+Processing time for 10 rows is about the same as 10,000 rows.
+
+If your tables contain less than 10,000 rows,
+then less doesn't matter anymore.
+
+How to Do It Right?
+
+One big table! Don't be afraid.
+
+Example: we store a table with Graphite metrics,
+on one server — 2,000,000,000,000 rows.
+
+Bonus:
+
+Support for custom partitioning key in ClickHouse.
+
+If you really need many small tables without index
+— use StripeLog.
+
+4. Microsharding.
+
+Reasonable approach to sharding. From another world.
+
+Don't use this approach in ClickHouse.
+
+The idea — data is divided into 1000 virtual shards
+any convenient way.
+
+Each virtual shard maps to a set of servers arbitrarily, and the mapping is stored separately.
+
+On each physical server, multiple instances
+— in different databases or on different ports.
+
+Reason — simplify the data rebalancing task.
+
+4. Microsharding.
+
+Why not use this for ClickHouse?
+
+1. If data is located in different ClickHouse instances,
+then query processing by different instances requires
+inter-process interaction over TCP.
+Even over localhost this is much slower than in-process.
+
+2. In case of one instance, threads process data as possible, work is evenly distributed across threads.
+In case of different instances, one instance will finish work earlier than others — tail latency.
+
+3. Even if tables are located in one ClickHouse instance,
+you get problems due to a large number of small tables.
+When combining tables using a Merge table, some optimizations are disabled.
+
+5. Too Much Pre-aggregation.
+
+Pre-aggregation — is normal. Even in ClickHouse.
+
+But too granular pre-aggregation — is pointless.
+
+Example*:
+
+SummingMergeTree(EventDate,
+(OrderID, EventDate, CampaignID, BannerID, AdID, TypeID,
+DisplayID, ContextID, TargetType, AbcID, IsGood, CostType, PageID),
+8192)
+
+* column names changed.
+
+5. Too Much Pre-aggregation.
+
+Disadvantages:
+
+— data volume decreases, but only several times compared to non-aggregated data;
+
+— developers constantly ask to expand primary key, but ClickHouse has no ALTER PRIMARY KEY support;
+
+— among aggregates, only sums are calculated (could be worked around with AggregatingMergeTree)
+
+— suitable only for primitive reports, not suitable for analytics.
+
+For ClickHouse, non-aggregated data — is the best scenario.
+Pre-aggregation can also be used for simple cases.
+
+6. O(N) Queries from Script in Loop.
+
+SELECT count() FROM hits WHERE URL = 'https://yandex.ru/?cid=1764026490'
+SELECT count() FROM hits WHERE URL = 'https://yandex.ru/?cid=132741461'
+SELECT count() FROM hits WHERE URL = 'https://yandex.ru/?cid=4897535466'
+SELECT count() FROM hits WHERE URL = 'https://yandex.ru/?cid=1301256137'
+SELECT count() FROM hits WHERE URL = 'https://yandex.ru/?cid=2149858559'
+SELECT count() FROM hits WHERE URL = 'https://yandex.ru/?cid=544614111'
+...
+
+SELECT URL, count() FROM hits WHERE URL IN (...) GROUP BY URL
+
+Why Many Queries — Bad?
+
+If index is not used, then each query
+— is a separate pass through data;
+
+If index is used, then each query
+captures a bit of extra data for reading,
+for example, reads 100,000 rows instead of one row
+— again many passes through the same data.
+
+Can be rewritten as one query.
+
+6. O(N) Queries from Script in Loop.
+
+Bonuses:
+
+— in ClickHouse, you can safely pass
+megabytes of data to the IN section;
+
+— in ClickHouse, index always works no slower than full scan;
+
+Features:
+
+— IN (SELECT ...) doesn't use index;
+
+— in distributed query processing,
+query text is transmitted without compression.
+
+6. O(N) Queries from Script in Loop.
+
+What if queries come from API?
+
+— throttle API users:
+quotas, adaptive throttling.
+
+Bonus: you can configure quotas per user in ClickHouse, passing quota_key.
+
+If API is accessible externally, quotas are mandatory!
+
+7. Manual Replication.
+
+What is this?
+
+You write the same data in the same way
+to completely independent servers.
+
+Advantages:
+— absence of ZooKeeper in infrastructure;
+— ease of use, integration into existing pipeline.
+
+Disadvantages:
+— need to restore replicas manually;
+— due to errors and non-deterministic work on the application side, data diverges during operation;
+— you can't decide which data copy is correct.
+
+7. Manual Replication.
+
+Bonus:
+
+In ClickHouse, it's easy to create a Distributed table,
+that looks at «manual» replicas.
+
+Using load_balancing = 'nearest_hostname'
+you can avoid flaps in case of diverging replicas.
+
+Proper solution:
+Use ReplicatedMergeTree.
+
+Advantages:
+— recovery after failure;
+— replicas monitor data consistency themselves.
+
+8. Using Primitive Table Engines
+for Main Data.
+
+For main data — use the MergeTree family.
+
+— table doesn't have to contain Date
+— you can use Date DEFAULT '2000-01-01',
+— or tables without partitioning.
+
+Reasons:
+
+— sorting by key, index;
+— atomic insert;
+— no locks during concurrent INSERT and SELECT;
+— immutable data structures on disk;
+— replication;
+
+8. Using Primitive Table Engines.
+
+For one-time loading of small-medium volumes
+— Log.
+
+For temporary batches for intermediate processing
+— StripeLog, TinyLog.
+
+For small amount of temporary data
+— Memory.
+
+9. Over-normalized Data.
+JOIN with High Cardinality.
+
+Example:
+
+SELECT url, count() FROM stats
+    ANY INNER JOIN urls USING (url_id)
+
+Why is this bad?
+
+ClickHouse only supports Hash JOIN. No Merge JOIN support.
+
+Hash JOIN — is random access in RAM.
+For high cardinality, worse than reading data inplace.
+
+Solution: for high cardinality joined data,
+better to use their storage in the main table.
+
+More Anti-patterns
+
+10. Using OPTIMIZE queries to
+simulate UPDATE functionality.
+
+11. Using distributed JOINs
+with large right table.
+ClickHouse poorly composes query plan for distributed JOINs.
+
+Bad, but Sometimes Ok
+
+12. Using ClickHouse only to
+read data back with SELECT *.
+
+13. Performing excessively heavy computations
+inside ClickHouse (high cycle/byte value).
+
+Community
+
+Website: https://clickhouse.com/
+
+Google groups: https://groups.google.com/forum/#!forum/clickhouse
+
+Mailing list: clickhouse-feedback@yandex-team.com
+
+Telegram chat: https://telegram.me/clickhouse_en and https://telegram.me/clickhouse_ru (already 1041 participants)
+
+GitHub: https://github.com/ClickHouse/ClickHouse/
+
++ meetings. Moscow, Saint Petersburg, Novosibirsk, Ekaterinburg, Minsk, Berlin... Next: Nizhny Novgorod, Moscow.
+
+Thank You!
+ClickHouse Theater
+
+LINKS
+https://clickhouse.com/
+https://groups.google.com/forum/#!forum/clickhouse
+https://telegram.me/clickhouse_en
+https://telegram.me/clickhouse_ru
+https://github.com/ClickHouse/ClickHouse/
+https://presentations.clickhouse.com/
+end https://presentations.clickhouse.com/2017-meetup10/efficient/
+
+FULL TEXT FOR URL https://presentations.clickhouse.com/2017-meetup10/efficient/ SAVED TO ./.webcats/https-presentations-click-m-2017-meetup10-efficient-c6b59aa.txt

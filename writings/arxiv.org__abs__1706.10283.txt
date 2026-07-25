@@ -1,0 +1,168 @@
+begin https://arxiv.org/abs/1706.10283
+Skip to main content
+arXiv is now an independent nonprofit!
+Learn more
+×
+Search
+Submit
+Donate
+Log in
+Computer Science > Performance
+[Submitted on 30 Jun 2017]
+Bolt: Accelerated Data Mining with Fast Vector Compression
+Davis W Blalock, John V Guttag
+Vectors of data are at the heart of machine learning and data mining. Recently, vector quantization methods have shown great promise in reducing both the time and space costs of operating on vectors. We introduce a vector quantization algorithm that can compress vectors over 12x faster than existing techniques while also accelerating approximate vector operations such as distance and dot product computations by up to 10x. Because it can encode over 2GB of vectors per second, it makes vector quantization cheap enough to employ in many more circumstances. For example, using our technique to compute approximate dot products in a nested loop can multiply matrices faster than a state-of-the-art BLAS implementation, even when our algorithm must first compress the matrices.
+In addition to showing the above speedups, we demonstrate that our approach can accelerate nearest neighbor search and maximum inner product search by over 100x compared to floating point operations and up to 10x compared to other vector quantization methods. Our approximate Euclidean distance and dot product computations are not only faster than those of related algorithms with slower encodings, but also faster than Hamming distance computations, which have direct hardware support on the tested platforms. We also assess the errors of our algorithm's approximate distances and dot products, and find that it is competitive with existing, slower vector quantization algorithms.
+Comments:	Research track paper at KDD 2017
+Subjects:	Performance (cs.PF); Machine Learning (stat.ML)
+Cite as:	arXiv:1706.10283 [cs.PF]
+ 	(or arXiv:1706.10283v1 [cs.PF] for this version)
+ 	
+https://doi.org/10.48550/arXiv.1706.10283
+Focus to learn more
+
+Related DOI:	
+https://doi.org/10.1145/3097983.3098195
+Focus to learn more
+Submission history
+From: Davis Blalock [view email]
+[v1] Fri, 30 Jun 2017 17:31:59 UTC (1,417 KB)
+
+Access Paper:
+View PDF
+TeX Source
+view license
+Current browse context:
+cs.PF
+< prev   |   next >
+
+new | recent | 2017-06
+Change to browse by:
+cs
+stat
+stat.ML
+
+References & Citations
+NASA ADS
+Google Scholar
+Semantic Scholar
+DBLP - CS Bibliography
+listing | bibtex
+Davis W. Blalock
+John V. Guttag
+Export BibTeX Citation
+Bookmark
+ 
+Bibliographic Tools
+Bibliographic and Citation Tools
+Bibliographic Explorer Toggle
+Bibliographic Explorer (What is the Explorer?)
+Connected Papers Toggle
+Connected Papers (What is Connected Papers?)
+Litmaps Toggle
+Litmaps (What is Litmaps?)
+scite.ai Toggle
+scite Smart Citations (What are Smart Citations?)
+Code, Data, Media
+Demos
+Related Papers
+About arXivLabs
+Which authors of this paper are endorsers? | Disable MathJax (What is MathJax?)
+We gratefully acknowledge support from our major funders, member institutions, and all contributors.
+About
+·
+Help
+·
+Contact
+·
+Subscribe
+·
+Copyright
+·
+Privacy
+·
+Accessibility
+·
+Operational Status
+(opens in new tab)
+Major funding support from
+
+LINKS
+https://arxiv.org/abs/1706.10283#content
+https://info.arxiv.org/about
+https://arxiv.org/IgnoreMe
+https://arxiv.org/
+https://arxiv.org/search
+https://arxiv.org/user/create
+https://info.arxiv.org/about/donate.html
+https://arxiv.org/login
+https://arxiv.org/search/advanced
+https://arxiv.org/search/cs?searchtype=author&query=Blalock,+D+W
+https://arxiv.org/search/cs?searchtype=author&query=Guttag,+J+V
+https://arxiv.org/pdf/1706.10283
+https://arxiv.org/abs/1706.10283
+https://arxiv.org/abs/1706.10283v1
+https://doi.org/10.48550/arXiv.1706.10283
+https://doi.org/10.1145/3097983.3098195
+https://arxiv.org/show-email/8718f846/1706.10283
+https://arxiv.org/src/1706.10283
+http://arxiv.org/licenses/nonexclusive-distrib/1.0/
+https://arxiv.org/prevnext?id=1706.10283&function=prev&context=cs.PF
+https://arxiv.org/prevnext?id=1706.10283&function=next&context=cs.PF
+https://arxiv.org/list/cs.PF/new
+https://arxiv.org/list/cs.PF/recent
+https://arxiv.org/list/cs.PF/2017-06
+https://arxiv.org/abs/1706.10283?context=cs
+https://arxiv.org/abs/1706.10283?context=stat
+https://arxiv.org/abs/1706.10283?context=stat.ML
+https://ui.adsabs.harvard.edu/abs/arXiv:1706.10283
+https://scholar.google.com/scholar_lookup?arxiv_id=1706.10283
+https://api.semanticscholar.org/arXiv:1706.10283
+https://dblp.uni-trier.de/
+https://dblp.uni-trier.de/db/journals/corr/corr1706.html#BlalockG17
+https://dblp.uni-trier.de/rec/bibtex/journals/corr/BlalockG17
+https://dblp.uni-trier.de/search/author?author=Davis%20W.%20Blalock
+https://dblp.uni-trier.de/search/author?author=John%20V.%20Guttag
+http://www.bibsonomy.org/BibtexHandler?requTask=upload&url=https://arxiv.org/abs/1706.10283&description=Bolt:%20Accelerated%20Data%20Mining%20with%20Fast%20Vector%20Compression
+https://reddit.com/submit?url=https://arxiv.org/abs/1706.10283&title=Bolt:%20Accelerated%20Data%20Mining%20with%20Fast%20Vector%20Compression
+https://info.arxiv.org/labs/showcase.html#arxiv-bibliographic-explorer
+https://www.connectedpapers.com/about
+https://www.litmaps.co/
+https://www.scite.ai/
+https://alphaxiv.org/
+https://www.catalyzex.com/
+https://dagshub.com/
+http://gotit.pub/faq
+https://huggingface.co/huggingface
+https://sciencecast.org/welcome
+https://replicate.com/docs/arxiv/about
+https://huggingface.co/docs/hub/spaces
+https://txyz.ai/
+https://influencemap.cmlab.dev/
+https://core.ac.uk/services/recommender
+https://info.arxiv.org/labs/index.html
+https://arxiv.org/auth/show-endorsers/1706.10283
+https://info.arxiv.org/help/mathjax.html
+https://info.arxiv.org/about/ourmembers.html
+https://info.arxiv.org/help
+https://info.arxiv.org/help/contact.html
+https://info.arxiv.org/help/subscribe
+https://info.arxiv.org/help/license/index.html
+https://info.arxiv.org/help/policies/privacy_policy.html
+https://info.arxiv.org/help/web_accessibility.html
+https://status.arxiv.org/
+https://www.simonsfoundation.org/
+https://www.sfi.org.bm/
+https://www.schmidtsciences.org/
+
+IMAGES
+https://arxiv.org/static/base/1.0.1/images/icons/smileybones-small.svg
+https://arxiv.org/static/base/1.0.1/images/arxiv-logo-primary-light.svg
+https://arxiv.org/static/browse/0.3.4/images/icons/social/bibsonomy.png
+https://arxiv.org/static/browse/0.3.4/images/icons/social/reddit.png
+https://arxiv.org/static/base/1.0.1/images/funders/simons-foundation.png
+https://arxiv.org/static/base/1.0.1/images/funders/simons-foundation-international.png
+https://arxiv.org/static/base/1.0.1/images/funders/schmidt-sciences.png
+end https://arxiv.org/abs/1706.10283
+
+FULL TEXT FOR URL https://arxiv.org/abs/1706.10283 SAVED TO ./.webcats/https-arxiv-org-abs-1706-10283-7e8c1fd.txt

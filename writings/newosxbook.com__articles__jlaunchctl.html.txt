@@ -1,0 +1,648 @@
+begin https://newosxbook.com/articles/jlaunchctl.html
+launchd, I'm coming for you
+Force open sourcing launchd and libxpc, one binary at a time
+Jonathan Levin, @Technologeeks, https://newosxbook.com/ - 10/07/15
+Changelog:
+11/09/15 - Added commpage for ARM64, "dumpjpcategory" command and fixed "lookup" for iOS + 32 bit support for iOS, OS X
+11/14/15 - Added interpose for libxpc, for anyone wanting to try BYOL
+About
+
+Apple woke up one day with OS X 10.10, and decided to take launchd off the opensource lists. This is surprising, since launchd was one of the first projects to go on the Mac OS Forge, since its advent in 10.4. The last known source version seen in the wild is 842-92.1 for OS X 10.9.something, but as of 10.10 launchd's project affiliation is moved to (the closed source) libXPC, and its version number is renumbered:
+
+# In 10.9:
+morpheus@Ergo (~)$ what /sbin/launchd
+/sbin/launchd
+	PROGRAM:launchd   PROJECT:launchd-842.92.1
+# In 10.10.4:
+morpheus@Zephyr (~) what /sbin/launchd
+/sbin/launchd
+	PROGRAM:launchd  PROJECT:libxpc-559.20.9
+	VERSION:Darwin Bootstrapper Version 2.0.2: Mon Mar  2 23:27:57 PST 2015; root:libxpc_executables-559.20.9~1/launchd/RELEASE_X86_64
+# In iOS 9 (and also 10.11)
+morpheus@Phontifex (~) what /sbin/launchd
+/sbin/launchd
+	PROGRAM:launchd  PROJECT:libxpc-756.1.1
+	VERSION:Darwin Bootstrapper Version 3.0.0: Wed Aug  5 23:03:24 PDT 2015; root:libxpc_executables-756.1.1~3/launchd/RELEASE_ARM64
+
+Similarly, launchctl(1), the interface utility, has been rewritten from scratch, made non-interactive (which is kind of a shame) and augmented with many more useful commands - primarily those that finally provide information on Mach ports. But, alas, where's the source??
+
+The source
+(download link)
+
+I had to do a lot of extensive reversing for MOXiI 2, wherein I delve for the first time into Apple's private frameworks and user-mode daemons. launchd obviously fits into that important category - it already commanded chapter 7 of the first edition ("Alpha and Omega") - but that was before the rewrite. Add to that a gaping hole in MOXiI's 1's coverage - which barely touched on XPC (as it was just out and my (former) publisher wouldn't let me write about deep internals). Top that off with the arrogant (but funny :) rascal actively challenging me on Twitter* and @bruienne reminding me of my commitment to expose it.
+
+So what I decided to share with the world for now is not launchd itself - that will wait for MOXiI 2's release - but launchctl's source. launchctl is used quite a bit in Jailbreaks to communicate with launchd(8) and ensure Daemons continue normal system startup after the jailbreak occurs. Apple knows that, and has in fact relocated the utility to the RAM Disk as of 9.0 (which obviously still doesn't work, since Pangu9 uses it). With this, you won't need the real launchctl, as this works exactly the same. Additionally, I'm releasing the source clearly with the intent people use it. Feel free to build/integrate in your own code.
+
+As with the original, launjctl provides help.
+
+Usage: launjctl  ... | help [subcommand]
+	kill            Sends a signal to the service instance.
+	blame           Prints the reason a service is running.
+	print           Prints a description of a domain or service.
+	print-cache     Prints information about the service cache.
+	print-disabled  Prints a description of a domain or service.
+	procinfo        Prints port information about a process.
+	hostinfo        Prints port information about the host.
+	limit           Reads or modifies launchd's resource limits.
+	runstats        Prints performance statistics for a service.
+	examine         Runs the specified analysis tool against launchd in a non-reentrant manner.
+	dumpstate       Dumps launchd state to stdout (iOS 9 only)
+	list            Lists information about services.
+	start           Starts the specified service.
+	stop            Starts the specified service.
+	asuser          Execute a program in the bootstrap context of a given user.
+	submit          Submit a basic job from the command line.
+	error           Prints a description of an error.
+	version         Prints the launchd version.
+	variant         Prints the launchd variant.
+# On iOS, these two commands are visible
+	dumpjpcategory   Dumps the jetsam properties category for all services.
+	lookup          Lookup Mach/XPC endpoint by name (new command, for iOS).
+	help            Prints the usage for a given subcommand.
+
+This is the 64-bit version of launjctl
+
+That "64-bit" or "32-bit" is just for my own purposes, since I recently updated the code to work well with 32-bit as well. I've packaged a (really) fat binary, so you can use arch to take your pick as to which architecture to run.
+
+Compiling & Running
+
+Normally I do a full writeup, wherein I explain the process of reversing. I'm skipping it this time in favor of just providing the source, for your compilation pleasure, and leaving the XPC internals, etc for the book. The source I've provided will compile neatly (-Wall) on both OS X and iOS, and you can find a fat binary for all architectures in the source bundle as well (The iOS version is obviously more useful than the OS X one, for purposes of jailbreaking/reverse engineering).
+
+Do note - It's NOT the full source of launchctl, but only of the interesting commands - primarily the procinfo, list, and such. I was also quite lazy here, and didn't implement the launchctl convention of a "full path" to a service (e.g. system/com.apple.kextd or user/501/something...). Instead, you can pass uid=.. as an environment variable. For example:
+
+# Default: Print for system (user 0). This does the same as  launchctl print-disabled system
+Zephyr:~ morpheus$ ~/Documents/shared/10.11/launchd/launjctl print-disabled
+disabled services = {
+        "com.apple.AEServer" => true
+        "com.apple.ManagedClientAgent.enrollagent" => true
+        "com.apple.usbmuxd" => false
+        "com.apple.rpmuxd" => false
+        "com.apple.ftpd" => true
+        "com.apple.mrt" => false
+        "com.apple.stackshot" => false
+        "com.apple.dynamic_pager" => false
+        "org.ntp.ntpd" => false
+        "com.apple.pacemaker" => true
+}
+# This does the same as  launchctl print-disabled user/501
+Zephyr:~ morpheus$ uid=501 ~/Documents/shared/10.11/launchd/launjctl print-disabled
+disabled services = {
+        "com.apple.TMHelperAgent.SetupOffer" => false
+        "com.apple.FileStatsAgent" => true
+}
+login item associations = {
+}
+# uid= is required when looking for a per-user service:
+Zephyr:~ morpheus$ launjctl print com.apple.tccd
+Error:  113 - Could not find specified service
+Zephyr:~ morpheus$ uid=501 ./launjctl print com.apple.tccd
+com.apple.tccd = {
+	active count = 2
+	path = /System/Library/LaunchAgents/com.apple.tccd.plist
+	...
+	...
+
+Likewise try uid=501 launjctl print and launjctl print (implicitly does the same as launchctl print system), and remember uid=... when printing a per-user service, as without it you will get error 113. While I was at it, I added a simple command - lookup - which will enable you to see if a Mach port is reachable or not (by name). Super useful for iOS. If a port isn't reachable, expect error 3.
+
+If you read the source..
+
+You'll see that I have #if 0 blocks showing the Mach messages used in each of the launchctl requests. You are encouraged to get to them yourself, and it's quite easy to reproduce:
+
+Start launchctl with no arguments under lldb
+Set a breakpoint on xpc_pipe_routine
+Run with whatever request argument you want to test
+When the breakpoint hits, set another breakpoint on mach_msg
+continue on the first two hits of mach_msg - these are the setup messages of the XPC pipe
+mem read $rdi to see the content of the third message. You'll see something like:
+(lldb) mem read $rdi
+# Note the mach_msg header
+0x100200118: 13 15 13 80 b8 00 00 00 1b 03 00 00 13 04 00 00  ....?...........
+0x100200128: 07 0b 00 00 00 00 00 10 01 00 00 00 03 0a 00 00  ................
+#                                    XPC Magic
+0x100200138: 00 00 00 00 00 00 11 00 21 43 50 58 05 00 00 00  ........!CPX....
+0x100200148: 00 f0 00 00 80 00 00 00 06 00 00 00 73 75 62 73  .?..........subs
+0x100200158: 79 73 74 65 6d 00 00 00 00 40 00 00 02 00 00 00  ystem....@......
+0x100200168: 00 00 00 00 66 64 00 00 00 b0 00 00 68 61 6e 64  ....fd...?..hand
+0x100200178: 6c 65 00 00 00 40 00 00 00 00 00 00 00 00 00 00  le...@..........
+0x100200188: 72 6f 75 74 69 6e 65 00 00 40 00 00 c4 02 00 00  routine..@..?...
+0x100200198: 00 00 00 00 6e 61 6d 65 00 00 00 00 00 90 00 00  ....name........
+0x1002001a8: 10 00 00 00 63 6f 6d 2e 61 70 70 6c 65 2e 6b 65  ....com.apple.ke
+0x1002001b8: 78 74 64 00 74 79 70 65 00 00 00 00 00 40 00 00  xtd.type.....@..
+0x1002001c8: 01 00 00 00 00 00 00 00 03 0a 00 00 00 00 00 00  ................
+
+and the serialization is readily evident. And interesting if ,say, you wanted to fuzz it to find faults in launchd's handling.
+
+Note that most methods actually require you to pass a file descriptor (via file ports) to launchd. This is clever, but sucks, because it means there's no easy way (convoluted popen() notwithstanding) to get the data in a machine-friendly format which can be digested programmatically.
+
+Update: I added a small XPC snooping library in the snoop/ directory inside the tar. Super simple, and really nothing fancy - the ages-old DYLD_INSERT_LIBRARIES trick, etc. But useful, since it uses xpc_copy_description() to dump XPC messages aplenty. Fascinating stuff. Expect more - much more - when I get to the XPC explication in MOXiI 2.
+
+Speaking of MOXiI 2..
+
+Both launchd and libxpc would benefit from more transparency - you know, just in case there is a certain 0-day vulnerability (or two three) in the implementation of XPC. The 2nd edition of MOXiI will therefore have a lot more than this. launchd now has a dedicated chapter (I'm kicking SpringBoard and WindowServer to their own chapter), and XPC is covered in depth likewise in a chapter.
+
+Update: And I'm glad to say I have libxpc.dylib fully reversed :-) Anyone interested in OpenXPC? ;-)
+
+Yes, I know I promised MOXiI will see print by October/November. I'm sort of on track, but as with Parkinson's law, there's always more and more to detail and explain - especially with the many under-the-hood changes AAPL put into iOS 9/10.11. I'm also now in "Android Mode", with Marshamllow FINALLY out, and the second volume of Android Internals due very soon. And I have real life to try and squeeze in every now and then. But once AIvII is out of the picture, MOXiI will once again command my full undivided attention. Stay tuned, (still aiming by end of year) and I promise you the wait will be over soon enough - and it will have been worth it.
+
+.. and Technologeeks' Training
+
+If you're reading this and following my articles, check out Technologeeks' Training on OS X and iOS Internals. This reverse-engineering oriented course is delivered by yours truly and goes even deeper than MOXiI 2 does, with practical and hands-on exercises. Our 2015 dates are full, but they tell me we're planning more training right around January 18th, 2016! Updates through @Technologeeks, or emailing info@you.know.where.
+
+Comments/Feedback
+
+Through the website forum please. Technologeeks' Twitter doesn't normally respond to Twitter conversations or questions, but you can follow them for more updates on my work, as well as training
+
+Greets
+
+windknown, qwupz, and - how can I forget - launchderp :)
+
+* - Actually, that's a lot of fun :-) I think AAPL should promote TWTR for all its daemons, especially amfid (whose day in the sun is coming, rest assured).
+
+People never read to the end these days..
+
+Oh, and.. one more thing:
+
+@launchderp, just to show you I mean business - 
+here's a verbatim jtool --html -d launchd output. True, it's with a companion file, and a tad buggy still - but strip away the comments and what you get is jtool at its (almost finest) on ARM64, dissecting your incarnation on iOS 9:
+
+Disassembling from file offset 0x4f8c, Address 0x100004f8c  to next function
+_main:
+//
+// 
+//
+   100004f8c	STP    X22, X21, [SP,#-48]!
+   100004f90	STP    X20, X19, [SP,#16]
+   100004f94	STP    X29, X30, [SP,#32]
+   100004f98	ADD    X29, SP, #32	; R29 = SP + 0x20
+   100004f9c	SUB    X31, X31, #224
+//
+// Set _os_crash_callback to my_crash_callback
+//
+   100004fa0	NOP    
+   100004fa4	LDR    X8, #52277;	libSystem.B.dylib::__os_crash_callback
+   100004fa8	ADR    x9, -40; 	; ->R9 = 0x100004f80 ; _my_crash_callback
+   100004fac	NOP    
+   100004fb0	STR    X9, [X8, #0]; *libSystem.B.dylib::__os_crash_callback= X9  0x100004f80
+   100004fb4	ORR    W0, WZR, #0x1; 	; ->R0 = 0x1 
+//
+// if isatty(stdout_fileno) { /* launchd cannot be run directly */ }::
+//
+   100004fb8	BL     libSystem.B.dylib::_isatty	; ; 0x10002b334
+   100004fbc	CBNZ   X0, launchd_cannot_be_run_directly	; ; 0x100005330
+//
+// panic_init(mach_host_self());
+//
+   100004fc0	BL     libSystem.B.dylib::_mach_host_self	; ; 0x10002b3a0
+   100004fc4	BL     libSystem.B.dylib::_panic_init	; ; 0x10002b514
+//
+//  dispatch_queue_attr_t attr = dispatch_queue_attr_make_with_qos_class(0,qos_class_main(),0);
+//
+   100004fc8	BL     libSystem.B.dylib::_qos_class_main	; ; 0x10002b634
+   100004fcc	*MOV   X1, X0
+   100004fd0	MOVZ   W2, #0; 	; ->R2 = 0x0 
+   100004fd4	MOVZ   X0, #0; 	; ->R0 = 0x0 
+   100004fd8	BL     libSystem.B.dylib::_dispatch_queue_attr_make_with_qos_class	; ; 0x10002b004
+//
+//  dispatch_queue_t g_event_queue = dispatch_queue_create("com.apple.xpc.launchd.eventq",attr);
+//
+   100004fdc	*MOV   X1, X0
+   100004fe0	ADR    x0, 164572; 	; ->R0 = 0x10002d2bc "com.apple.xpc.launchd.eventq"
+   100004fe4	NOP    
+   100004fe8	BL     libSystem.B.dylib::_dispatch_queue_create	; ; 0x10002b010
+;  R0 = libSystem.B.dylib::_dispatch_queue_create("com.apple.xpc.launchd.eventq",0);
+;
+   100004fec	ADRP   x20, 57; 	; ->R20 = 0x10003d000 
+   100004ff0	STR    X0, [X20, #136]; ; *(g_event_queue)= X0  0x10002d2bc
+//
+//  dispatch_suspend(g_event_queue);
+//
+   100004ff4	BL     libSystem.B.dylib::_dispatch_suspend	; ; 0x10002b0f4
+//
+// dup_fd_to_dev_null(stdin_fileno, stdin_fileno);::
+//
+   100004ff8	MOVZ   W0, #0; 	; ->R0 = 0x0 
+   100004ffc	MOVZ   W1, #0; 	; ->R1 = 0x0 
+   100005000	BL     _dup_fd_to_dev_null	; ; 0x1000053a4
+//
+// dup_fd_to_dev_null(stdout_fileno, stdout_fileno);::
+//
+   100005004	ORR    W0, WZR, #0x1; 	; ->R0 = 0x1 
+   100005008	ORR    W1, WZR, #0x1; 	; ->R1 = 0x1 
+   10000500c	BL     _dup_fd_to_dev_null	; ; 0x1000053a4
+//
+// dup_fd_to_dev_null(stderr_fileno, stderr_fileno);::
+//
+   100005010	ORR    W0, WZR, #0x2; 	; ->R0 = 0x2 
+   100005014	ORR    W1, WZR, #0x2; 	; ->R1 = 0x2 
+   100005018	BL     _dup_fd_to_dev_null	; ; 0x1000053a4
+//
+// handle_embedded_bs_plist();
+//
+   10000501c	BL     _handle_bs_plist	; ; 0x100029d00
+//
+// install_signal_handlers();
+//
+   100005020	BL     _installs_signal_handlers	; ; 0x1000244c0
+//
+// memorystatus_control(MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT, getpid()..., flags, buffer, buffersize)::
+//
+   100005024	ADR    x8, 227421; 	; ->R8 = 0x10003c881 ; g_UseGuardMalloc
+   100005028	NOP    
+   10000502c	LDRB   W8, [X8]
+   100005030	CBZ    X8, 0x100005044	; 0x100005044
+   100005034	ADR    x8, 226404; 	; ->R8 = 0x10003c498 ; default_HighWaterMark 
+   100005038	NOP    
+   10000503c	MOVN   X9, #0; 	; ->R9 = 0xffffffffffffffff 
+   100005040	STR    W9, [X8, #0]; ; *(default_HighWaterMark )= X9  0xffffffffffffffff
+   100005044	MOVZ   W19, #1, LSL #16; 	; ->R19 = 0x10000 
+   100005048	MOVK   X19, #3; 	; R19 += 3 =.. 0x10003 
+   10000504c	BL     libSystem.B.dylib::_getpid	; ; 0x10002b28c
+   100005050	*MOV   X1, X0
+   100005054	ADR    x21, 226372; 	; ->R21 = 0x10003c498 ; default_HighWaterMark 
+   100005058	NOP    
+   10000505c	LDR    W2, [X21, #0];	R2 = *(R21 + 0) = *(0x10003c498 + 0x0) = *(0x10003c498) = default_HighWaterMark 
+   100005060	ORR    W0, WZR, #0x6; 	; ->R0 = 0x6 
+   100005064	MOVZ   X3, #0; 	; ->R3 = 0x0 
+   100005068	MOVZ   X4, #0; 	; ->R4 = 0x0 
+   10000506c	BL     libSystem.B.dylib::_memorystatus_control	; ; 0x10002b490
+;  R0 = libSystem.B.dylib::_memorystatus_control(6,2,default_HighWaterMark  ,NULL,0);
+;
+   100005070	CMN    W0, #1
+   100005074	B.NE   opted_in	; ; 0x1000050b0
+   100005078	LDR    W21, [X21, #0];	R21 = *(R21 + 0) = *(0x10003c498 + 0x0) = *(0x10003c498) = default_HighWaterMark 
+   10000507c	BL     libSystem.B.dylib::___error	; ; 0x10002ad34
+   100005080	LDR    W22, [X0, #0];	R22 = *(R0 + 0) = *(0x6 + 0x0) = *(0x6) = feedfacf!
+   100005084	BL     libSystem.B.dylib::___error	; ; 0x10002ad34
+   100005088	LDR    W0, [X0, #0];	R0 = *(R0 + 0) = *(0x6 + 0x0) = *(0x6) = feedfacf!
+   10000508c	BL     libSystem.B.dylib::_strerror	; ; 0x10002b778
+   100005090	STP    X22, X0, [SP,#8]
+   100005094	STR    X21, [SP, #0]; 	; *(SP + 0x0) = default_HighWaterMark 
+   100005098	ADR    x2, 164427; 	; ->R2 = 0x10002d2e3 "Could not opt into %d MB Jetsam high watermark: %d: %s"
+   10000509c	NOP    
+   1000050a0	MOVZ   W1, #1, LSL #16; 	; ->R1 = 0x10000 
+   1000050a4	MOVK   X1, #3; 	; R1 += 3 =.. 0x10003 
+   1000050a8	MOVZ   X0, #0; 	; ->R0 = 0x0 
+   1000050ac	BL     log	; ; 0x1000253b4
+opted_in:
+//
+// :
+//
+   1000050b0	ADR    x21, 225960; 	; ->R21 = 0x10003c358 ; output_fd
+   1000050b4	NOP    
+   1000050b8	LDR    X0, [X21, #0];	R0 = *(R21 + 0) = *(0x10003c358 + 0x0) = *(0x10003c358) = output_fd
+   1000050bc	NOP    
+   1000050c0	LDR    X8, #55202;	"Darwin Bootstrapper Version 3.0.0: Wed Aug  5 23:03:24 PDT 2015; root:libxpc_executables-756.1.1~3/launchd/RELEASE_ARM64"
+   1000050c4	STR    X8, [SP, #0]; 	; *(SP + 0x0) = "Darwin Bootstrapper Version 3.0.0: Wed Aug  5 23:03:24 PDT 2015; root:libxpc_executables-756.1.1~3/launchd/RELEASE_ARM64"
+   1000050c8	ADR    x2, 164067; 	; ->R2 = 0x10002d1ab "%s"
+   1000050cc	NOP    
+   1000050d0	MOVZ   X1, #0; 	; ->R1 = 0x0 
+   1000050d4	BL     to_fd	; ; 0x1000259f8
+//
+// get and log the boot arguments
+//
+   1000050d8	STUR   X31, X29, #-40 ; *0x20= X31  0x0
+   1000050dc	ADR    x0, 164414; 	; ->R0 = 0x10002d31a "kern.bootargs"
+   1000050e0	NOP    
+   1000050e4	SUB    X1, X29, #40
+   1000050e8	BL     _wraps_sysctl	; ; 0x100024ad4
+   1000050ec	CBZ    X0, 0x10000510c	; 0x10000510c
+   1000050f0	LDR    X0, [X21, #0];	R0 = *(R21 + 0) = *(0x10003c358 + 0x0) = *(0x10003c358) = output_fd
+   1000050f4	LDUR   X8, X29, #-40 ; *0x20= X8 
+   1000050f8	STR    X8, [SP, #0]; 	; *(SP + 0x0) = 
+   1000050fc	ADR    x2, 164396; 	; ->R2 = 0x10002d328 "boot-args = %s"
+   100005100	NOP    
+   100005104	MOVZ   X1, #0; 	; ->R1 = 0x0 
+   100005108	BL     to_fd	; ; 0x1000259f8
+   10000510c	LDUR   X0, X29, #-40 ; *0x20= X0 output_fd
+   100005110	BL     libSystem.B.dylib::_free	; ; 0x10002b1d8
+//
+// proc_disable_wakemon(getpid()); /* getpid() is kind of redundant because we're PID 1 :-) */
+//
+   100005114	BL     libSystem.B.dylib::_getpid	; ; 0x10002b28c
+   100005118	BL     libSystem.B.dylib::_proc_disable_wakemon	; ; 0x10002b5ec
+   10000511c	CMN    W0, #1
+   100005120	B.EQ   cant_disable_wakemon	; ; 0x10000535c
+//
+// if in restore environment (10003c879)
+//
+   100005124	ADR    x8, 227157; 	; ->R8 = 0x10003c879 ; RestoreEnvironment
+   100005128	NOP    
+   10000512c	LDRB   W8, [X8]
+   100005130	CBZ    X8, after_restore_environment_message	; ; 0x100005158
+//
+// *(g_LogToConsole) = 1;
+//
+   100005134	ADR    x8, 227166; 	; ->R8 = 0x10003c892 ; g_LogToConsole
+   100005138	NOP    
+   10000513c	ORR    W9, WZR, #0x1; 	; ->R9 = 0x1 
+   100005140	STRB   W9, [X8]; ; *(g_LogToConsole)= X9  0x1
+   100005144	ADD    W1, W19, #2; 	; __R1 = R19 (0x10003) + 0x2 = 0x10005 
+   100005148	MOVZ   X0, #0; 	; ->R0 = 0x0 
+   10000514c	ADR    x2, 164331; 	; ->R2 = 0x10002d337 "Restore environment starting."
+   100005150	NOP    
+   100005154	BL     log	; ; 0x1000253b4
+after_restore_environment_message:
+   100005158	BL     libSystem.B.dylib::_setsid	; ; 0x10002b6d0
+   10000515c	CMN    W0, #1
+   100005160	B.NE   0x100005190    	; 0x100005190
+   100005164	ADR    x8, 227106; 	; ->R8 = 0x10003c886 
+   100005168	NOP    
+   10000516c	LDRB   W8, [X8]
+   100005170	CBZ    X8, 0x100005184	; 0x100005184
+   100005174	BL     libSystem.B.dylib::___error	; ; 0x10002ad34
+   100005178	LDR    W8, [X0, #0];	R8 = *(R0 + 0) = *(0x0 + 0x0) = *(0x0) = ???
+   10000517c	CMP    W8, #1
+   100005180	B.EQ   0x100005190    	; 0x100005190
+   100005184	BL     libSystem.B.dylib::___error	; ; 0x10002ad34
+   100005188	LDRSW  X0, [X0];	R0 = *(R0 + 0) = *(0x0 + 0x0) = *(0x0) = ???
+   10000518c	CBNZ   X0, error	; ; 0x100005398
+//
+// chdir("/");
+//
+   100005190	ADR    x0, 163450; 	; ->R0 = 0x10002d00a "/"
+   100005194	NOP    
+   100005198	BL     libSystem.B.dylib::_chdir	; ; 0x10002ae78
+   10000519c	CMN    W0, #1
+   1000051a0	B.EQ   cant_chdir_to_/	; ; 0x100005370
+//
+// setlogin("root");
+//
+   1000051a4	ADR    x0, 164273; 	; ->R0 = 0x10002d355 "root"
+   1000051a8	NOP    
+   1000051ac	BL     libSystem.B.dylib::_setlogin	; ; 0x10002b6b8
+   1000051b0	CMN    W0, #1
+   1000051b4	B.EQ   cant_setlogin_to_root	; ; 0x100005384
+//
+// for (s = 0; s < 21; s++) { signal(signal_num_table[s], SIG_IGN); };
+//
+   1000051b8	MOVZ   X19, #0; 	; ->R19 = 0x0 
+   1000051bc	ADR    x21, 162348; 	; ->R21 = 0x10002cbe8 ; signal_num_table
+   1000051c0	NOP    
+signal_handler_loop:
+   1000051c4	-LDR   W0, [X21, X19 ...];	R0 = *(R0 + 0) = *(0x10002d355 + 0x0) = *(0x10002d355) = 746f6f72!
+   1000051c8	ORR    W1, WZR, #0x1; 	; ->R1 = 0x1 
+   1000051cc	BL     libSystem.B.dylib::_signal	; ; 0x10002b700
+   1000051d0	CMN    X0, #1
+   1000051d4	B.NE   0x1000051e8    	; 0x1000051e8
+   1000051d8	BL     libSystem.B.dylib::___error	; ; 0x10002ad34
+   1000051dc	LDRSW  X0, [X0];	R0 = *(R0 + 0) = *(0x746f6f72 + 0x0) = *(0x746f6f72) = facf!
+   1000051e0	BL     libSystem.B.dylib::__os_assumes_log	; ; 0x10002ad94
+   1000051e4	BL     libSystem.B.dylib::__os_avoid_tail_call	; ; 0x10002adac
+   1000051e8	ADD    X19, X19, #4; 	; __R19 = R19 (0x0) + 0x4 = 0x4 
+   1000051ec	CMP    X19, #84
+   1000051f0	B.NE   signal_handler_loop	; ; 0x1000051c4
+//
+// task_set_special_port(mach_task_self(), TASK_BOOTSTRAP_PORT, MACH_PORT_NULL);
+//
+   1000051f4	NOP    
+   1000051f8	LDR    X21, #52172;	libSystem.B.dylib::_mach_task_self_
+   1000051fc	LDR    W0, [X21, #0];	R0 = *(libSystem.B.dylib::_mach_task_self_)
+   100005200	ORR    W1, WZR, #0x4; 	; ->R1 = 0x4 
+   100005204	MOVZ   W2, #0; 	; ->R2 = 0x0 
+   100005208	BL     libSystem.B.dylib::_task_set_special_port	; ; 0x10002b880
+   10000520c	CBNZ   X0, couldnt_neuter_bootstrap_port	; ; 0x1000052f8
+//
+// bootstrap_port = MACH_PORT_NULL
+//
+   100005210	NOP    
+   100005214	LDR    X8, #52151;	libSystem.B.dylib::_bootstrap_port
+   100005218	STR    WZR, [X8, #0]; *libSystem.B.dylib::_bootstrap_port= X31  0x0
+//
+// constructed_port = mach_port_construct_wrapper(51, 0, 0x70507);
+//
+   10000521c	MOVZ   W0, #51; 	; ->R0 = 0x33 
+   100005220	MOVN   X1, #0; 	; ->R1 = 0xffffffffffffffff 
+   100005224	MOVZ   W2, #7, LSL #16; 	; ->R2 = 0x70000 
+   100005228	MOVK   X2, #1287; 	; R2 += 507 =.. 0x70507 
+   10000522c	BL     _mach_port_construct_wrapper	; ; 0x10000138c
+//
+// mach_ports_register (mach_task_self, &constructed_port, 1);
+//
+   100005230	*MOV   X19, X0
+   100005234	STR    W19, [SP, #24]; 	 *(SP + 0x18) =  0x33
+   100005238	LDR    W0, [X21, #0];	R0 = *(libSystem.B.dylib::_bootstrap_port)
+   10000523c	ORR    W2, WZR, #0x1; 	; ->R2 = 0x1 
+   100005240	ADD    X1, SP, #24; 	; R1 = SP + 0x18
+   100005244	BL     libSystem.B.dylib::_mach_ports_register	; ; 0x10002b448
+   100005248	CBNZ   X0, couldnt_setup_inheritance	; ; 0x100005318
+   10000524c	ADR    x8, 226804; 	; ->R8 = 0x10003c840 ; g_constructed_port
+   100005250	NOP    
+   100005254	STR    W19, [X8, #0]; ; *(g_constructed_port)= X19  0x33
+   100005258	BL     libSystem.B.dylib::_mach_absolute_time	; ; 0x10002b394
+   10000525c	ADRP   x8, 55; 	; ->R8 = 0x10003c000 
+   100005260	STR    X0, [X8, #2048]; ; *(startup_timestamp)= X0  0x33
+//
+// uuid_generate(&g_uuid);
+//
+   100005264	ADR    x0, 226876; 	; ->R0 = 0x10003c8a0 ; g_uuid
+   100005268	NOP    
+   10000526c	BL     libSystem.B.dylib::_uuid_generate	; ; 0x10002b8d4
+//
+// g_my_uid = getuid();
+//
+   100005270	BL     libSystem.B.dylib::_getuid	; ; 0x10002b2e0
+;  R0 = libSystem.B.dylib::_getuid();
+;
+   100005274	ADR    x19, 226876; 	; ->R19 = 0x10003c8b0 ; g_my_uid
+   100005278	NOP    
+   10000527c	STR    W0, [X19, #0]; ; *(g_my_uid)= X0  0x10003c8a0
+//
+// g_my_euid = geteuid();
+//
+   100005280	BL     libSystem.B.dylib::_geteuid	; ; 0x10002b280
+   100005284	STR    W0, [X19, #4]; ; *(g_my_euid)= X0  0x10003c8a0
+//
+// g_my_egid = getegid();
+//
+   100005288	BL     libSystem.B.dylib::_getegid	; ; 0x10002b268
+   10000528c	STR    W0, [X19, #8]; ; *(g_my_egid)= X0  0x10003c8a0
+//
+// g_my_euid_2_unused = geteuid();
+//
+   100005290	BL     libSystem.B.dylib::_geteuid	; ; 0x10002b280
+//
+// g_my_egid_2_unused = getegid();
+//
+   100005294	STR    W0, [X19, #12]; ; *(g_my_euid_2_unused)= X0  0x10003c8a0
+   100005298	BL     libSystem.B.dylib::_getegid	; ; 0x10002b268
+   10000529c	STR    W0, [X19, #16]; ; *(g_my_egid_2_unused)= X0  0x10003c8a0
+//
+// g_my_pid = getpid();
+//
+   1000052a0	BL     libSystem.B.dylib::_getpid	; ; 0x10002b28c
+   1000052a4	STR    W0, [X19, #20]; ; *(g_my_pid)= X0  0x10003c8a0
+   1000052a8	BL     _on_OSX_this_wraps_audit_but_on_iOS_no_audit_so_nothing	; ; 0x100024c14
+   1000052ac	STP    W0, WZR, [X19,#24]
+   1000052b0	BL     libSystem.B.dylib::_getpid	; ; 0x10002b28c
+   1000052b4	ADD    X1, SP, #24; 	 R1 = SP + 0x18
+   1000052b8	BL     _proc_pidinfo_PROC_PIDT_BSDINFOWITHUNIQID	; ; 0x100024a0c
+   1000052bc	CBZ    X0, 0x1000052c8	; 0x1000052c8
+   1000052c0	CMP    W0, #45
+   1000052c4	B.NE   couldnt_get_unique_pid	; ; 0x100005324
+   1000052c8	LDR    X8, [X31, #176];	R8 = *(R31 + 176) = *(0x0 + 0xb0) = *(0xb0) = 100000cfeedfacf!
+   1000052cc	ADRP   x9, 55; 	; ->R9 = 0x10003c000 
+   1000052d0	STR    X8, [X9, #2056]; *0x10003c808= X8  (?)
+   1000052d4	BL     _sets_up_ipc_log_if_LogIPC	; ; 0x100027b28
+   1000052d8	BL     _sets_up_dispatch_queues_and_xpcd_cache	; ; 0x1000017c4
+// The interesting part - setting up the XPC subsystems..
+   1000052dc	BL     sets_up_subsystem_4   	; 0x100023234
+   1000052e0	BL     _sets_up_subsystems_2_6_and_8	; ; 0x1000079d4
+   1000052e4	BL     _sets_up_subsystems_3_5_7	; ; 0x100015f18
+   1000052e8	BL     _kern_osversion_and_other_sysctls	; ; 0x100026230
+//
+// dispatch_resume(g_event_queue);
+//
+   1000052ec	LDR    X0, [X20, #136];	R0 = *(R20 + 136) = *(0x10003d000 + 0x88) = *(0x10003d088) = g_event_queue
+   1000052f0	BL     libSystem.B.dylib::_dispatch_resume	; ; 0x10002b034
+//
+// dispatch_main();
+//
+   1000052f4	BL     libSystem.B.dylib::_dispatch_main	; ; 0x10002afec
+couldnt_neuter_bootstrap_port:
+//
+// dispatch_main() (hopefully) never returns. Just error cases from here
+//
+   1000052f8	STR    X0, [SP, #0]; 	; *(SP + 0x0) = g_event_queue
+   1000052fc	ADR    x2, 163968; 	; ->R2 = 0x10002d37c "Could not neuter bootstrap port: 0x%x"
+   100005300	NOP    
+   100005304	ORR    W1, WZR, #0x0; 	; ->R1 = 0x0 
+   100005308	MOVZ   X0, #0; 	; ->R0 = 0x0 
+   10000530c	BL     log	; ; 0x1000253b4
+   100005310	ORR    W0, WZR, #0x1; 	; ->R0 = 0x1 
+   100005314	BL     libSystem.B.dylib::_exit	; ; 0x10002b160
+; libSystem.B.dylib::_exit(1);
+;
+couldnt_setup_inheritance:
+   100005318	ADR    x0, 163978; 	; ->R0 = 0x10002d3a2 "could not set up inheritance port"
+   10000531c	NOP    
+   100005320	BL     _wraps_reboot_via_syscall_55	; ; 0x100024740
+couldnt_get_unique_pid:
+   100005324	ADR    x0, 163894; 	; ->R0 = 0x10002d35a "could not get unique pid"
+   100005328	NOP    
+   10000532c	BL     _wraps_reboot_via_syscall_55	; ; 0x100024740
+launchd_cannot_be_run_directly:
+//
+// :
+//
+   100005330	NOP    
+   100005334	LDR    X8, #52027;	libSystem.B.dylib::___stdoutp
+   100005338	LDR    X19, [X8, #0];	R19 = *(libSystem.B.dylib::___stdoutp)
+   10000533c	BL     libSystem.B.dylib::_getprogname	; ; 0x10002b298
+   100005340	STR    X0, [SP, #0]; 	; *(SP + 0x0) =  0x10002d35a
+   100005344	ADR    x1, 163676; 	; ->R1 = 0x10002d2a0 "%s cannot be run directly.
+"
+   100005348	NOP    
+   10000534c	*MOV   X0, X19
+   100005350	BL     libSystem.B.dylib::_fprintf	; ; 0x10002b1c0
+; libSystem.B.dylib::_fprintf(0x10003c8b0,"%s cannot be run directly.\r");
+;
+   100005354	MOVZ   W0, #78; 	; ->R0 = 0x4e 
+   100005358	BL     libSystem.B.dylib::_exit	; ; 0x10002b160
+; libSystem.B.dylib::_exit(78);
+;
+cant_disable_wakemon:
+   10000535c	BL     libSystem.B.dylib::___error	; ; 0x10002ad34
+   100005360	LDRSW  X0, [X0];	R0 = *(R0 + 0) = *(0x4e + 0x0) = *(0x4e) = facf!
+   100005364	BL     libSystem.B.dylib::__os_assert_log	; ; 0x10002ad88
+   100005368	BL     libSystem.B.dylib::__os_crash	; ; 0x10002adb8
+   10000536c	BRK    #1             	; 0x0
+cant_chdir_to_/:
+   100005370	BL     libSystem.B.dylib::___error	; ; 0x10002ad34
+   100005374	LDRSW  X0, [X0];	R0 = *(R0 + 0) = *(0xfacf + 0x0) = *(0xfacf) = facf!
+   100005378	BL     libSystem.B.dylib::__os_assert_log	; ; 0x10002ad88
+   10000537c	BL     libSystem.B.dylib::__os_crash	; ; 0x10002adb8
+   100005380	BRK    #1             	; 0x0
+cant_setlogin_to_root:
+   100005384	BL     libSystem.B.dylib::___error	; ; 0x10002ad34
+   100005388	LDRSW  X0, [X0];	R0 = *(R0 + 0) = *(0xfacf + 0x0) = *(0xfacf) = facf!
+   10000538c	BL     libSystem.B.dylib::__os_assert_log	; ; 0x10002ad88
+   100005390	BL     libSystem.B.dylib::__os_crash	; ; 0x10002adb8
+   100005394	BRK    #1             	; 0x0
+error:
+   100005398	BL     libSystem.B.dylib::__os_assert_log	; ; 0x10002ad88
+   10000539c	BL     libSystem.B.dylib::__os_crash	; ; 0x10002adb8
+   1000053a0	BRK    #1             	; 0x0
+_dup_fd_to_dev_null:
+
+Be afraid, @launchderp. Be very afraid.
+
+LINKS
+https://twitter.com/technologeeks
+https://www.macosforge.org/
+https://opensource.apple.com/tarballs/launchd/launchd-842.92.1.tar.gz
+https://newosxbook.com/files/launjctl.tgz
+https://newosxbook.com/TOC2.html
+https://twitter.com/launchderp/status/513159200642318337
+https://twitter.com/bruienne/status/651392960672722945
+https://newandroidbook.com/
+https://technologeeks.com/OSXRE
+https://technologeeks.com/OSXRE?jla
+https://twitter.com/technologeeks/
+https://newosxbook.com/forum/index.php
+https://twitter.com/launchderp
+https://twitter.com/launchderp/status/652195639267233792
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_isatty
+https://newosxbook.com/articles/jlaunchctl.html#launchd_cannot_be_run_directly
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_mach_host_self
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_panic_init
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_qos_class_main
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_dispatch_queue_attr_make_with_qos_class
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_dispatch_queue_create
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_dispatch_suspend
+https://newosxbook.com/articles/jlaunchctl.html#_dup_fd_to_dev_null
+https://newosxbook.com/articles/jlaunchctl.html#_handle_bs_plist
+https://newosxbook.com/articles/jlaunchctl.html#_installs_signal_handlers
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_getpid
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_memorystatus_control
+https://newosxbook.com/articles/jlaunchctl.html#opted_in
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::___error
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_strerror
+https://newosxbook.com/articles/jlaunchctl.html#log
+https://newosxbook.com/articles/jlaunchctl.html#to_fd
+https://newosxbook.com/articles/jlaunchctl.html#_wraps_sysctl
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_free
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_proc_disable_wakemon
+https://newosxbook.com/articles/jlaunchctl.html#cant_disable_wakemon
+https://newosxbook.com/articles/jlaunchctl.html#after_restore_environment_message
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_setsid
+https://newosxbook.com/articles/jlaunchctl.html#error
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_chdir
+https://newosxbook.com/articles/jlaunchctl.html#cant_chdir_to_/
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_setlogin
+https://newosxbook.com/articles/jlaunchctl.html#cant_setlogin_to_root
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_signal
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::__os_assumes_log
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::__os_avoid_tail_call
+https://newosxbook.com/articles/jlaunchctl.html#signal_handler_loop
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_task_set_special_port
+https://newosxbook.com/articles/jlaunchctl.html#couldnt_neuter_bootstrap_port
+https://newosxbook.com/articles/jlaunchctl.html#_mach_port_construct_wrapper
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_mach_ports_register
+https://newosxbook.com/articles/jlaunchctl.html#couldnt_setup_inheritance
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_mach_absolute_time
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_uuid_generate
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_getuid
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_geteuid
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_getegid
+https://newosxbook.com/articles/jlaunchctl.html#_on_OSX_this_wraps_audit_but_on_iOS_no_audit_so_nothing
+https://newosxbook.com/articles/jlaunchctl.html#_proc_pidinfo_PROC_PIDT_BSDINFOWITHUNIQID
+https://newosxbook.com/articles/jlaunchctl.html#couldnt_get_unique_pid
+https://newosxbook.com/articles/jlaunchctl.html#_sets_up_ipc_log_if_LogIPC
+https://newosxbook.com/articles/jlaunchctl.html#_sets_up_dispatch_queues_and_xpcd_cache
+https://newosxbook.com/articles/jlaunchctl.html#_sets_u
+https://newosxbook.com/articles/jlaunchctl.html#_sets_up_subsystems_3_5_7
+https://newosxbook.com/articles/jlaunchctl.html#_kern_osversion_and_other_sysctls
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_dispatch_resume
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_dispatch_main
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_exit
+https://newosxbook.com/articles/jlaunchctl.html#_wraps_reboot_via_syscall_55
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_getprogname
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::_fprintf
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::__os_assert_log
+https://newosxbook.com/articles/jlaunchctl.html#libSystem.B.dylib::__os_crash
+
+IMAGES
+https://newosxbook.com/articles/matador.jpg
+end https://newosxbook.com/articles/jlaunchctl.html
+
+FULL TEXT FOR URL https://newosxbook.com/articles/jlaunchctl.html SAVED TO ./.webcats/https-newosxbook-com-articles-jlaunchctl-html-16c98e6.txt
