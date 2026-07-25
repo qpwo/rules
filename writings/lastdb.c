@@ -2569,7 +2569,7 @@ if (match) {
                                 } else {
                                     char val[128]; int vl_out = 0;
 if (max_wl < 0) max_wl = 0;
-                                if (max_wl > 0 && raw_count > 0 && raw_count < (1ULL << max_wl)) { if (!has_decay) count_est = (double)raw_count; sum = raw_sum; max_wl = 0; }
+                                if (max_wl > 0 && raw_count > 0 && raw_count < (1ULL << max_wl)) { count_est = (double)raw_count; sum = raw_sum; max_wl = 0; }
                                 if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu\t%d", count_est, (unsigned long long)raw_count, max_wl);
                                 else vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%llu\t%d", sum, raw_sum, (unsigned long long)raw_count, max_wl);
                                     send_response(fd, cipherkey, 0, val, vl_out);
