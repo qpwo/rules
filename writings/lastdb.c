@@ -2584,7 +2584,7 @@ if (max_wl > 0 && w2_sum > 0 && count_est > 0) { double ess = count_est * count_
 if (max_wl > 8) confidence *= 1.0 / (1U << (max_wl - 8 > 12 ? 12 : max_wl - 8));
                                 if (count_est < 0.5) count_est = 0;
                                 if (__builtin_fabs(sum) < 5e-15) sum = 0;
-                                if (confidence < 0.01) { count_est = 0; sum = 0; raw_count = 0; raw_sum = 0; confidence = 0; }
+                                if (confidence < 0.01) { count_est = 0; sum = 0; confidence = 0; }
                                 if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu\t%d\t%.4g", count_est, (unsigned long long)raw_count, max_wl, confidence);
                                 else vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%llu\t%d\t%.4g", sum, raw_sum, (unsigned long long)raw_count, max_wl, confidence);
                                 send_response(fd, cipherkey, 0, val, vl_out);
