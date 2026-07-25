@@ -1162,14 +1162,18 @@ static const void *memmem_pivot(const void *haystack, size_t hay_len, const void
     return memmem_pivot_scan_avx2(hay, hay_len, need, needle_len, pivot);
 }
 
-static int rec_has_terms(Record *r, int argc, char **argv, size_t *lens, uint64_t *term_bfs)
+static int rec_has_terms(Record *r, int argc, char **argv, size_t *lens, uint64_t *term_bfs, double now)
 {
-    for (int j = 4; j < argc; j++) {
-        int is_decay_val = 0;
-        if (r->v_len > 0 && r->v_len < 192) {
-            double dummy_cur;
-            is_decay_val = decay_value_at(rec_v(r), r->v_len, (double)time(NULL), &dummy_cur);
+    int is_decay_val = 0;
+    double decay_cur = 1;
+    if (r->v_len > 0 && r->v_len < 192) {
+        is_decay_val = decay_value_at(rec_v(r), r->v_len, now, &decay_cur);
+        if (is_decay_val && decay_cur == 0) {
+            return 0;
         }
+    }
+
+    for (int j = 4; j < argc; j++) {
         if ((r->bf & term_bfs[j]) != term_bfs[j]) {
             return 0;
         }
@@ -1201,6 +1205,7 @@ static int do_search(const char *t, int argc, char **argv)
     uint64_t term_bfs[argc];
     for (int i = 4; i < argc; i++) term_bfs[i] = compute_bf(argv[i], lens[i]);
 
+    double now = (double)time(NULL);
     uint64_t start_idx, end_idx;
     ht_tenant_range(t, tl, &start_idx, &end_idx);
     #pragma omp parallel for schedule(static, 4096) num_threads(worker_threads())
@@ -1212,7 +1217,7 @@ static int do_search(const char *t, int argc, char **argv)
         if (memcmp(rec_t(r), t, tl)) {
             continue;
         }
-        if (!rec_has_terms(r, argc, argv, lens, term_bfs)) {
+        if (!rec_has_terms(r, argc, argv, lens, term_bfs, now)) {
             continue;
         }
 
