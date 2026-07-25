@@ -2237,7 +2237,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                             double db_w = (double)(1U << r->weight_log);
                                             double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
                                             double w = db_w > qw ? db_w : qw;
-                                            if (is_decay) w *= cur;
+                                            if (is_decay) { w *= cur; if (threshold >= 1.0 && w < threshold) continue; }
                                             char weight[32];
                                             int wlen = snprintf(weight, sizeof(weight), "%.5g\t", w);
                                             size_t rec_len = wlen + r->k_len + 1 + out_vl + 1;
@@ -2414,7 +2414,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     if (decay_value_at(rec_v(r), r->v_len, sum_now, &cur)) is_decay = 1;
                                 }
                                 if (is_decay && cur == 0) continue;
-                                if (is_decay) w *= cur;
+                                if (is_decay) { w *= cur; if (threshold >= 1.0 && w < threshold) continue; }
                                 count_est += w;
                                         raw_count++;
                                         if (op == 9 && r->v_len > 0) {
@@ -2805,6 +2805,7 @@ int main(int argc, char **argv)
                 if (decay_value_at(rec_v(r), r->v_len, now, &cur)) {
                     if (cur == 0) continue;
                     w *= cur;
+                    if (threshold >= 1.0 && w < threshold) continue;
                 }
             }
             count_est += w;
@@ -2840,7 +2841,7 @@ int main(int argc, char **argv)
                 if (decay_value_at(rec_v(r), r->v_len, sum_now, &cur)) is_decay = 1;
             }
             if (is_decay && cur == 0) continue;
-            if (is_decay) w *= cur;
+            if (is_decay) { w *= cur; if (threshold >= 1.0 && w < threshold) continue; }
             raw_s++;
             if (r->v_len > 0) {
                 if (is_decay) {
