@@ -878,8 +878,8 @@ static int decay_value_at(const char *s, size_t n, double now, double *out)
     }
     double age = now - last;
     double x = age ? val * __builtin_exp2(-age / hl) : val;
-    double floor = __builtin_fabs(val) * 0x1.0p-20;
-    if (age > hl * 64 || __builtin_fabs(x) <= floor) {
+    double floor = __builtin_fabs(val) * 0x1.0p-10;
+    if (age > hl * 32 || __builtin_fabs(x) <= floor) {
         *out = 0;
         return 1;
     }
