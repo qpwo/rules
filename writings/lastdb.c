@@ -869,35 +869,55 @@ static int do_tail(const char *path, const char *start, int follow)
     return 0;
 }
 
+static void term_lens(int argc, char **argv, size_t *lens)
+{
+    for (int i = 4; i < argc; i++) {
+        lens[i] = strlen(argv[i]);
+    }
+}
+
+static int rec_has_terms(Record *r, int argc, char **argv, size_t *lens)
+{
+    for (int j = 4; j < argc; j++) {
+        if (!memmem(rec_v(r), r->v_len, argv[j], lens[j]) &&
+            !memmem(rec_k(r), r->k_len, argv[j], lens[j])) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 static int do_search(const char *t, int argc, char **argv)
 {
     size_t tl = strlen(t);
-    if (tl > UINT16_MAX || !ht_cap) return 0;
+    if (tl > UINT16_MAX || !ht_cap) {
+        return 0;
+    }
+
+    size_t lens[argc];
+    term_lens(argc, argv, lens);
 
     #pragma omp parallel for schedule(dynamic, 1024) num_threads(worker_threads())
     for (uint64_t i = 0; i < ht_len; i++) {
-            Record *r = rec_at(ht[i].off1 - 1);
-            if (r->op == OP_DEL || r->t_len != tl) continue;
-            if (memcmp(rec_t(r), t, tl) != 0) continue;
-
-            int match = 1;
-            for (int j = 4; j < argc; j++) {
-                if (!memmem(rec_v(r), r->v_len, argv[j], strlen(argv[j])) &&
-                    !memmem(rec_k(r), r->k_len, argv[j], strlen(argv[j]))) {
-                    match = 0;
-                    break;
-                }
-            }
-            if (match) {
-                #pragma omp critical
-                {
-                    if (fwrite(rec_k(r), 1, r->k_len, stdout) != r->k_len) die("fwrite");
-                    putchar('\t');
-                    if (fwrite(rec_v(r), 1, r->v_len, stdout) != r->v_len) die("fwrite");
-                    putchar('\n');
-                }
-            }
+        Record *r = rec_at(ht[i].off1 - 1);
+        if (r->op == OP_DEL || r->t_len != tl) {
+            continue;
         }
+        if (memcmp(rec_t(r), t, tl)) {
+            continue;
+        }
+        if (!rec_has_terms(r, argc, argv, lens)) {
+            continue;
+        }
+
+        #pragma omp critical
+        {
+            if (fwrite(rec_k(r), 1, r->k_len, stdout) != r->k_len) die("fwrite");
+            putchar('\t');
+            if (fwrite(rec_v(r), 1, r->v_len, stdout) != r->v_len) die("fwrite");
+            putchar('\n');
+        }
+    }
     return 0;
 }
 
