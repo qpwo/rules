@@ -1459,7 +1459,7 @@ static int do_compact(const char *path)
         uint64_t disk_half = (uint64_t)st.f_blocks * st.f_frsize / 2;
         if (target > disk_half) target = disk_half;
         if (live_bytes > target) {
-            double low = 0, high = 31.0 / valid_size;
+            double low = 0, high = 20.0 / valid_size;
             for (int step = 0; step < 40; step++) {
                 double mid = (low + high) / 2;
                 uint64_t stride = ht_len / 100000 + 1;
@@ -1470,7 +1470,7 @@ static int do_compact(const char *path)
                     int twl = r->weight_log;
                     if (r->t_len > 0 && rec_t(r)[0] != '0') {
                         int ewl = (int)((valid_size - (ht[i].off1 - 1)) * mid);
-                        if (ewl > 31) ewl = 31;
+                        if (ewl > 20) ewl = 20;
                         if (ewl > twl) twl = ewl;
                     }
                     est += (double)(r->len >> (twl - r->weight_log));
@@ -1500,7 +1500,7 @@ static int do_compact(const char *path)
             uint8_t new_wl = r->weight_log;
             if (decay_factor > 0 && r->t_len > 0 && rec_t(r)[0] != '0') {
                 int ewl = (int)((valid_size - off) * decay_factor);
-                if (ewl > 31) ewl = 31;
+                if (ewl > 20) ewl = 20;
                 uint8_t twl = r->weight_log > ewl ? r->weight_log : ewl;
                 double gate = (double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32;
                 if (gate > 1.0 / (1U << twl)) keep = 0;
@@ -2301,16 +2301,14 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                 while (1) {
                     usleep(1000000);
                     int need_compact = 0;
-                    {
-                        SRV_READ_LOCK(db_path);
-                        if (srv_db_fd >= 0) {
-                            fdatasync(srv_db_fd);
-                            struct statvfs st;
-                            if (!fstatvfs(srv_db_fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
-                                uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
-                                uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.15L);
-                                if (free_bytes < reserve_bytes) need_compact = 1;
-                            }
+                    int sync_fd = srv_db_fd;
+                    if (sync_fd >= 0) {
+                        fdatasync(sync_fd);
+                        struct statvfs st;
+                        if (!fstatvfs(sync_fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
+                            uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
+                            uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.15L);
+                            if (free_bytes < reserve_bytes) need_compact = 1;
                         }
                     }
                     if (need_compact) { SRV_WRITE_LOCK(db_path); do_compact(db_path); }
@@ -2495,9 +2493,9 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         }
                                     }
                                 }
-double max_w = 31.0;
+double max_w = 20.0;
 if (threshold > 1.0) { max_w = threshold; threshold = 1.0; }
-else if (threshold <= 0.0) { max_w = 31; threshold = 1.0; }
+else if (threshold <= 0.0) { max_w = 20; threshold = 1.0; }
 if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
 
                                 double count_est = 0; uint64_t raw_count = 0; double sum = 0; double raw_sum = 0;
@@ -3067,9 +3065,9 @@ int main(int argc, char **argv)
                 size_t tl = strlen(args[1]);
                 size_t pl = n >= 3 ? strlen(args[2]) : 0;
                 double threshold = n >= 4 ? strtod(args[3], NULL) : 1.0;
-double max_w = 31.0;
+double max_w = 20.0;
 if (threshold > 1.0) { max_w = threshold; threshold = 1.0; }
-else if (threshold <= 0.0) { max_w = 31; threshold = 1.0; }
+else if (threshold <= 0.0) { max_w = 20; threshold = 1.0; }
 if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
                 double now = (double)time(NULL);
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
@@ -3107,9 +3105,9 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
                 size_t tl = strlen(args[1]);
                 size_t pl = n >= 3 ? strlen(args[2]) : 0;
                 double threshold = n >= 4 ? strtod(args[3], NULL) : 1.0;
-double max_w = 31.0;
+double max_w = 20.0;
 if (threshold > 1.0) { max_w = threshold; threshold = 1.0; }
-else if (threshold <= 0.0) { max_w = 31; threshold = 1.0; }
+else if (threshold <= 0.0) { max_w = 20; threshold = 1.0; }
 if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
                 double sum_now = n >= 5 ? strtod(args[4], NULL) : (double)time(NULL);
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
