@@ -322,36 +322,7 @@ static void ht_put(uint64_t hash, uint64_t off)
     }
 }
 
-static int cmp_u64(const void *a, const void *b) {
-    uint64_t x = *(const uint64_t *)a;
-    uint64_t y = *(const uint64_t *)b;
-    return x < y ? -1 : (x > y ? 1 : 0);
-}
 
-static uint64_t *query_offsets(uint64_t start_idx, uint64_t count)
-{
-    if (!count || count > SIZE_MAX / sizeof(uint64_t)) {
-        return NULL;
-    }
-
-    size_t bytes = (size_t)(count * sizeof(uint64_t));
-    uint64_t total = 0;
-    uint64_t freeish = get_mem_avail(&total);
-    if (total && (bytes > freeish || freeish - bytes < total / 10)) {
-        return NULL;
-    }
-
-    uint64_t *offs = malloc(bytes);
-    if (!offs) {
-        return NULL;
-    }
-
-    for (uint64_t i = 0; i < count; i++) {
-        offs[i] = ht[start_idx + i].off1;
-    }
-    qsort(offs, count, sizeof(*offs), cmp_u64);
-    return offs;
-}
 
 static int cmp_node(const void *a, const void *b) {
     const Node *x = a, *y = b;
@@ -2232,10 +2203,9 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             uint64_t start_idx, end_idx;
                             ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
                             uint64_t count = end_idx - start_idx;
-                            uint64_t *offs = query_offsets(start_idx, count);
                             #pragma omp parallel for schedule(dynamic, 1024) num_threads(worker_threads())
                             for (uint64_t i = 0; i < count; i++) {
-                                Record *r = rec_at((offs ? offs[i] : ht[start_idx + i].off1) - 1);
+                                Record *r = rec_at(ht[start_idx + i].off1 - 1);
                                 if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
                                 if (threshold < 1.0) {
                                     uint64_t gh = r->key_hash;
@@ -2298,7 +2268,6 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                             }
                                         }
                                     }
-                                    if (offs) free(offs);
                                 }
                                 send_response(fd, cipherkey, out_len > OUT_CAP ? 4 : 0, out, out_len > OUT_CAP ? OUT_CAP : out_len);
                                 chunk_push(out_c);
@@ -2388,7 +2357,6 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         uint64_t start_idx, end_idx;
                                         ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
                                         uint64_t count = end_idx - start_idx;
-                            uint64_t *offs = query_offsets(start_idx, count);
                                         #pragma omp parallel num_threads(worker_threads())
                                         {
                                             float local_best = -1e30f;
@@ -2396,7 +2364,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                             uint16_t local_k_len = 0;
                                             #pragma omp for schedule(dynamic, 1024)
                                             for (uint64_t i = 0; i < count; i++) {
-                                                uint64_t c_off1 = offs ? offs[i] : ht[start_idx + i].off1;
+                                                uint64_t c_off1 = ht[start_idx + i].off1;
                                                 Record *c_rec = rec_at(c_off1 - 1);
                                                 if (c_rec->op == OP_DEL || c_rec->t_len != ft_len || c_rec->v_len != q_len) continue;
                                                 if (n && c_off1 == n->off1) continue;
@@ -2424,7 +2392,6 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                                 if (local_best > best_score) { best_score = local_best; best_k = local_k; best_k_len = local_k_len; }
                                             }
                                         }
-                                        if (offs) free(offs);
                                     }
                                 }
                                 if (best_k) send_response(fd, cipherkey, 0, best_k, best_k_len);
@@ -2442,10 +2409,9 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     uint64_t start_idx, end_idx;
                                     ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
                                     uint64_t count = end_idx - start_idx;
-                            uint64_t *offs = query_offsets(start_idx, count);
                                     #pragma omp parallel for reduction(+:count_est,raw_count,sum) schedule(static, 4096) num_threads(worker_threads())
                                     for (uint64_t i = 0; i < count; i++) {
-                                        Record *r = rec_at((offs ? offs[i] : ht[start_idx + i].off1) - 1);
+                                        Record *r = rec_at(ht[start_idx + i].off1 - 1);
                                         if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
                                         if (kl && (r->k_len < kl || memcmp(rec_k(r), k, kl))) continue;
                                 if (threshold < 1.0) {
@@ -2477,7 +2443,6 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     }
                                         }
                                     }
-                                    if (offs) free(offs);
                                 }
                                 char val[64]; int vl_out = 0;
                                 if (op == 8) vl_out = snprintf(val, sizeof(val), "%.0f\t%llu", count_est, (unsigned long long)raw_count);
