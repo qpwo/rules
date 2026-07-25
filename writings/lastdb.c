@@ -2159,7 +2159,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 if (tab) { *tab = 0; eval_now = strtod(tab + 1, NULL); }
                                 threshold = strtod(th_buf, NULL);
                             }
-                            if (threshold <= 0 || threshold > 1.0) threshold = 1.0;
+                            if (threshold <= 0) threshold = 1.0;
                             { SRV_READ_LOCK(db_path);
                             uint64_t start_idx, end_idx;
                             ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
@@ -2206,11 +2206,13 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         }
                                     }
                                         if (match) {
+                                            if (is_decay && cur < threshold) continue;
                                             double db_w = (double)(1U << r->weight_log);
-                                            double qw = 1.0 / threshold;
+                                            double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
                                             double w = db_w > qw ? db_w : qw;
+                                            if (is_decay) w *= cur;
                                             char weight[32];
-                                            int wlen = snprintf(weight, sizeof(weight), "%.0f\t", w);
+                                            int wlen = snprintf(weight, sizeof(weight), "%.5g\t", w);
                                             size_t rec_len = wlen + r->k_len + 1 + out_vl + 1;
                                             size_t my_off;
                                             #pragma omp atomic capture
@@ -2359,7 +2361,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     char th_buf[128] = {0}; memcpy(th_buf, v, vl);
                                     char *tab = strchr(th_buf, '\t');
                                     if (tab) { *tab = 0; sum_now = strtod(tab + 1, NULL); }
-                                    threshold = strtod(th_buf, NULL); if (threshold <= 0 || threshold > 1.0) threshold = 1.0;
+                                    threshold = strtod(th_buf, NULL); if (threshold <= 0) threshold = 1.0;
                                 }
                                 { SRV_READ_LOCK(db_path);
                                     uint64_t start_idx, end_idx;
@@ -2377,19 +2379,20 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     if ((double)(gh & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
                                 }
                                 double db_w = (double)(1U << r->weight_log);
-                                double qw = 1.0 / threshold;
+                                double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
                                 double w = db_w > qw ? db_w : qw;
                                 double cur = 0;
                                 int is_decay = 0;
                                 if (r->v_len > 0 && r->v_len < 192) {
                                     if (decay_value_at(rec_v(r), r->v_len, sum_now, &cur)) is_decay = 1;
                                 }
-                                if (is_decay && cur == 0) continue;
+                                if (is_decay && cur < threshold) continue;
+                                if (is_decay) w *= cur;
                                 count_est += w;
                                         raw_count++;
                                         if (op == 9 && r->v_len > 0) {
                                     if (is_decay) {
-                                        sum += cur * w;
+                                        sum += w;
                                     } else if (r->v_len < 192) {
                                         char buf2[192] = {0};
                                         memcpy(buf2, rec_v(r), r->v_len);
@@ -2753,6 +2756,8 @@ int main(int argc, char **argv)
                 size_t tl = strlen(args[1]);
                 size_t pl = n >= 3 ? strlen(args[2]) : 0;
                 double threshold = n >= 4 ? strtod(args[3], NULL) : 1.0;
+                if (threshold <= 0) threshold = 1.0;
+                double now = (double)time(NULL);
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
             #pragma omp parallel for reduction(+:count_est,raw_c) schedule(static, 4096) num_threads(worker_threads())
             for (uint64_t i = start_idx; i < end_idx; i++) {
@@ -2766,8 +2771,16 @@ int main(int argc, char **argv)
                 if ((double)(gh & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
             }
             double db_w = (double)(1U << r->weight_log);
-            double qw = 1.0 / threshold;
-            count_est += db_w > qw ? db_w : qw;
+            double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
+            double w = db_w > qw ? db_w : qw;
+            if (r->v_len > 0 && r->v_len < 192) {
+                double cur = 0;
+                if (decay_value_at(rec_v(r), r->v_len, now, &cur)) {
+                    if (cur < threshold) continue;
+                    w *= cur;
+                }
+            }
+            count_est += w;
             raw_c++;
                 }
                 printf("%.0f\t%llu\n", count_est, (unsigned long long)raw_c);
@@ -2777,8 +2790,8 @@ int main(int argc, char **argv)
                 size_t tl = strlen(args[1]);
                 size_t pl = n >= 3 ? strlen(args[2]) : 0;
                 double threshold = n >= 4 ? strtod(args[3], NULL) : 1.0;
-                double sum_now = n >= 5 ? strtod(args[4], NULL) : 0;
-                int has_now = n >= 5;
+                if (threshold <= 0) threshold = 1.0;
+                double sum_now = n >= 5 ? strtod(args[4], NULL) : (double)time(NULL);
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
             #pragma omp parallel for reduction(+:s,raw_s) schedule(static, 4096) num_threads(worker_threads())
             for (uint64_t i = start_idx; i < end_idx; i++) {
@@ -2792,14 +2805,20 @@ int main(int argc, char **argv)
                 if ((double)(gh & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
             }
             double db_w = (double)(1U << r->weight_log);
-            double qw = 1.0 / threshold;
+            double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
             double w = db_w > qw ? db_w : qw;
+            int is_decay = 0;
+            double cur = 0;
+            if (r->v_len > 0 && r->v_len < 192) {
+                if (decay_value_at(rec_v(r), r->v_len, sum_now, &cur)) is_decay = 1;
+            }
+            if (is_decay && cur < threshold) continue;
+            if (is_decay) w *= cur;
             raw_s++;
-                    if (r->v_len > 0 && r->v_len < 192) {
-                double cur = 0;
-                if (has_now && decay_value_at(rec_v(r), r->v_len, sum_now, &cur)) {
-                    s += cur * w;
-                } else {
+            if (r->v_len > 0) {
+                if (is_decay) {
+                    s += w;
+                } else if (r->v_len < 192) {
                     char buf[192] = {0};
                     memcpy(buf, rec_v(r), r->v_len);
                     char *t1 = strchr(buf, '\t');
