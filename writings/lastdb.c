@@ -3090,6 +3090,9 @@ if (threshold > 1.0) threshold = 1.0;
                 double conf = count_est > 0 ? (double)raw_c / __builtin_sqrt(count_est) : 1.0;
                 if (conf > 1.0) conf = 1.0;
                 if (max_wl > 0) conf *= __builtin_exp2(-(double)max_wl * 0.25);
+                if (count_est < 0.5) count_est = 0;
+                if (raw_c < 5) conf *= (double)raw_c / 5.0;
+                if (conf < 0.15) { count_est = 0; conf = 0; }
                 printf("%.4g\t%llu\t%d\t%.4g\n", count_est, (unsigned long long)raw_c, max_wl, conf);
             }
             else if (!strcmp(args[0], "sum") && n >= 2) {
@@ -3138,7 +3141,11 @@ if (threshold > 1.0) threshold = 1.0;
                     }
                 }
                 if (offs) munmap(offs, count * 8);
-                printf("%.17g\t%.17g\t%llu\t%d\n", s, raw_sum, (unsigned long long)raw_s, max_wl);
+                if (__builtin_fabs(s) < 5e-15) s = 0;
+                double conf = max_wl > 0 ? __builtin_exp2(-(double)max_wl * 0.25) : 1.0;
+                if (raw_s < 5) conf *= (double)raw_s / 5.0;
+                if (conf < 0.15) { s = 0; raw_sum = 0; conf = 0; }
+                printf("%.17g\t%.17g\t%llu\t%d\t%.4g\n", s, raw_sum, (unsigned long long)raw_s, max_wl, conf);
             }
             else printf("ERR\n");
             fflush(stdout);
