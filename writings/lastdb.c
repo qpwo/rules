@@ -941,7 +941,6 @@ static int do_closest(const char *path, const char *type, const char *t, const c
 static int do_batch(const char *path, const char *t)
 {
     int lockfd = open_lockfile(path);
-    load_db(path);
     int fd = open_append(path);
     char *line = NULL;
     size_t cap = 0;
