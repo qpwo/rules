@@ -2277,6 +2277,8 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 threshold = strtod(th_buf, NULL);
                             }
                             if (threshold <= 0) threshold = 1.0;
+                            double max_w = 31.0;
+                            if (threshold > 1.0) { max_w = threshold; threshold = 1.0; }
                             { SRV_READ_LOCK(db_path);
                             uint64_t start_idx, end_idx;
                             ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
@@ -2285,6 +2287,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             for (uint64_t i = 0; i < count; i++) {
                                 Record *r = rec_at(ht[start_idx + i].off1 - 1);
                                 if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
+                                if (r->weight_log > max_w) continue;
                                 if (threshold < 1.0) {
                                     uint64_t gh = r->key_hash;
                                     const char *sep = memchr(rec_k(r), '/', r->k_len);
@@ -2513,6 +2516,8 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     if (tab) { *tab = 0; sum_now = strtod(tab + 1, NULL); }
                                     threshold = strtod(th_buf, NULL); if (threshold <= 0) threshold = 1.0;
                                 }
+                                double max_w = 31.0;
+                                if (threshold > 1.0) { max_w = threshold; threshold = 1.0; }
                                 { SRV_READ_LOCK(db_path);
                                     uint64_t start_idx, end_idx;
                                     ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
@@ -2522,6 +2527,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         Record *r = rec_at(ht[start_idx + i].off1 - 1);
                                         if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
                                         if (kl && (r->k_len < kl || memcmp(rec_k(r), k, kl))) continue;
+                                        if (r->weight_log > max_w) continue;
                                 if (threshold < 1.0) {
                                     uint64_t gh = r->key_hash;
                                     const char *sep = memchr(rec_k(r), '/', r->k_len);
@@ -2733,37 +2739,47 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 char *ret_k = NULL;
                                 uint16_t ret_kl = 0;
                                 uint32_t ret_vl = 0;
-                                { SRV_WRITE_LOCK(db_path);
+                                uint64_t found_off1 = 0;
+                                { SRV_READ_LOCK(db_path);
                                     uint64_t start_idx, end_idx;
                                     ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
                                     if (end_idx > start_idx) {
                                         uint64_t count = end_idx - start_idx;
-                                        static uint64_t seed = 0x12345678;
-                                        seed = seed * 6364136223846793005ULL + 1;
-                                        uint64_t start_offset = seed % count;
+                                        static _Atomic uint64_t seed = 0x12345678;
+                                        uint64_t s = __atomic_fetch_add(&seed, 6364136223846793005ULL, __ATOMIC_RELAXED);
+                                        uint64_t start_offset = s % count;
                                         for (uint64_t i = 0; i < count; i++) {
                                             uint64_t idx = start_idx + ((start_offset + i) % count);
                                             Record *r = rec_at(ht[idx].off1 - 1);
                                             if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len) || r->weight_log > 0) continue;
                                             if (kl && (r->k_len < kl || memcmp(rec_k(r), k, kl))) continue;
-
-                                            Chunk *out_c = chunk_pop();
-                                            if (out_c) {
-                                                ret_k = (char *)out_c->data;
-                                                ret_kl = r->k_len;
-                                                ret_vl = r->v_len;
-                                                if (ret_kl + 1 + ret_vl <= sizeof(out_c->data)) {
-                                                    memcpy(ret_k, rec_k(r), ret_kl);
-                                                    ret_k[ret_kl] = '\t';
-                                                    memcpy(ret_k + ret_kl + 1, rec_v(r), ret_vl);
-                                                    wrote = append_raw(srv_db_fd, full_tenant, ft_len, rec_k(r), r->k_len, NULL, 0, OP_DEL);
-                                                    if (wrote) {
-                                                        sync_fd(srv_db_fd);
-                                                        load_db(db_path);
-                                                    }
-                                                }
-                                            }
+                                            found_off1 = ht[idx].off1;
                                             break;
+                                        }
+                                    }
+                                }
+                                if (found_off1) {
+                                    SRV_WRITE_LOCK(db_path);
+                                    Record *r = rec_at(found_off1 - 1);
+                                    if (r->op != OP_DEL && r->t_len == ft_len && !memcmp(rec_t(r), full_tenant, ft_len)) {
+                                        Chunk *out_c = chunk_pop();
+                                        if (out_c) {
+                                            ret_k = (char *)out_c->data;
+                                            ret_kl = r->k_len;
+                                            ret_vl = r->v_len;
+                                            if (ret_kl + 1 + ret_vl <= sizeof(out_c->data)) {
+                                                memcpy(ret_k, rec_k(r), ret_kl);
+                                                ret_k[ret_kl] = '\t';
+                                                memcpy(ret_k + ret_kl + 1, rec_v(r), ret_vl);
+                                                wrote = append_raw(srv_db_fd, full_tenant, ft_len, rec_k(r), r->k_len, NULL, 0, OP_DEL);
+                                                if (wrote) {
+                                                    sync_fd(srv_db_fd);
+                                                    load_db(db_path);
+                                                }
+                                            } else {
+                                                chunk_push(out_c);
+                                                ret_k = NULL;
+                                            }
                                         }
                                     }
                                 }
@@ -2933,6 +2949,8 @@ int main(int argc, char **argv)
                 size_t pl = n >= 3 ? strlen(args[2]) : 0;
                 double threshold = n >= 4 ? strtod(args[3], NULL) : 1.0;
                 if (threshold <= 0) threshold = 1.0;
+                double max_w = 31.0;
+                if (threshold > 1.0) { max_w = threshold; threshold = 1.0; }
                 double now = (double)time(NULL);
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
             #pragma omp parallel for reduction(+:count_est,raw_c) schedule(static, 4096) num_threads(worker_threads())
@@ -2940,6 +2958,7 @@ int main(int argc, char **argv)
                 Record *r = rec_at(ht[i].off1 - 1);
                 if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
                     if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
+                if (r->weight_log > max_w) continue;
             if (threshold < 1.0) {
                 uint64_t gh = r->key_hash;
                 const char *sep = memchr(rec_k(r), '/', r->k_len);
@@ -2969,6 +2988,8 @@ int main(int argc, char **argv)
                 size_t pl = n >= 3 ? strlen(args[2]) : 0;
                 double threshold = n >= 4 ? strtod(args[3], NULL) : 1.0;
                 if (threshold <= 0) threshold = 1.0;
+                double max_w = 31.0;
+                if (threshold > 1.0) { max_w = threshold; threshold = 1.0; }
                 double sum_now = n >= 5 ? strtod(args[4], NULL) : (double)time(NULL);
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
             #pragma omp parallel for reduction(+:s,raw_s) schedule(static, 4096) num_threads(worker_threads())
@@ -2976,6 +2997,7 @@ int main(int argc, char **argv)
                 Record *r = rec_at(ht[i].off1 - 1);
                 if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
                     if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
+                if (r->weight_log > max_w) continue;
             if (threshold < 1.0) {
                 uint64_t gh = r->key_hash;
                 const char *sep = memchr(rec_k(r), '/', r->k_len);
