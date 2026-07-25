@@ -2586,7 +2586,7 @@ double max_w = threshold > 1.0 ? threshold : 13.0;
                                     if (out_c) chunk_push(out_c);
                                 } else {
                                     char val[128]; int vl_out = 0;
-                                    if (raw_count < 30) { count_est = raw_count; sum = raw_sum; }
+                                    if (raw_count < 30 && count_est < (double)raw_count * 2) { count_est = raw_count; sum = raw_sum; }
                                     if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu", count_est, (unsigned long long)raw_count);
                                     else vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%llu", sum, raw_sum, (unsigned long long)raw_count);
                                     send_response(fd, cipherkey, 0, val, vl_out);
@@ -3077,15 +3077,14 @@ if (threshold > 1.0) threshold = 1.0;
             double db_w = (double)(1U << (r->weight_log > 13 ? 13 : r->weight_log));
 
             double w = (threshold < 1.0 && r->weight_log == 0) ? db_w / threshold : db_w;
-            if (r->v_len > 0 && r->v_len < 192) {
-                double cur = 0;
-                if (decay_value_at(rec_v(r), r->v_len, now, &cur) && cur == 0) continue;
-            }
-            count_est += w;
+            double cur = 0;
+            int is_decay = r->v_len > 0 && r->v_len < 192 && decay_value_at(rec_v(r), r->v_len, now, &cur);
+            if (is_decay && cur == 0) continue;
+            count_est += is_decay ? w * __builtin_fabs(cur) : w;
             raw_c++;
                 }
                 if (offs) munmap(offs, count * 8);
-                if (raw_c < 30) count_est = raw_c;
+                if (raw_c < 30 && count_est < (double)raw_c * 2) count_est = raw_c;
                 printf("%.4g\t%llu\n", count_est, (unsigned long long)raw_c);
             }
             else if (!strcmp(args[0], "sum") && n >= 2) {
@@ -3132,7 +3131,7 @@ if (threshold > 1.0) threshold = 1.0;
                     }
                 }
                 if (offs) munmap(offs, count * 8);
-                if (raw_s < 30) s = raw_sum;
+                if (raw_s < 30 && s < raw_sum * 2) s = raw_sum;
                 printf("%.17g\t%.17g\t%llu\n", s, raw_sum, (unsigned long long)raw_s);
             }
             else printf("ERR\n");
