@@ -19,6 +19,10 @@ var OP = new Map([
     ['scan', 4],
     ['search', 5],
     ['tail', 6],
+    ['closest', 7],
+    ['count', 8],
+    ['sum', 9],
+    ['incr', 10],
 ]);
 
 export async function open(host, username, password, cipherkey, port = 51515) {
@@ -60,6 +64,22 @@ export async function search(client, color, tenant, words) {
 
 export async function tail(client, color, offset = 0) {
     return request(client, 'tail', color, '', '', String(offset));
+}
+
+export async function closest(client, color, tenant, key, type) {
+    return request(client, 'closest', color, tenant, key, type);
+}
+
+export async function count(client, color, tenant, prefix = '') {
+    return request(client, 'count', color, tenant, prefix, '');
+}
+
+export async function sum(client, color, tenant, prefix = '') {
+    return request(client, 'sum', color, tenant, prefix, '');
+}
+
+export async function incr(client, color, tenant, key, delta) {
+    return request(client, 'incr', color, tenant, key, String(delta));
 }
 
 export async function request(client, op, color, tenant, key, value) {
@@ -191,6 +211,18 @@ async function cli(client, a) {
     if (a[0] === 'tail' && (a.length === 2 || a.length === 3)) {
         return tail(client, parseI32(a[1]), a[2] ?? 0);
     }
+    if (a[0] === 'closest' && a.length === 5) {
+        return closest(client, parseI32(a[1]), a[2], a[3], a[4]);
+    }
+    if (a[0] === 'count' && (a.length === 3 || a.length === 4)) {
+        return count(client, parseI32(a[1]), a[2], a[3] ?? '');
+    }
+    if (a[0] === 'sum' && (a.length === 3 || a.length === 4)) {
+        return sum(client, parseI32(a[1]), a[2], a[3] ?? '');
+    }
+    if (a[0] === 'incr' && a.length === 5) {
+        return incr(client, parseI32(a[1]), a[2], a[3], a[4]);
+    }
     usage();
 }
 
@@ -260,6 +292,10 @@ function usage() {
         '  scan COLOR TENANT [PREFIX]',
         '  search COLOR TENANT WORD...',
         '  tail COLOR [OFFSET]',
+        '  closest COLOR TENANT KEY TYPE',
+        '  count COLOR TENANT [PREFIX]',
+        '  sum COLOR TENANT [PREFIX]',
+        '  incr COLOR TENANT KEY DELTA',
         '',
     ].join('\n'));
     process.exit(2);

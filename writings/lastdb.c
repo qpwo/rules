@@ -1533,6 +1533,85 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 }
                                 send_response(fd, cipherkey, 0, out, out_len);
                                 free(out);
+                            } else if (op == 7) {
+                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); return_rx(c); continue; }
+                                float (*dot_fn)(const void *, const void *, size_t) = NULL;
+                                char type[16] = {0};
+                                if (vl > 0 && vl < 15) memcpy(type, v, vl);
+                                if (!strcmp(type, "f32")) dot_fn = vec_dot_f32;
+                                else if (!strcmp(type, "f16")) dot_fn = vec_dot_f16;
+                                else if (!strcmp(type, "i8")) dot_fn = vec_dot_i8;
+                                else { send_response(fd, cipherkey, 1, "bad type", 8); return_rx(c); continue; }
+
+                                const char *best_k = NULL;
+                                uint16_t best_k_len = 0;
+                                #pragma omp critical (db)
+                                {
+                                    load_db(db_path);
+                                    Node *n = ht_get(full_tenant, ft_len, k, kl);
+                                    if (n) {
+                                        Record *r = rec_at(n->off1 - 1);
+                                        if (r->op != OP_DEL && r->v_len) {
+                                            if ((!strcmp(type,"f32") && r->v_len%4==0) || (!strcmp(type,"f16") && r->v_len%2==0) || (!strcmp(type,"i8"))) {
+                                                float best_score = -1e30f;
+                                                uint64_t start_idx, end_idx;
+                                                ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
+                                                for (uint64_t i = start_idx; i < end_idx; i++) {
+                                                    Record *c_rec = rec_at(ht[i].off1 - 1);
+                                                    if (c_rec->op == OP_DEL || c_rec->t_len != ft_len || c_rec->v_len != r->v_len) continue;
+                                                    if (ht[i].off1 == n->off1) continue;
+                                                    if (memcmp(rec_t(c_rec), full_tenant, ft_len) != 0) continue;
+                                                    float score = dot_fn(rec_v(r), rec_v(c_rec), r->v_len);
+                                                    if (score > best_score) { best_score = score; best_k = rec_k(c_rec); best_k_len = c_rec->k_len; }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                if (best_k) send_response(fd, cipherkey, 0, best_k, best_k_len);
+                                else send_response(fd, cipherkey, 2, "not found", 9);
+                            } else if (op == 8 || op == 9) {
+                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); return_rx(c); continue; }
+                                uint64_t count = 0; double sum = 0;
+                                #pragma omp critical (db)
+                                {
+                                    load_db(db_path);
+                                    uint64_t start_idx, end_idx;
+                                    ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
+                                    for (uint64_t i = start_idx; i < end_idx; i++) {
+                                        Record *r = rec_at(ht[i].off1 - 1);
+                                        if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
+                                        if (kl && (r->k_len < kl || memcmp(rec_k(r), k, kl))) continue;
+                                        count++;
+                                        if (op == 9 && r->v_len > 0 && r->v_len < 64) {
+                                            char buf2[64] = {0}; memcpy(buf2, rec_v(r), r->v_len);
+                                            sum += strtod(buf2, NULL);
+                                        }
+                                    }
+                                }
+                                char val[64]; int vl_out = op == 8 ? snprintf(val, sizeof(val), "%llu", (unsigned long long)count) : snprintf(val, sizeof(val), "%.17g", sum);
+                                send_response(fd, cipherkey, 0, val, vl_out);
+                            } else if (op == 10) {
+                                if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); return_rx(c); continue; }
+                                char val[64]; int vl_out = 0;
+                                #pragma omp critical (db)
+                                {
+                                    int lockfd = open_lockfile(db_path);
+                                    load_db(db_path);
+                                    long long cur = 0;
+                                    Node *n = ht_get(full_tenant, ft_len, k, kl);
+                                    if (n) { Record *r = rec_at(n->off1 - 1); if (r->op != OP_DEL && r->v_len < 64) { char buf[64]={0}; memcpy(buf, rec_v(r), r->v_len); cur = strtoll(buf, NULL, 10); } }
+                                    char d_buf[64]={0}; memcpy(d_buf, v, vl < 63 ? vl : 63);
+                                    long long d = strtoll(d_buf, NULL, 10);
+                                    long long next = cur + d;
+                                    vl_out = snprintf(val, sizeof(val), "%lld", next);
+                                    int db_fd = open_append(db_path);
+                                    append_raw(db_fd, full_tenant, ft_len, k, kl, val, vl_out, OP_PUT);
+                                    sync_fd(db_fd);
+                                    close(db_fd);
+                                    close(lockfd);
+                                }
+                                send_response(fd, cipherkey, 0, val, vl_out);
                             } else {
                                 send_response(fd, cipherkey, 1, "bad op", 6);
                             }
