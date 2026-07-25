@@ -2611,7 +2611,7 @@ double confidence = ess_conf * decay_conf;
                                 if (count_est < 0.5) count_est = 0;
                                 if (__builtin_fabs(sum) < 5e-15) sum = 0;
                                 if (raw_count < 5) confidence *= (double)raw_count / 5.0;
-                                if (confidence < 0.05 * (1U << (max_wl / 10))) { count_est = 0; sum = 0; }
+                                if (confidence < 0.05 * __builtin_exp2((double)max_wl / 8.0)) { count_est = 0; sum = 0; }
                                 if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu\t%d\t%.4g", count_est, (unsigned long long)raw_count, max_wl, confidence);
                                 else vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%llu\t%d\t%.4g", sum, raw_sum, (unsigned long long)raw_count, max_wl, confidence);
                                 send_response(fd, cipherkey, 0, val, vl_out);
@@ -3117,7 +3117,7 @@ double w_ratio = raw_c > 0 ? count_est / (double)raw_c : 1.0;
 if (w_ratio > 1.0) conf /= w_ratio;
                 if (count_est < 0.5) count_est = 0;
                 if (raw_c < 5) conf *= (double)raw_c / 5.0;
-                if (conf < 0.05 * (1U << (max_wl / 10))) count_est = 0;
+                if (conf < 0.05 * __builtin_exp2((double)max_wl / 8.0)) count_est = 0;
                 printf("%.4g\t%llu\t%d\t%.4g\n", count_est, (unsigned long long)raw_c, max_wl, conf);
             }
             else if (!strcmp(args[0], "sum") && n >= 2) {
@@ -3170,7 +3170,7 @@ if (threshold > 1.0) threshold = 1.0;
                 double w_ratio = raw_s > 0 && __builtin_fabs(raw_sum) > 1e-15 ? __builtin_fabs(s / raw_sum) : 1.0;
 double conf = w_ratio > 1.0 ? 1.0 / w_ratio : 1.0;
                 if (raw_s < 5) conf *= (double)raw_s / 5.0;
-                if (conf < 0.05 * (1U << (max_wl / 10))) s = 0;
+                if (conf < 0.05 * __builtin_exp2((double)max_wl / 8.0)) s = 0;
                 printf("%.17g\t%.17g\t%llu\t%d\t%.4g\n", s, raw_sum, (unsigned long long)raw_s, max_wl, conf);
             }
             else printf("ERR\n");
