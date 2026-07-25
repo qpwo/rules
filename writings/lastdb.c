@@ -2412,6 +2412,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     if ((double)(gh & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
                                 }
                                 double db_w = (double)(1U << r->weight_log);
+                                if (threshold >= 1.0 && db_w > threshold) continue;
                                 double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
                                 double w = db_w > qw ? db_w : qw;
                                 double cur = 0;
@@ -2829,6 +2830,7 @@ int main(int argc, char **argv)
                 if ((double)(gh & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
             }
             double db_w = (double)(1U << r->weight_log);
+            if (threshold >= 1.0 && db_w > threshold) continue;
             double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
             double w = db_w > qw ? db_w : qw;
             if (r->v_len > 0 && r->v_len < 192) {
@@ -2864,6 +2866,7 @@ int main(int argc, char **argv)
                 if ((double)(gh & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
             }
             double db_w = (double)(1U << r->weight_log);
+            if (threshold >= 1.0 && db_w > threshold) continue;
             double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
             double w = db_w > qw ? db_w : qw;
             int is_decay = 0;
