@@ -76,7 +76,12 @@ static uint64_t fnv_bytes(uint64_t h, const void *p, size_t n)
 
 static uint64_t fnv_u64(uint64_t h, uint64_t x)
 {
-    return fnv_bytes(h, &x, sizeof(x));
+    for (size_t i = 0; i < 8; i++) {
+        h ^= (uint8_t)(x & 0xff);
+        x >>= 8;
+        h *= FNV1;
+    }
+    return h;
 }
 
 static uint64_t key_hash(const char *t, uint16_t tl, const char *k, uint16_t kl)
@@ -147,6 +152,9 @@ static int rec_valid(uint64_t off)
     if (r->op != OP_PUT && r->op != OP_DEL) {
         return 0;
     }
+    if (r->op == OP_DEL && r->v_len) {
+        return 0;
+    }
 
     return r->check == rec_check(r, rec_t(r), rec_k(r), rec_v(r));
 }
@@ -174,10 +182,25 @@ static void ht_grow(void)
         }
 
         uint64_t j = ht[i].hash & (ncap - 1);
+        uint64_t dist = 0;
+        uint64_t hash = ht[i].hash;
+        uint64_t off1 = ht[i].off1;
         while (nht[j].off1) {
+            uint64_t existing_dist = (j - nht[j].hash) & (ncap - 1);
+            if (existing_dist < dist) {
+                uint64_t tmp_hash = nht[j].hash;
+                uint64_t tmp_off1 = nht[j].off1;
+                nht[j].hash = hash;
+                nht[j].off1 = off1;
+                hash = tmp_hash;
+                off1 = tmp_off1;
+                dist = existing_dist;
+            }
             j = (j + 1) & (ncap - 1);
+            dist++;
         }
-        nht[j] = ht[i];
+        nht[j].hash = hash;
+        nht[j].off1 = off1;
     }
 
     free(ht);
@@ -193,12 +216,32 @@ static void ht_put(uint64_t hash, uint64_t off)
 
     Record *r = rec_at(off);
     uint64_t i = hash & (ht_cap - 1);
+    uint64_t dist = 0;
     while (ht[i].off1) {
         if (ht[i].hash == hash && key_eq(ht[i].off1 - 1, rec_t(r), r->t_len, rec_k(r), r->k_len)) {
             ht[i].off1 = off + 1;
             return;
         }
+        if (((i - ht[i].hash) & (ht_cap - 1)) < dist) {
+            break;
+        }
         i = (i + 1) & (ht_cap - 1);
+        dist++;
+    }
+
+    while (ht[i].off1) {
+        uint64_t existing_dist = (i - ht[i].hash) & (ht_cap - 1);
+        if (existing_dist < dist) {
+            uint64_t tmp_hash = ht[i].hash;
+            uint64_t tmp_off1 = ht[i].off1;
+            ht[i].hash = hash;
+            ht[i].off1 = off + 1;
+            hash = tmp_hash;
+            off = tmp_off1 - 1;
+            dist = existing_dist;
+        }
+        i = (i + 1) & (ht_cap - 1);
+        dist++;
     }
 
     ht[i].hash = hash;
@@ -214,11 +257,16 @@ static Node *ht_get(const char *t, uint16_t tl, const char *k, uint16_t kl)
 
     uint64_t hash = key_hash(t, tl, k, kl);
     uint64_t i = hash & (ht_cap - 1);
+    uint64_t dist = 0;
     while (ht[i].off1) {
         if (ht[i].hash == hash && key_eq(ht[i].off1 - 1, t, tl, k, kl)) {
             return ht + i;
         }
+        if (((i - ht[i].hash) & (ht_cap - 1)) < dist) {
+            break;
+        }
         i = (i + 1) & (ht_cap - 1);
+        dist++;
     }
     return NULL;
 }
@@ -240,16 +288,22 @@ static void load_db(const char *path)
     }
 
     if (!st.st_size) {
-        close(fd);
+        if (close(fd)) {
+        die("close");
+    }
         return;
     }
 
     map_size = (size_t)st.st_size;
     map_base = mmap(NULL, map_size, PROT_READ, MAP_PRIVATE, fd, 0);
-    close(fd);
+    if (close(fd)) {
+        die("close");
+    }
     if (map_base == MAP_FAILED) {
         die("mmap");
     }
+    (void)posix_madvise(map_base, map_size, POSIX_MADV_SEQUENTIAL);
+    (void)posix_madvise(map_base, map_size, POSIX_MADV_WILLNEED);
 
     uint64_t off = 0;
     while (off < map_size) {
@@ -385,7 +439,9 @@ static int do_write(const char *path, const char *t, const char *k, const char *
     int fd = open_append(path);
     append_fd(fd, t, k, v, op);
     sync_fd(fd);
-    close(fd);
+    if (close(fd)) {
+        die("close");
+    }
     close(lockfd);
     return 0;
 }
@@ -453,7 +509,9 @@ static int do_putnx(const char *path, const char *t, const char *k, const char *
     int fd = open_append(path);
     append_fd(fd, t, k, v, OP_PUT);
     sync_fd(fd);
-    close(fd);
+    if (close(fd)) {
+        die("close");
+    }
     close(lockfd);
     puts(v);
     return 0;
@@ -471,7 +529,9 @@ static int do_cas(const char *path, const char *t, const char *k, const char *ol
     int fd = open_append(path);
     append_fd(fd, t, k, new, OP_PUT);
     sync_fd(fd);
-    close(fd);
+    if (close(fd)) {
+        die("close");
+    }
     close(lockfd);
     puts(new);
     return 0;
@@ -489,7 +549,9 @@ static int do_delif(const char *path, const char *t, const char *k, const char *
     int fd = open_append(path);
     append_fd(fd, t, k, NULL, OP_DEL);
     sync_fd(fd);
-    close(fd);
+    if (close(fd)) {
+        die("close");
+    }
     close(lockfd);
     puts(v);
     return 0;
@@ -547,7 +609,9 @@ static int do_incr(const char *path, const char *t, const char *k, const char *d
     snprintf(val, sizeof(val), "%lld", next);
     append_fd(fd, t, k, val, OP_PUT);
     sync_fd(fd);
-    close(fd);
+    if (close(fd)) {
+        die("close");
+    }
     close(lockfd);
     printf("%lld\n", next);
     return 0;
@@ -568,7 +632,9 @@ static int do_take(const char *path, const char *t, const char *k)
     int fd = open_append(path);
     append_fd(fd, t, k, val, OP_PUT);
     sync_fd(fd);
-    close(fd);
+    if (close(fd)) {
+        die("close");
+    }
     close(lockfd);
     puts(val);
     return 0;
@@ -650,18 +716,22 @@ static int do_tail(const char *path, const char *start)
     return 0;
 }
 
-static int key_cmp_off(const void *pa, const void *pb)
+typedef struct {
+    uint64_t off;
+    char *key;
+    uint16_t k_len;
+} ScanRow;
+
+static int scan_row_cmp(const void *pa, const void *pb)
 {
-    uint64_t a = *(const uint64_t *)pa;
-    uint64_t b = *(const uint64_t *)pb;
-    Record *ra = rec_at(a);
-    Record *rb = rec_at(b);
-    size_t n = ra->k_len < rb->k_len ? ra->k_len : rb->k_len;
-    int c = memcmp(rec_k(ra), rec_k(rb), n);
+    const ScanRow *a = pa;
+    const ScanRow *b = pb;
+    size_t n = a->k_len < b->k_len ? a->k_len : b->k_len;
+    int c = memcmp(a->key, b->key, n);
     if (c) {
         return c;
     }
-    return (ra->k_len > rb->k_len) - (ra->k_len < rb->k_len);
+    return (a->k_len > b->k_len) - (a->k_len < b->k_len);
 }
 
 static int do_scan(const char *t, const char *prefix)
@@ -676,8 +746,8 @@ static int do_scan(const char *t, const char *prefix)
         return 0;
     }
 
-    uint64_t *offs = malloc(ht_len * sizeof(*offs));
-    if (!offs) {
+    ScanRow *rows = malloc(ht_len * sizeof(*rows));
+    if (!rows) {
         die("malloc");
     }
 
@@ -697,19 +767,19 @@ static int do_scan(const char *t, const char *prefix)
         if (pl && (r->k_len < pl || memcmp(rec_k(r), prefix, pl))) {
             continue;
         }
-        offs[n++] = ht[i].off1 - 1;
+        rows[n++] = (ScanRow){ht[i].off1 - 1, rec_k(r), r->k_len};
     }
 
-    qsort(offs, n, sizeof(*offs), key_cmp_off);
+    qsort(rows, n, sizeof(*rows), scan_row_cmp);
     for (uint64_t i = 0; i < n; i++) {
-        Record *r = rec_at(offs[i]);
-        fwrite(rec_k(r), 1, r->k_len, stdout);
+        Record *r = rec_at(rows[i].off);
+        fwrite(rows[i].key, 1, rows[i].k_len, stdout);
         putchar('\t');
         fwrite(rec_v(r), 1, r->v_len, stdout);
         putchar('\n');
     }
 
-    free(offs);
+    free(rows);
     return 0;
 }
 
@@ -751,7 +821,9 @@ static void fsync_parent(const char *path)
     int fd = open(dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     if (fd >= 0) {
         sync_fd(fd);
-        close(fd);
+        if (close(fd)) {
+        die("close");
+    }
     }
     free(dir);
 }
@@ -782,7 +854,9 @@ static int do_compact(const char *path)
     }
 
     sync_fd(fd);
-    close(fd);
+    if (close(fd)) {
+        die("close");
+    }
     if (rename(tmp, path)) {
         die("rename");
     }
@@ -820,7 +894,9 @@ static int do_batch(const char *path, const char *t)
 
     free(line);
     sync_fd(fd);
-    close(fd);
+    if (close(fd)) {
+        die("close");
+    }
     close(lockfd);
     return 0;
 }
