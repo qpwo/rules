@@ -2537,7 +2537,7 @@ double max_w = threshold > 1.0 ? threshold : 13.0;
                                     if (match) {
                                         double db_w = (double)(1U << (r->weight_log > 13 ? 13 : r->weight_log));
                                         double w_weight = db_w;
-                                        double eff_w = db_w;
+    
                                         double disp_w = is_decay ? db_w * __builtin_fabs(cur) : db_w;
                                         if (op == 4 || op == 5) { if (disp_w < min_weight) continue;
                                             char weight[32];
@@ -2555,7 +2555,7 @@ double max_w = threshold > 1.0 ? threshold : 13.0;
                                             }
                                         } else {
                                     if (disp_w < min_weight) continue;
-                                    count_est += eff_w;
+                                    count_est += disp_w;
                                     raw_count++;
                                             if (op == 9 && r->v_len > 0) {
                                                 if (is_decay) {
