@@ -2524,11 +2524,11 @@ has_decay = 1;
                                         w_iter += wl + 1;
                                     }
 if (match) {
-                                    if ((op == 8 || op == 9) && sample_rate < 1.0 && r->weight_log == 0) {
+                                    if ((op == 8 || op == 9) && sample_rate < 1.0 && r->weight_log == 0 && !is_decay) {
                                         if ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > sample_rate) continue;
                                     }
                                     double db_w = (double)(1ULL << (r->weight_log > 31 ? 31 : r->weight_log));
-                                    if ((op == 8 || op == 9) && sample_rate < 1.0 && r->weight_log == 0) db_w /= sample_rate;
+                                    if ((op == 8 || op == 9) && sample_rate < 1.0 && r->weight_log == 0 && !is_decay) db_w /= sample_rate;
                                     double w_weight = db_w;
 
                                         double disp_w = is_decay ? db_w * __builtin_fabs(cur) : db_w;
