@@ -1602,26 +1602,83 @@ static void send_response(int fd, int32_t cipherkey, int32_t status, const void 
     if (resp_c) chunk_push(resp_c);
 }
 
-static Chunk *chunk_freelist = NULL;
-static __thread Chunk *chunk_local = NULL;
+#include <linux/rseq.h>
+extern __thread struct rseq __rseq_abi __attribute__((weak, tls_model("initial-exec")));
+
+static struct {
+    alignas(64) Chunk *freelist;
+} chunk_heaps[CPU_SETSIZE];
 
 static inline void chunk_push(Chunk *chunk) {
-    *(Chunk **)chunk = chunk_local;
-    chunk_local = chunk;
+#ifdef __x86_64__
+    if (&__rseq_abi) {
+        asm volatile(".pushsection .rodata.rseq,\"a\",@progbits\n"
+                     "    .balign    32\n"
+                     "300:    .long    0\n"
+                     "    .long    0\n"
+                     "    .quad    301f\n"
+                     "    .quad    302f-301f\n"
+                     "    .quad    303f\n"
+                     "    .popsection\n"
+                     "301:    lea    300b(%%rip),%%rcx\n"
+                     "    mov    %%rcx,8(%1)\n"
+                     "    mov    (%1),%%ecx\n"
+                     "    shl    $6,%%ecx\n"
+                     "    mov    (%2,%%rcx),%%rdx\n"
+                     "    mov    %%rdx,(%0)\n"
+                     "    mov    %0,(%2,%%rcx)\n"
+                     "302:    .pushsection .text.unlikely,\"ax\",@progbits\n"
+                     "    .byte    0x0f,0xb9,0x4d\n"
+                     "    .long    0x53053053\n"
+                     "303:    jmp    301b\n"
+                     "    .popsection"
+                     : : "r"(chunk), "r"(&__rseq_abi), "r"(chunk_heaps) : "rcx", "rdx", "memory");
+        return;
+    }
+#endif
+    #pragma omp critical (chunks)
+    {
+        *(Chunk **)chunk = chunk_heaps[0].freelist;
+        chunk_heaps[0].freelist = chunk;
+    }
 }
 
 static inline Chunk *chunk_pop(void) {
-    Chunk *chunk = chunk_local;
-    if (chunk) {
-        chunk_local = *(Chunk **)chunk;
-        return chunk;
+    Chunk *chunk = NULL;
+#ifdef __x86_64__
+    if (&__rseq_abi) {
+        asm volatile(".pushsection .rodata.rseq,\"a\",@progbits\n"
+                     "    .balign    32\n"
+                     "300:    .long    0\n"
+                     "    .long    0\n"
+                     "    .quad    301f\n"
+                     "    .quad    302f-301f\n"
+                     "    .quad    303f\n"
+                     "    .popsection\n"
+                     "301:    lea    300b(%%rip),%%rcx\n"
+                     "    mov    %%rcx,8(%1)\n"
+                     "    mov    (%1),%%ecx\n"
+                     "    shl    $6,%%ecx\n"
+                     "    mov    (%2,%%rcx),%0\n"
+                     "    test    %0,%0\n"
+                     "    jz    302f\n"
+                     "    mov    (%0),%%rdx\n"
+                     "    mov    %%rdx,(%2,%%rcx)\n"
+                     "302:    .pushsection .text.unlikely,\"ax\",@progbits\n"
+                     "    .byte    0x0f,0xb9,0x4d\n"
+                     "    .long    0x53053053\n"
+                     "303:    jmp    301b\n"
+                     "    .popsection"
+                     : "=&r"(chunk) : "r"(&__rseq_abi), "r"(chunk_heaps) : "rcx", "rdx", "memory");
     }
-
-    #pragma omp critical (chunks)
-    {
-        if (chunk_freelist) {
-            chunk = chunk_freelist;
-            chunk_freelist = *(Chunk **)chunk;
+#endif
+    if (!chunk) {
+        #pragma omp critical (chunks)
+        {
+            if (chunk_heaps[0].freelist) {
+                chunk = chunk_heaps[0].freelist;
+                chunk_heaps[0].freelist = *(Chunk **)chunk;
+            }
         }
     }
     if (chunk) return chunk;
@@ -1791,15 +1848,18 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         }
                                     }
                                         if (match) {
-                                            #pragma omp critical (app)
-                                            {
-                                                char weight[16];
-                                                int weight_len = snprintf(weight, sizeof(weight), "%u\t", 1U << r->weight_log);
-                                                APP(weight, weight_len);
-                                                APP(rec_k(r), r->k_len);
-                                                APP("\t", 1);
-                                                APP(rec_v(r), r->v_len);
-                                                APP("\n", 1);
+                                            char weight[16];
+                                            int wlen = snprintf(weight, sizeof(weight), "%u\t", 1U << r->weight_log);
+                                            size_t rec_len = wlen + r->k_len + 1 + r->v_len + 1;
+                                            size_t my_off;
+                                            #pragma omp atomic capture
+                                            { my_off = out_len; out_len += rec_len; }
+                                            if (my_off + rec_len <= OUT_CAP) {
+                                                memcpy(out + my_off, weight, wlen); my_off += wlen;
+                                                memcpy(out + my_off, rec_k(r), r->k_len); my_off += r->k_len;
+                                                out[my_off++] = '\t';
+                                                memcpy(out + my_off, rec_v(r), r->v_len); my_off += r->v_len;
+                                                out[my_off++] = '\n';
                                             }
                                         }
                                     }
@@ -1923,9 +1983,8 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         Record *r = rec_at(ht[i].off1 - 1);
                                         if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
                                         if (kl && (r->k_len < kl || memcmp(rec_k(r), k, kl))) continue;
-                                        if (threshold < 1.0 && (double)(r->check >> 11) * 0x1.0p-53 > threshold) continue;
-                                        double keep_prob = 1.0 / (1ULL << r->weight_log);
-                                        double w = 1.0 / (keep_prob * threshold);
+                                        if (threshold < 1.0 && (double)(r->key_hash >> 11) * 0x1.0p-53 > threshold) continue;
+                                        double w = 1.0 / threshold;
                                         count_est += w;
                                         raw_count++;
                                         if (op == 9 && r->v_len > 0 && r->v_len < 64) {
@@ -2061,9 +2120,8 @@ int main(int argc, char **argv)
                 Record *r = rec_at(ht[i].off1 - 1);
                 if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
                     if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
-                    if (threshold < 1.0 && (double)(r->check >> 11) * 0x1.0p-53 > threshold) continue;
-                    double keep_prob = 1.0 / (1ULL << r->weight_log);
-                    count_est += 1.0 / (keep_prob * threshold);
+                    if (threshold < 1.0 && (double)(r->key_hash >> 11) * 0x1.0p-53 > threshold) continue;
+                    count_est += 1.0 / threshold;
                     raw_c++;
                 }
                 printf("%.0f\t%llu\n", count_est, (unsigned long long)raw_c);
@@ -2079,9 +2137,8 @@ int main(int argc, char **argv)
                 Record *r = rec_at(ht[i].off1 - 1);
                 if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
                     if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
-                    if (threshold < 1.0 && (double)(r->check >> 11) * 0x1.0p-53 > threshold) continue;
-                    double keep_prob = 1.0 / (1ULL << r->weight_log);
-                    double w = 1.0 / (keep_prob * threshold);
+                    if (threshold < 1.0 && (double)(r->key_hash >> 11) * 0x1.0p-53 > threshold) continue;
+                    double w = 1.0 / threshold;
                     raw_s++;
                     if (r->v_len > 0 && r->v_len < 64) {
                         char buf[64] = {0};
