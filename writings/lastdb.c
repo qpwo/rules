@@ -15,6 +15,7 @@
 #include <sys/statvfs.h>
 #include <sys/uio.h>
 #include <unistd.h>
+#include <immintrin.h>
 
 #ifndef O_CLOEXEC
 #define O_CLOEXEC 0
@@ -987,9 +988,22 @@ typedef _Float16 unaligned_f16 __attribute__((aligned(1)));
 
 static float vec_dot_f32(const void *a, const void *b, size_t bytes) {
     size_t n = bytes / 4;
-    float sum = 0;
+    size_t i = 0;
+    __m256 s0 = _mm256_setzero_ps();
+    __m256 s1 = _mm256_setzero_ps();
     const unaligned_f32 *fa = a, *fb = b;
-    for (size_t i = 0; i < n; i++) sum += fa[i] * fb[i];
+    for (; i + 16 <= n; i += 16) {
+        s0 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i), _mm256_loadu_ps(fb + i), s0);
+        s1 = _mm256_fmadd_ps(_mm256_loadu_ps(fa + i + 8), _mm256_loadu_ps(fb + i + 8), s1);
+    }
+    s0 = _mm256_add_ps(s0, s1);
+    __m128 lo = _mm256_castps256_ps128(s0);
+    __m128 hi = _mm256_extractf128_ps(s0, 1);
+    lo = _mm_add_ps(lo, hi);
+    lo = _mm_hadd_ps(lo, lo);
+    lo = _mm_hadd_ps(lo, lo);
+    float sum = _mm_cvtss_f32(lo);
+    for (; i < n; i++) sum += fa[i] * fb[i];
     return sum;
 }
 
