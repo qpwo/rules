@@ -110,10 +110,7 @@ export async function sum(client, color, tenant, words = '', prefix = '', thresh
     if (min_weight !== null) k += '\t' + min_weight;
     var res = await request(client, 'sum', color, tenant, k, Array.isArray(words) ? words.join('\t') : words);
     var p = res.toString().split('\t');
-    if (p.length >= 5) return { estimated: Number(p[0]), raw_sum: Number(p[1]), raw_count: Number(p[2]), max_wl: Number(p[3]), confidence: Number(p[4]) };
-    if (p.length >= 4) return { estimated: Number(p[0]), raw_sum: Number(p[1]), raw_count: Number(p[2]), max_wl: Number(p[3]) };
-    if (p.length >= 3) return { estimated: Number(p[0]), raw_sum: Number(p[1]), raw_count: Number(p[2]) };
-    return { estimated: Number(p[0]), raw: Number(p[1]) };
+    return { estimated: Number(p[0]), raw_sum: Number(p[1]), raw_count: Number(p[2]), max_wl: Number(p[3] || 0), confidence: Number(p[4] || 1) };
 }
 
 export async function closest(client, color, tenant, key, type) {

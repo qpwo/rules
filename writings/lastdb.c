@@ -2532,7 +2532,7 @@ if (match) {
                                     double w_weight = db_w;
 
                                         double disp_w = is_decay ? db_w * __builtin_fabs(cur) : db_w;
-                                        if ((op == 4 || op == 5) && disp_w < min_weight) continue;
+                                        if ((op == 4 || op == 5 || op == 9) && disp_w < min_weight) continue;
                                         if (r->weight_log > max_wl) max_wl = r->weight_log;
                                         if (op == 4 || op == 5) {
                                             char weight[32];
