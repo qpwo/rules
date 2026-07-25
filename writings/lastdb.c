@@ -138,11 +138,11 @@ static uint64_t ht_lower_bound(uint64_t hash) {
 static void ht_tenant_range(const char *t, uint16_t tl, uint64_t *start_idx, uint64_t *end_idx) {
     if (!ht_len) { *start_idx = 0; *end_idx = 0; return; }
     uint64_t th = fnv_bytes(FNV0, t, tl);
-    uint64_t h_start = (th << 32);
+    uint64_t h_start = th << 32;
     uint64_t h_end = h_start | 0xFFFFFFFFULL;
     if (h_start == 0) h_start = 1;
     *start_idx = ht_lower_bound(h_start);
-    *end_idx = ht_lower_bound(h_end + 1);
+    *end_idx = h_end == UINT64_MAX ? ht_len : ht_lower_bound(h_end + 1);
 }
 
 static uint64_t rec_check(const Record *r, const char *t, const char *k, const char *v)
