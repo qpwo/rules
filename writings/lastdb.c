@@ -1024,6 +1024,8 @@ static int rec_has_terms(Record *r, int argc, char **argv, size_t *lens, uint64_
     return 1;
 }
 
+static void write_weighted_record(Record *r);
+
 static int do_search(const char *t, int argc, char **argv)
 {
     size_t tl = strlen(t);
@@ -1059,13 +1061,29 @@ static int do_search(const char *t, int argc, char **argv)
 
         #pragma omp critical
         {
-            if (fwrite(rec_k(r), 1, r->k_len, stdout) != r->k_len) die("fwrite");
-            putchar('\t');
-            if (fwrite(rec_v(r), 1, r->v_len, stdout) != r->v_len) die("fwrite");
-            putchar('\n');
+            write_weighted_record(r);
         }
     }
     return 0;
+}
+
+static void write_weighted_record(Record *r)
+{
+    if (printf("%u\t", 1U << r->weight_log) < 0) {
+        die("printf");
+    }
+    if (fwrite(rec_k(r), 1, r->k_len, stdout) != r->k_len) {
+        die("fwrite");
+    }
+    if (putchar('\t') == EOF) {
+        die("putchar");
+    }
+    if (fwrite(rec_v(r), 1, r->v_len, stdout) != r->v_len) {
+        die("fwrite");
+    }
+    if (putchar('\n') == EOF) {
+        die("putchar");
+    }
 }
 
 static int do_scan(const char *t, const char *prefix)
@@ -1093,18 +1111,7 @@ static int do_scan(const char *t, const char *prefix)
         if (pl && (r->k_len < pl || memcmp(rec_k(r), prefix, pl))) {
             continue;
         }
-        if (fwrite(rec_k(r), 1, r->k_len, stdout) != r->k_len) {
-            die("fwrite");
-        }
-        if (putchar('\t') == EOF) {
-            die("putchar");
-        }
-        if (fwrite(rec_v(r), 1, r->v_len, stdout) != r->v_len) {
-            die("fwrite");
-        }
-        if (putchar('\n') == EOF) {
-            die("putchar");
-        }
+        write_weighted_record(r);
     }
     return 0;
 }
@@ -1740,8 +1747,13 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         if (match) {
                                             #pragma omp critical (app)
                                             {
-                                                APP(rec_k(r), r->k_len); APP("\t", 1);
-                                                APP(rec_v(r), r->v_len); APP("\n", 1);
+                                                char weight[16];
+                                                int weight_len = snprintf(weight, sizeof(weight), "%u\t", 1U << r->weight_log);
+                                                APP(weight, weight_len);
+                                                APP(rec_k(r), r->k_len);
+                                                APP("\t", 1);
+                                                APP(rec_v(r), r->v_len);
+                                                APP("\n", 1);
                                             }
                                         }
                                     }
