@@ -1570,11 +1570,42 @@ static void send_response(int fd, int32_t cipherkey, int32_t status, const void 
     if (resp_c) chunk_push(resp_c);
 }
 
-static __thread Chunk *tls_chunk;
+extern __thread struct {
+    volatile uint32_t cpu_id_start;
+    volatile uint32_t cpu_id;
+    uint64_t rseq_cs;
+    uint32_t flags;
+} __rseq_abi __attribute__((tls_model("initial-exec"), weak));
+
+static struct {
+    __attribute__((aligned(64))) void *freelist;
+} chunk_heaps[1024];
 
 static inline void chunk_push(Chunk *chunk) {
-    if (!tls_chunk) {
-        tls_chunk = chunk;
+    if (&__rseq_abi && __rseq_abi.cpu_id_start != (uint32_t)-1) {
+        asm volatile(".pushsection .rodata.rseq,\"a\",@progbits\n"
+                     "    .balign    32\n"
+                     "300:    .long    0\n"
+                     "    .long    0\n"
+                     "    .quad    301f\n"
+                     "    .quad    302f-301f\n"
+                     "    .quad    303f\n"
+                     "    .popsection\n"
+                     "301:    lea    300b(%%rip),%%rcx\n"
+                     "    mov    %%rcx,8(%1)\n"
+                     "    mov    (%1),%%ecx\n"
+                     "    shl    $6,%%ecx\n"
+                     "    mov    (%2,%%rcx),%%rdx\n"
+                     "    mov    %%rdx,(%0)\n"
+                     "    mov    %0,(%2,%%rcx)\n"
+                     "302:    .pushsection .text.unlikely,\"ax\",@progbits\n"
+                     "    .byte    0x0f,0xb9,0x4d\n"
+                     "    .long    0x53053053\n"
+                     "303:    jmp    301b\n"
+                     "    .popsection"
+                     :
+                     : "r"(chunk), "r"(&__rseq_abi), "r"(chunk_heaps)
+                     : "rcx", "rdx", "memory");
         return;
     }
     if (munmap(chunk, sizeof(*chunk))) {
@@ -1583,10 +1614,34 @@ static inline void chunk_push(Chunk *chunk) {
 }
 
 static inline Chunk *chunk_pop(void) {
-    Chunk *chunk = tls_chunk;
-    if (chunk) {
-        tls_chunk = NULL;
-        return chunk;
+    Chunk *chunk = NULL;
+    if (&__rseq_abi && __rseq_abi.cpu_id_start != (uint32_t)-1) {
+        asm volatile(".pushsection .rodata.rseq,\"a\",@progbits\n"
+                     "    .balign    32\n"
+                     "300:    .long    0\n"
+                     "    .long    0\n"
+                     "    .quad    301f\n"
+                     "    .quad    302f-301f\n"
+                     "    .quad    303f\n"
+                     "    .popsection\n"
+                     "301:    lea    300b(%%rip),%%rcx\n"
+                     "    mov    %%rcx,8(%1)\n"
+                     "    mov    (%1),%%ecx\n"
+                     "    shl    $6,%%ecx\n"
+                     "    mov    (%2,%%rcx),%0\n"
+                     "    test    %0,%0\n"
+                     "    jz    302f\n"
+                     "    mov    (%0),%%rdx\n"
+                     "    mov    %%rdx,(%2,%%rcx)\n"
+                     "302:    .pushsection .text.unlikely,\"ax\",@progbits\n"
+                     "    .byte    0x0f,0xb9,0x4d\n"
+                     "    .long    0x53053053\n"
+                     "303:    jmp    301b\n"
+                     "    .popsection"
+                     : "=&r"(chunk)
+                     : "r"(&__rseq_abi), "r"(chunk_heaps)
+                     : "rcx", "rdx", "memory");
+        if (chunk) return chunk;
     }
     struct sysinfo si;
     if (!sysinfo(&si)) {
