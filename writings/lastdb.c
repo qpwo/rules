@@ -898,6 +898,11 @@ static int do_search(const char *t, int argc, char **argv)
 
     size_t lens[argc];
     term_lens(argc, argv, lens);
+    for (int i = 4; i < argc; i++) {
+        if (lens[i] < 3) {
+            diex("search terms need at least 3 bytes");
+        }
+    }
 
     #pragma omp parallel for schedule(dynamic, 1024) num_threads(worker_threads())
     for (uint64_t i = 0; i < ht_len; i++) {
@@ -1185,7 +1190,7 @@ static void usage(const char *prog)
     fputs("  del TENANT KEY\n", stderr);
     fputs("  delif TENANT KEY VALUE\n", stderr);
     fputs("  scan TENANT [PREFIX]\n", stderr);
-    fputs("  search TENANT [WORD...]\n", stderr);
+    fputs("  search TENANT WORD...\n", stderr);
     fputs("  tail [-f] [OFFSET]\n", stderr);
     fputs("  verify\n", stderr);
     fputs("  incr TENANT KEY DELTA\n", stderr);
@@ -1249,7 +1254,7 @@ int main(int argc, char **argv)
             else if (!strcmp(args[0], "put") && n == 4) { append_fd(write_fd, args[1], args[2], args[3], OP_PUT); puts("ok"); }
             else if (!strcmp(args[0], "del") && n == 3) { append_fd(write_fd, args[1], args[2], NULL, OP_DEL); puts("ok"); }
             else if (!strcmp(args[0], "scan") && n >= 2) do_scan(args[1], n == 3 ? args[2] : NULL);
-            else if (!strcmp(args[0], "search") && n >= 2) do_search(args[1], n, args);
+            else if (!strcmp(args[0], "search") && n >= 3) do_search(args[1], n, args);
             else if (!strcmp(args[0], "closest") && n == 4) do_closest(db, args[1], args[2], args[3]);
             else if (!strcmp(args[0], "count") && n >= 2) {
                 uint64_t c = 0;
@@ -1310,7 +1315,7 @@ int main(int argc, char **argv)
         load_db(db);
         return do_scan(argv[3], argc == 5 ? argv[4] : NULL);
     }
-    if (!strcmp(cmd, "search") && argc >= 4) {
+    if (!strcmp(cmd, "search") && argc >= 5) {
         load_db(db);
         return do_search(argv[3], argc, argv);
     }
