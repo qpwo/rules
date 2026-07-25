@@ -898,11 +898,52 @@ static void term_lens(int argc, char **argv, size_t *lens)
     }
 }
 
+static unsigned byte_rank(unsigned char c)
+{
+    if (c == '\t' || c == '\n' || c == 0) return 1;
+    if (c >= 'A' && c <= 'Z') return 2;
+    if (c >= '0' && c <= '9') return 3;
+    if (c <= ' ') return 32;
+    if (c >= 'a' && c <= 'z') return 16;
+    if (c == '_' || c == '-' || c == '/' || c == '.') return 8;
+    return 4;
+}
+
+static const void *memmem_pivot(const void *haystack, size_t hay_len, const void *needle, size_t needle_len)
+{
+    const unsigned char *hay = haystack;
+    const unsigned char *need = needle;
+    size_t pivot = 0;
+    unsigned best = UINT_MAX;
+
+    if (!needle_len) return hay;
+    if (needle_len > hay_len) return NULL;
+    if (needle_len == 1) return memchr(hay, need[0], hay_len);
+
+    for (size_t i = 0; i < needle_len; i++) {
+        unsigned rank = byte_rank(need[i]);
+        if (rank < best) {
+            best = rank;
+            pivot = i;
+        }
+    }
+
+    const unsigned char *p = hay + pivot;
+    const unsigned char *end = hay + hay_len - (needle_len - pivot) + 1;
+    while (p < end) {
+        p = memchr(p, need[pivot], end - p);
+        if (!p) return NULL;
+        if (!memcmp(p - pivot, need, needle_len)) return p - pivot;
+        p++;
+    }
+    return NULL;
+}
+
 static int rec_has_terms(Record *r, int argc, char **argv, size_t *lens)
 {
     for (int j = 4; j < argc; j++) {
-        if (!memmem(rec_v(r), r->v_len, argv[j], lens[j]) &&
-            !memmem(rec_k(r), r->k_len, argv[j], lens[j])) {
+        if (!memmem_pivot(rec_v(r), r->v_len, argv[j], lens[j]) &&
+            !memmem_pivot(rec_k(r), r->k_len, argv[j], lens[j])) {
             return 0;
         }
     }
