@@ -2568,7 +2568,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
                                                 out[my_off++] = '\n';
                                             }
                                         } else {
-                                    count_est += eff_w < w_weight ? eff_w : w_weight;
+                                    count_est += w_weight;
                                     raw_count++;
                                             if (op == 9 && r->v_len > 0) {
                                                 if (is_decay) {
@@ -3094,7 +3094,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
                     dc = cur;
                 }
             }
-            count_est += w * (dc < 1.0 ? dc : 1.0);
+            count_est += w;
             raw_c++;
                 }
                 if (offs) munmap(offs, count * 8);
