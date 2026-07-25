@@ -360,7 +360,22 @@ static int cmp_node_key(const void *a, const void *b) {
 static void deduplicate_ht(void) {
     if (!ht_len) { ht_sorted_len = 0; return; }
     if (ht_len > ht_sorted_len) {
-        qsort(ht, ht_len, sizeof(*ht), cmp_node);
+        if (ht_sorted_len > 0) {
+            qsort(ht + ht_sorted_len, ht_len - ht_sorted_len, sizeof(*ht), cmp_node);
+            Node *merged = mmap(NULL, ht_len * sizeof(*ht), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+            if (merged != MAP_FAILED) {
+                madvise(merged, ht_len * sizeof(*ht), MADV_HUGEPAGE);
+                uint64_t i = 0, j = ht_sorted_len, k = 0;
+                while (i < ht_sorted_len && j < ht_len) {
+                    if (cmp_node(&ht[i], &ht[j]) <= 0) merged[k++] = ht[i++];
+                    else merged[k++] = ht[j++];
+                }
+                while (i < ht_sorted_len) merged[k++] = ht[i++];
+                while (j < ht_len) merged[k++] = ht[j++];
+                memcpy(ht, merged, ht_len * sizeof(*ht));
+                munmap(merged, ht_len * sizeof(*ht));
+            } else qsort(ht, ht_len, sizeof(*ht), cmp_node);
+        } else qsort(ht, ht_len, sizeof(*ht), cmp_node);
     }
     uint64_t out = 0;
     for (uint64_t i = 0; i < ht_len; ) {
@@ -2403,14 +2418,16 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 double threshold = 1.0; double eval_now = (double)time(NULL);
                                 char *pref = k; size_t pref_len = kl;
                                 if (kl > 0) {
-                                    char th_buf[256]={0}; memcpy(th_buf, k, kl < 255 ? kl : 255);
-                                    char *tab1 = strchr(th_buf, '\t');
-                                    if (tab1) {
-                                        *tab1 = 0;
-                                        pref_len = tab1 - th_buf;
-                                        char *tab2 = strchr(tab1 + 1, '\t');
-                                        if (tab2) { *tab2 = 0; eval_now = strtod(tab2 + 1, NULL); }
-                                        threshold = strtod(tab1 + 1, NULL);
+                                    char *tab2 = memrchr(k, '\t', kl);
+                                    if (tab2) {
+                                        char *tab1 = memrchr(k, '\t', tab2 - k);
+                                        if (tab1) {
+                                            *tab1 = 0;
+                                            *tab2 = 0;
+                                            pref_len = tab1 - k;
+                                            threshold = strtod(tab1 + 1, NULL);
+                                            eval_now = strtod(tab2 + 1, NULL);
+                                        }
                                     }
                                 }
                                 if (threshold <= 0) threshold = 1.0;
@@ -2871,7 +2888,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                             uint32_t item_vl = ntohl(*(uint32_t*)(p + 2));
                                             p += 6;
                                             uint8_t twl = 0;
-                                            if (item_kl > 0 && p[0] != '0' && ht_cap) {
+                                            if (ft_len > 0 && full_tenant[0] != '0' && ht_cap) {
                                                 Node *n = ht_get(full_tenant, ft_len, p, item_kl);
                                                 if (n && rec_at(n->off1 - 1)->op != OP_DEL) twl = rec_at(n->off1 - 1)->weight_log;
                                             }
