@@ -904,19 +904,19 @@ static int current_decay(const char *t, const char *k, double *half_life, double
         return 0;
     }
     if (r->v_len >= 192 || r->v_len == 0 || rec_v(r)[0] != '\x1F') {
-        diex("stored decay state malformed");
+        return 0;
     }
 
     char buf[192] = {0};
     memcpy(buf, rec_v(r) + 1, r->v_len - 1);
     char *tab1 = strchr(buf, '\t');
     if (!tab1) {
-        diex("stored decay state malformed");
+        return 0;
     }
     *tab1 = 0;
     char *tab2 = strchr(tab1 + 1, '\t');
     if (!tab2) {
-        diex("stored decay state malformed");
+        return 0;
     }
     *tab2 = 0;
     *half_life = parse_f64(buf);
