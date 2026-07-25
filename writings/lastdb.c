@@ -1186,10 +1186,15 @@ static int rec_has_terms(Record *r, int argc, char **argv, size_t *lens, uint64_
                 continue;
             }
         }
+        int is_decay_val = 0;
+        if (r->v_len > 0 && r->v_len < 192) {
+            double dummy_cur;
+            is_decay_val = decay_value_at(rec_v(r), r->v_len, (double)time(NULL), &dummy_cur);
+        }
         if ((r->bf & term_bfs[j]) != term_bfs[j]) {
             return 0;
         }
-        if (!memmem_pivot(rec_v(r), r->v_len, argv[j], lens[j]) &&
+        if ((is_decay_val || !memmem_pivot(rec_v(r), r->v_len, argv[j], lens[j])) &&
             !memmem_pivot(rec_k(r), r->k_len, argv[j], lens[j])) {
             return 0;
         }
@@ -2195,8 +2200,8 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                                 size_t term_len = exclude ? wl - 1 : wl;
                                                 if (term_len > 0) {
                                                     int found = 1;
-                                                    if (!exclude && word_idx < 64 && !is_decay && (r->bf & query_bfs[word_idx]) != query_bfs[word_idx]) found = 0;
-                                                    if (found && !memmem_pivot(out_val, out_vl, term, term_len) && !memmem_pivot(rec_k(r), r->k_len, term, term_len)) found = 0;
+                                                    if (!exclude && word_idx < 64 && (r->bf & query_bfs[word_idx]) != query_bfs[word_idx]) found = 0;
+                                                    if (found && (is_decay || !memmem_pivot(out_val, out_vl, term, term_len)) && !memmem_pivot(rec_k(r), r->k_len, term, term_len)) found = 0;
                                                     if (exclude ? found : !found) { match = 0; break; }
                                                     if (!exclude) word_idx++;
                                                 }
