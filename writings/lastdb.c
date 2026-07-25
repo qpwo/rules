@@ -2496,14 +2496,14 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
 { double _sn = (double)time(NULL); if (eval_now < 1 || eval_now > _sn) eval_now = _sn; }
 double max_w = threshold > 1.0 ? threshold : 13.0;
 
-                                double count_est = 0; uint64_t raw_count = 0; double sum = 0; double raw_sum = 0;
+                                double count_est = 0; uint64_t raw_count = 0; double sum = 0; double raw_sum = 0; int max_wl = 0;
 
                                 { SRV_READ_LOCK(db_path);
                                 uint64_t start_idx, end_idx;
                                 ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
                                 uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
                                 uint64_t *offs = get_sorted_offs(start_idx, count);
-                                #pragma omp parallel for reduction(+:count_est,raw_count,sum,raw_sum) schedule(static, 4096) num_threads(worker_threads())
+                                #pragma omp parallel for reduction(+:count_est,raw_count,sum,raw_sum) reduction(max:max_wl) schedule(static, 4096) num_threads(worker_threads())
                                 for (uint64_t i = 0; i < count; i++) {
                                     Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
                                     if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
@@ -2545,12 +2545,13 @@ double max_w = threshold > 1.0 ? threshold : 13.0;
                                         }
                                         w_iter += wl + 1;
                                     }
-                                    if (match) {
+if (match) {
                                         double db_w = (double)(1U << (r->weight_log > 13 ? 13 : r->weight_log));
                                         double w_weight = db_w;
-    
+
                                         double disp_w = is_decay ? db_w * __builtin_fabs(cur) : db_w;
                                         if (disp_w < min_weight) continue;
+                                        if (r->weight_log > max_wl) max_wl = r->weight_log;
                                         if (op == 4 || op == 5) {
                                             char weight[32];
                                             int wlen = snprintf(weight, sizeof(weight), "%.5g\t", disp_w);
@@ -2590,9 +2591,10 @@ double max_w = threshold > 1.0 ? threshold : 13.0;
                                     if (out_c) chunk_push(out_c);
                                 } else {
                                     char val[128]; int vl_out = 0;
-                                    if (raw_count < 100) { count_est = raw_count; sum = raw_sum; }
-                                    if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu", count_est, (unsigned long long)raw_count);
-                                    else vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%llu", sum, raw_sum, (unsigned long long)raw_count);
+if (max_wl < 0) max_wl = 0;
+                                if (raw_count < 100 && !max_wl) { count_est = raw_count; sum = raw_sum; }
+                                if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu\t%d", count_est, (unsigned long long)raw_count, max_wl);
+                                else vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%llu\t%d", sum, raw_sum, (unsigned long long)raw_count, max_wl);
                                     send_response(fd, cipherkey, 0, val, vl_out);
                                 }
                             } else if (op == 10) {
