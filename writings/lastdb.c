@@ -2554,7 +2554,7 @@ double max_w = threshold > 1.0 ? threshold : 13.0;
                                                 out[my_off++] = '\n';
                                             }
                                         } else {
-                                    count_est += db_w;
+                                    count_est += disp_w;
                                     raw_count++;
                                             if (op == 9 && r->v_len > 0) {
                                                 if (is_decay) {
