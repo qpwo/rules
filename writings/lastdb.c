@@ -1382,21 +1382,70 @@ static void send_response(int fd, int32_t cipherkey, int32_t status, const void 
     if (buf != small) free(buf);
 }
 
-typedef struct { uint8_t *buf; size_t cap; } BufCache;
-static _Thread_local BufCache rx_cache;
+#include <linux/rseq.h>
 
-static BufCache checkout_rx(BufCache iou) {
-    BufCache old = rx_cache;
-    rx_cache = iou;
-    return old;
+typedef struct Chunk {
+    struct Chunk *next;
+    size_t len;
+    uint8_t data[64 * 1024 * 1024];
+} Chunk;
+
+static struct {
+    alignas(64) Chunk *freelist;
+} rseq_heaps[1024];
+
+extern __thread volatile struct rseq __rseq_abi __attribute__((tls_model("initial-exec")));
+
+static inline void chunk_push(Chunk *chunk) {
+    chunk->len = 0;
+#ifdef __x86_64__
+    asm volatile(".pushsection .rodata.rseq,\"a\",@progbits\n"
+                 "    .balign    32\n"
+                 "300:    .long    0\n    .long    0\n    .quad    301f\n    .quad    302f-301f\n    .quad    303f\n"
+                 "    .popsection\n"
+                 "301:    lea    300b(%%rip),%%rcx\n"
+                 "    mov    %%rcx,8(%1)\n"
+                 "    mov    (%1),%%ecx\n"
+                 "    shl    $6,%%ecx\n"
+                 "    mov    (%2,%%rcx),%%rdx\n"
+                 "    mov    %%rdx,(%0)\n"
+                 "    mov    %0,(%2,%%rcx)\n"
+                 "302:    .pushsection .text.unlikely,\"ax\",@progbits\n"
+                 "    .byte    0x0f,0xb9,0x4d\n    .long    0x53053053\n"
+                 "303:    jmp    301b\n    .popsection"
+                 : : "r"(chunk), "r"(&__rseq_abi), "r"(rseq_heaps) : "rcx", "rdx", "memory");
+#else
+    (void)chunk;
+#endif
 }
 
-static void return_rx(BufCache c) {
-    BufCache old = rx_cache;
-    rx_cache = c;
-    if (old.buf) {
-        free(old.buf);
+static inline Chunk *chunk_pop(void) {
+    Chunk *chunk = NULL;
+#ifdef __x86_64__
+    asm volatile(".pushsection .rodata.rseq,\"a\",@progbits\n"
+                 "    .balign    32\n"
+                 "300:    .long    0\n    .long    0\n    .quad    301f\n    .quad    302f-301f\n    .quad    303f\n"
+                 "    .popsection\n"
+                 "301:    lea    300b(%%rip),%%rcx\n"
+                 "    mov    %%rcx,8(%1)\n"
+                 "    mov    (%1),%%ecx\n"
+                 "    shl    $6,%%ecx\n"
+                 "    mov    (%2,%%rcx),%0\n"
+                 "    test    %0,%0\n"
+                 "    jz    302f\n"
+                 "    mov    (%0),%%rdx\n"
+                 "    mov    %%rdx,(%2,%%rcx)\n"
+                 "302:    .pushsection .text.unlikely,\"ax\",@progbits\n"
+                 "    .byte    0x0f,0xb9,0x4d\n    .long    0x53053053\n"
+                 "303:    jmp    301b\n    .popsection"
+                 : "=&r"(chunk) : "r"(&__rseq_abi), "r"(rseq_heaps) : "rcx", "rdx", "memory");
+#endif
+    if (!chunk) {
+        chunk = mmap(NULL, sizeof(Chunk), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
+        if (chunk == MAP_FAILED) die("mmap chunk");
     }
+    chunk->len = 0;
+    return chunk;
 }
 
 static void do_serve(const char *db_path, int port, int32_t cipherkey) {
@@ -1427,21 +1476,16 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             len = ntohl(len);
                             if (len > 64 * 1024 * 1024) break;
 
-                            BufCache c = checkout_rx((BufCache){NULL, 0});
-                            if (c.cap < len) {
-                                uint8_t *next = realloc(c.buf, len);
-                                if (!next) die("realloc request");
-                                c.buf = next;
-                                c.cap = len;
-                            }
-                            uint8_t *buf = c.buf;
+                            Chunk *c = chunk_pop();
+                            if (len > sizeof(c->data)) { chunk_push(c); break; }
+                            uint8_t *buf = c->data;
 
-                            if (!buf || !read_full(fd, buf, len)) { return_rx(c); break; }
+                            if (!read_full(fd, buf, len)) { chunk_push(c); break; }
                             crypt_buf(buf, len, cipherkey);
 
-                            if (len < 32) { return_rx(c); break; }
+                            if (len < 32) { chunk_push(c); break; }
                             uint32_t magic = ntohl(*(uint32_t*)(buf + 0));
-                            if (magic != 0x4c444231) { return_rx(c); break; }
+                            if (magic != 0x4c444231) { chunk_push(c); break; }
                             int32_t op = ntohl(*(uint32_t*)(buf + 4));
                             int32_t user = ntohl(*(uint32_t*)(buf + 8));
                             int32_t pass = ntohl(*(uint32_t*)(buf + 12));
@@ -1450,7 +1494,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             uint32_t kl = ntohl(*(uint32_t*)(buf + 24));
                             uint32_t vl = ntohl(*(uint32_t*)(buf + 28));
 
-                            if (32 + tl + kl + vl > len) { return_rx(c); break; }
+                            if (32 + tl + kl + vl > len) { chunk_push(c); break; }
 
                             char *t = (char*)buf + 32;
                             char *k = (char*)buf + 32 + tl;
@@ -1483,7 +1527,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             full_tenant[ft_len] = 0;
 
                             if (op == 1) {
-                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); return_rx(c); continue; }
+                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
                                 #pragma omp critical (db)
                                 {
                                     load_db(db_path);
@@ -1496,7 +1540,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 }
                             }
                             else if (op == 4 || op == 5) {
-                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); return_rx(c); continue; }
+                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
                                 uint8_t *out = NULL; size_t out_len = 0, out_cap = 0;
                                 #define APP(ptr, lll) do { size_t app_n = (lll); if (out_len < 60u * 1024u * 1024u) { if (app_n > 60u * 1024u * 1024u - out_len) app_n = 60u * 1024u * 1024u - out_len; while (out_len + app_n > out_cap) { size_t next_cap = out_cap ? out_cap * 2 : 4096; out_cap = next_cap > 60u * 1024u * 1024u ? 60u * 1024u * 1024u : next_cap; void *next_out = realloc(out, out_cap); if (!next_out) die("realloc response"); out = next_out; } memcpy(out + out_len, ptr, app_n); out_len += app_n; } } while(0)
                                 #pragma omp critical (db)
@@ -1537,7 +1581,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             }
                             else if (op == 2 || op == 3) {
                                 int req = op == 2 ? 2 : 4;
-                                if (!(perms & req)) { send_response(fd, cipherkey, 1, "denied", 6); return_rx(c); continue; }
+                                if (!(perms & req)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
                                 #pragma omp critical (db)
                                 {
                                     int lockfd = open_lockfile(db_path);
@@ -1551,7 +1595,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 send_response(fd, cipherkey, 0, "ok", 2);
                             }
                             else if (op == 6) {
-                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); return_rx(c); continue; }
+                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
                                 uint8_t *out = NULL; size_t out_len = 0, out_cap = 0;
                                 char v_null[64]; size_t vln = vl > 63 ? 63 : vl; memcpy(v_null, v, vln); v_null[vln] = 0;
                                 uint64_t off = strtoull(v_null, NULL, 10);
@@ -1581,14 +1625,14 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 send_response(fd, cipherkey, 0, out, out_len);
                                 free(out);
                             } else if (op == 7) {
-                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); return_rx(c); continue; }
+                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
                                 float (*dot_fn)(const void *, const void *, size_t) = NULL;
                                 char type[16] = {0};
                                 if (vl > 0 && vl < 15) memcpy(type, v, vl);
                                 if (!strcmp(type, "f32")) dot_fn = vec_dot_f32;
                                 else if (!strcmp(type, "f16")) dot_fn = vec_dot_f16;
                                 else if (!strcmp(type, "i8")) dot_fn = vec_dot_i8;
-                                else { send_response(fd, cipherkey, 1, "bad type", 8); return_rx(c); continue; }
+                                else { send_response(fd, cipherkey, 1, "bad type", 8); chunk_push(c); continue; }
 
                                 const char *best_k = NULL;
                                 uint16_t best_k_len = 0;
@@ -1629,7 +1673,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 if (best_k) send_response(fd, cipherkey, 0, best_k, best_k_len);
                                 else send_response(fd, cipherkey, 2, "not found", 9);
                             } else if (op == 8 || op == 9) {
-                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); return_rx(c); continue; }
+                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
                                 uint64_t count = 0; double sum = 0;
                                 #pragma omp critical (db)
                                 {
@@ -1651,7 +1695,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 char val[64]; int vl_out = op == 8 ? snprintf(val, sizeof(val), "%llu", (unsigned long long)count) : snprintf(val, sizeof(val), "%.17g", sum);
                                 send_response(fd, cipherkey, 0, val, vl_out);
                             } else if (op == 10) {
-                                if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); return_rx(c); continue; }
+                                if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
                                 char val[64]; int vl_out = 0;
                                 #pragma omp critical (db)
                                 {
@@ -1674,7 +1718,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             } else {
                                 send_response(fd, cipherkey, 1, "bad op", 6);
                             }
-                            return_rx(c);
+                            chunk_push(c);
                         }
                         close(fd);
                     }
