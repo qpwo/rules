@@ -2598,7 +2598,7 @@ double confidence = ess_conf < decay_conf ? ess_conf : decay_conf;
                                 if (count_est < 0.5) count_est = 0;
                                 if (__builtin_fabs(sum) < 5e-15) sum = 0;
                                 if (raw_count < 5) confidence *= (double)raw_count / 5.0;
-                                if (confidence < 0.1) { count_est = (double)raw_count; sum = raw_sum; }
+                                if (confidence < 0.3) { count_est = (double)raw_count; sum = raw_sum; }
                                 if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu\t%d\t%.4g", count_est, (unsigned long long)raw_count, max_wl, confidence);
                                 else vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%llu\t%d\t%.4g", sum, raw_sum, (unsigned long long)raw_count, max_wl, confidence);
                                 send_response(fd, cipherkey, 0, val, vl_out);
@@ -3103,7 +3103,7 @@ if (threshold > 1.0) threshold = 1.0;
                 if (max_wl > 0) conf *= __builtin_exp2(-(double)max_wl * 0.0625);
                 if (count_est < 0.5) count_est = 0;
                 if (raw_c < 5) conf *= (double)raw_c / 5.0;
-                if (conf < 0.1) { count_est = (double)raw_c; }
+                if (conf < 0.3) { count_est = (double)raw_c; }
                 printf("%.4g\t%llu\t%d\t%.4g\n", count_est, (unsigned long long)raw_c, max_wl, conf);
             }
             else if (!strcmp(args[0], "sum") && n >= 2) {
@@ -3155,7 +3155,7 @@ if (threshold > 1.0) threshold = 1.0;
                 if (__builtin_fabs(s) < 5e-15) s = 0;
                 double conf = max_wl > 0 ? __builtin_exp2(-(double)max_wl * 0.0625) : 1.0;
                 if (raw_s < 5) conf *= (double)raw_s / 5.0;
-                if (conf < 0.1) { s = raw_sum; }
+                if (conf < 0.3) { s = raw_sum; }
                 printf("%.17g\t%.17g\t%llu\t%d\t%.4g\n", s, raw_sum, (unsigned long long)raw_s, max_wl, conf);
             }
             else printf("ERR\n");
