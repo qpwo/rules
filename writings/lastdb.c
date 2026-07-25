@@ -414,21 +414,13 @@ static void deduplicate_ht(void) {
 
 
 static uint64_t ht_lower_bound(uint64_t hash) {
-    uint64_t length = ht_sorted_len;
-    if (!length) return 0;
-    uint64_t step = 1ULL << (63 - __builtin_clzll(length));
-    uint64_t base = 0;
-    if (step != length && ht[step].hash < hash) {
-        length -= step + 1;
-        if (!length) return ht_sorted_len;
-        step = (length < 2) ? 1 : 1ULL << (64 - __builtin_clzl(length - 1));
-        base = ht_sorted_len - step;
+    uint64_t lo = 0, hi = ht_sorted_len;
+    while (lo < hi) {
+        uint64_t mid = lo + (hi - lo) / 2;
+        if (ht[mid].hash < hash) lo = mid + 1;
+        else hi = mid;
     }
-    for (step >>= 1; step; step >>= 1) {
-        if (ht[base + step].hash < hash)
-            base += step;
-    }
-    return base + (ht[base].hash < hash);
+    return lo;
 }
 
 static void ht_tenant_range(const char *t, size_t tl, uint64_t *start, uint64_t *end) {
