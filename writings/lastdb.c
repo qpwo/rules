@@ -329,15 +329,9 @@ static void lock_ex(int fd)
     }
 }
 
-static int sync_enabled(void)
-{
-    const char *x = getenv("LASTDB_SYNC");
-    return !x || strcmp(x, "0");
-}
-
 static void sync_fd(int fd)
 {
-    if (sync_enabled() && fsync(fd)) {
+    if (fsync(fd)) {
         die("fsync");
     }
 }
