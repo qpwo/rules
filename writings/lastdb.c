@@ -1633,6 +1633,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 {
                                     if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
                                     append_raw(srv_db_fd, full_tenant, ft_len, k, kl, v, vl, op == 2 ? OP_PUT : OP_DEL);
+                                    sync_fd(srv_db_fd);
                                     load_db(db_path);
                                 }
                                 send_response(fd, cipherkey, 0, "ok", 2);
