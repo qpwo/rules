@@ -1305,6 +1305,7 @@ static int do_search(const char *t, int num_words, char **words)
     size_t out_len = 0;
     #pragma omp parallel for schedule(static, 4096) num_threads(worker_threads())
     for (uint64_t i = 0; i < count; i++) {
+        if (i + 16 < count) __builtin_prefetch(map_base + (offs ? offs[i + 16] : (ht[start_idx + i + 16].off1 - 1)), 0, 0);
         Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
         if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), t, tl)) continue;
         if (r->weight_log > 0 && !(r->v_len > 0 && r->v_len < 192 && rec_v(r)[0] == '\x1F')) continue;
@@ -1376,6 +1377,7 @@ static int do_scan(const char *t, const char *prefix)
     size_t out_len = 0;
     #pragma omp parallel for schedule(static, 4096) num_threads(worker_threads())
     for (uint64_t i = 0; i < count; i++) {
+        if (i + 16 < count) __builtin_prefetch(map_base + (offs ? offs[i + 16] : (ht[start_idx + i + 16].off1 - 1)), 0, 0);
         Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
         if (r->op == OP_DEL || r->t_len != tl) continue;
         if (memcmp(rec_t(r), t, tl)) continue;
@@ -2481,6 +2483,7 @@ double sample_rate = threshold < 1.0 ? threshold : 1.0;
                                 uint64_t *offs = get_sorted_offs(start_idx, count);
                                 #pragma omp parallel for reduction(+:count_est,raw_count,sum,raw_sum,w2_sum,decay_est,decay_w) reduction(max:max_wl) schedule(static, 4096) num_threads(worker_threads())
                                 for (uint64_t i = 0; i < count; i++) {
+                                    if (i + 16 < count) __builtin_prefetch(map_base + (offs ? offs[i + 16] : (ht[start_idx + i + 16].off1 - 1)), 0, 0);
                                     Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
                                     if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
                                     if (pref_len > 0 && (r->k_len < pref_len || memcmp(rec_k(r), pref, pref_len))) continue;
@@ -3066,6 +3069,7 @@ if (threshold > 1.0) threshold = 1.0;
             uint64_t *offs = get_sorted_offs(start_idx, count);
             #pragma omp parallel for reduction(+:count_est,raw_c) reduction(max:max_wl) schedule(static, 4096) num_threads(worker_threads())
             for (uint64_t i = 0; i < count; i++) {
+                if (i + 16 < count) __builtin_prefetch(map_base + (offs ? offs[i + 16] : (ht[start_idx + i + 16].off1 - 1)), 0, 0);
                 Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
                 if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
                     if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
@@ -3101,6 +3105,7 @@ if (threshold > 1.0) threshold = 1.0;
             uint64_t *offs = get_sorted_offs(start_idx, count);
             #pragma omp parallel for reduction(+:s,raw_s,raw_sum) reduction(max:max_wl) schedule(static, 4096) num_threads(worker_threads())
             for (uint64_t i = 0; i < count; i++) {
+                if (i + 16 < count) __builtin_prefetch(map_base + (offs ? offs[i + 16] : (ht[start_idx + i + 16].off1 - 1)), 0, 0);
                 Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
                 if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
                     if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
