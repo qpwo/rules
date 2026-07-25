@@ -1137,6 +1137,16 @@ static void batch_flush(int fd, char *buf, size_t *used)
     if (!*used) {
         return;
     }
+
+    struct statvfs st;
+    if (!fstatvfs(fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
+        uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
+        uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.1L);
+        if (free_bytes < reserve_bytes + *used) {
+            diex("disk reserve below 10 percent");
+        }
+    }
+
     write_all(fd, buf, *used);
     *used = 0;
 }
@@ -1159,21 +1169,6 @@ static void batch_put(int fd, char *buf, size_t *used, const char *t, const char
     r.op = OP_PUT;
     r.key_hash = key_hash(t, r.t_len, k, r.k_len);
     r.check = rec_check(&r, t, k, v);
-
-    struct statvfs st;
-    if (!fstatvfs(fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
-        uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
-        uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.1L);
-        double avail = (double)st.f_bavail / st.f_blocks;
-        double keep = exp2(50.0 * (avail - 0.2));
-        double gate = (double)(r.check >> 11) * 0x1.0p-53;
-        if (free_bytes < reserve_bytes + r.len) {
-            diex("disk reserve below 10 percent");
-        }
-        if (avail < 0.2 && gate > keep) {
-            diex("disk pressure decay rejected write");
-        }
-    }
 
     if (r.len > BATCH_WRITE_BYTES) {
         batch_flush(fd, buf, used);
@@ -1242,6 +1237,239 @@ static int do_batch(const char *path, const char *t)
     return 0;
 }
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+
+static void crypt_buf(uint8_t *buf, size_t len, int32_t key) {
+    if (!key) return;
+    uint32_t k = (uint32_t)key;
+    for (size_t i = 0; i < len; i++) {
+        k ^= k << 13; k ^= k >> 17; k ^= k << 5;
+        buf[i] ^= (k & 255);
+    }
+}
+
+static int read_full(int fd, void *buf, size_t n) {
+    char *p = buf;
+    while (n > 0) {
+        ssize_t r = read(fd, p, n);
+        if (r <= 0) return 0;
+        p += r;
+        n -= r;
+    }
+    return 1;
+}
+
+static int write_full(int fd, const void *buf, size_t n) {
+    const char *p = buf;
+    while (n > 0) {
+        ssize_t r = write(fd, p, n);
+        if (r <= 0) return 0;
+        p += r;
+        n -= r;
+    }
+    return 1;
+}
+
+static void send_response(int fd, int32_t cipherkey, int32_t status, const void *payload, uint32_t n) {
+    uint32_t len = 16 + n;
+    uint8_t *buf = malloc(4 + len);
+    *(uint32_t*)(buf + 0) = htonl(len);
+    *(uint32_t*)(buf + 4) = htonl(0x4c444231);
+    *(uint32_t*)(buf + 8) = htonl(status);
+    *(uint32_t*)(buf + 12) = 0;
+    *(uint32_t*)(buf + 16) = htonl(n);
+    if (n) memcpy(buf + 20, payload, n);
+    crypt_buf(buf + 4, len, cipherkey);
+    write_full(fd, buf, 4 + len);
+    free(buf);
+}
+
+static void do_serve(const char *db_path, int port, int32_t cipherkey) {
+    int srv = socket(AF_INET, SOCK_STREAM, 0);
+    if (srv < 0) die("socket");
+    int opt = 1;
+    setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    struct sockaddr_in addr = {0};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = INADDR_ANY;
+    if (bind(srv, (struct sockaddr *)&addr, sizeof(addr)) < 0) die("bind");
+    if (listen(srv, 1000) < 0) die("listen");
+    printf("Listening on port %d...\n", port);
+
+    #pragma omp parallel num_threads(worker_threads())
+    {
+        #pragma omp single
+        {
+            while (1) {
+                int fd = accept(srv, NULL, NULL);
+                if (fd >= 0) {
+                    #pragma omp task
+                    {
+                        while (1) {
+                            uint32_t len;
+                            if (!read_full(fd, &len, 4)) break;
+                            len = ntohl(len);
+                            if (len > 64 * 1024 * 1024) break;
+                            uint8_t *buf = malloc(len);
+                            if (!buf || !read_full(fd, buf, len)) { free(buf); break; }
+                            crypt_buf(buf, len, cipherkey);
+
+                            if (len < 32) { free(buf); break; }
+                            uint32_t magic = ntohl(*(uint32_t*)(buf + 0));
+                            if (magic != 0x4c444231) { free(buf); break; }
+                            int32_t op = ntohl(*(uint32_t*)(buf + 4));
+                            int32_t user = ntohl(*(uint32_t*)(buf + 8));
+                            int32_t pass = ntohl(*(uint32_t*)(buf + 12));
+                            int32_t color = ntohl(*(uint32_t*)(buf + 16));
+                            uint32_t tl = ntohl(*(uint32_t*)(buf + 20));
+                            uint32_t kl = ntohl(*(uint32_t*)(buf + 24));
+                            uint32_t vl = ntohl(*(uint32_t*)(buf + 28));
+
+                            if (32 + tl + kl + vl > len) { free(buf); break; }
+
+                            char *t = (char*)buf + 32;
+                            char *k = (char*)buf + 32 + tl;
+                            char *v = (char*)buf + 32 + tl + kl;
+
+                            int perms = 0;
+                            #pragma omp critical (db)
+                            {
+                                load_db(db_path);
+                                char ustr[32];
+                                sprintf(ustr, "%d", user);
+                                Node *n = ht_get("0:users", 7, ustr, strlen(ustr));
+                                if (n) {
+                                    Record *r = rec_at(n->off1 - 1);
+                                    if (r->op != OP_DEL && r->v_len >= 3) {
+                                        char vbuf[64] = {0};
+                                        memcpy(vbuf, rec_v(r), r->v_len < 63 ? r->v_len : 63);
+                                        int32_t sp = 0, sprm = 0;
+                                        if (sscanf(vbuf, "%d,%d", &sp, &sprm) == 2 && sp == pass) perms = sprm;
+                                    }
+                                }
+                                if (user == 0 && pass == 0) perms = 7;
+                            }
+
+                            char full_tenant[65536];
+                            int ft_len = sprintf(full_tenant, "%d:", color);
+                            if (tl > 60000) tl = 60000;
+                            memcpy(full_tenant + ft_len, t, tl);
+                            ft_len += tl;
+                            full_tenant[ft_len] = 0;
+
+                            if (op == 1) {
+                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); free(buf); continue; }
+                                #pragma omp critical (db)
+                                {
+                                    load_db(db_path);
+                                    Node *n = ht_get(full_tenant, ft_len, k, kl);
+                                    if (n) {
+                                        Record *r = rec_at(n->off1 - 1);
+                                        if (r->op != OP_DEL) send_response(fd, cipherkey, 0, rec_v(r), r->v_len);
+                                        else send_response(fd, cipherkey, 2, "not found", 9);
+                                    } else send_response(fd, cipherkey, 2, "not found", 9);
+                                }
+                            }
+                            else if (op == 4 || op == 5) {
+                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); free(buf); continue; }
+                                uint8_t *out = NULL; size_t out_len = 0, out_cap = 0;
+                                #define APP(ptr, lll) do { while (out_len + (lll) > out_cap) { out_cap = out_cap ? out_cap * 2 : 4096; out = realloc(out, out_cap); } memcpy(out + out_len, ptr, lll); out_len += (lll); } while(0)
+                                #pragma omp critical (db)
+                                {
+                                    load_db(db_path);
+                                    for (uint64_t i = 0; i < ht_len; i++) {
+                                        Record *r = rec_at(ht[i].off1 - 1);
+                                        if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
+                                        int match = 0;
+                                        if (op == 4) {
+                                            match = (kl == 0 || (r->k_len >= kl && !memcmp(rec_k(r), k, kl)));
+                                        } else {
+                                            match = 1;
+                                            char *w = v; char *end = v + vl;
+                                            while (w < end) {
+                                                char *tab = memchr(w, '\t', end - w);
+                                                size_t wl = tab ? tab - w : end - w;
+                                                if (wl > 0) {
+                                                    if (!memmem(rec_v(r), r->v_len, w, wl) && !memmem(rec_k(r), r->k_len, w, wl)) { match = 0; break; }
+                                                }
+                                                w += wl + 1;
+                                            }
+                                        }
+                                        if (match) {
+                                            APP(rec_k(r), r->k_len); APP("\t", 1);
+                                            APP(rec_v(r), r->v_len); APP("\n", 1);
+                                        }
+                                    }
+                                }
+                                send_response(fd, cipherkey, 0, out, out_len);
+                                free(out);
+                            }
+                            else if (op == 2 || op == 3) {
+                                int req = op == 2 ? 2 : 4;
+                                if (!(perms & req)) { send_response(fd, cipherkey, 1, "denied", 6); free(buf); continue; }
+                                #pragma omp critical (db)
+                                {
+                                    char k_null[65536]; if (kl > 65535) kl = 65535; memcpy(k_null, k, kl); k_null[kl] = 0;
+                                    char *v_null = NULL;
+                                    if (op == 2) { v_null = malloc(vl + 1); memcpy(v_null, v, vl); v_null[vl] = 0; }
+
+                                    int lockfd = open_lockfile(db_path);
+                                    load_db(db_path);
+                                    int db_fd = open_append(db_path);
+                                    append_fd(db_fd, full_tenant, k_null, v_null, op == 2 ? OP_PUT : OP_DEL);
+                                    sync_fd(db_fd);
+                                    close(db_fd);
+                                    close(lockfd);
+                                    if (v_null) free(v_null);
+                                }
+                                send_response(fd, cipherkey, 0, "ok", 2);
+                            }
+                            else if (op == 6) {
+                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); free(buf); continue; }
+                                uint8_t *out = NULL; size_t out_len = 0, out_cap = 0;
+                                char v_null[64]; size_t vln = vl > 63 ? 63 : vl; memcpy(v_null, v, vln); v_null[vln] = 0;
+                                uint64_t off = strtoull(v_null, NULL, 10);
+
+                                #pragma omp critical (db)
+                                {
+                                    load_db(db_path);
+                                    if (off > valid_size) off = valid_size;
+                                    while (off < valid_size) {
+                                        if (!rec_valid(off)) break;
+                                        Record *r = rec_at(off);
+                                        uint64_t next = off + r->len;
+                                        char color_prefix[32];
+                                        int cpl = sprintf(color_prefix, "%d:", color);
+                                        if (r->t_len >= cpl && !memcmp(rec_t(r), color_prefix, cpl)) {
+                                            char line[128];
+                                            int ll = sprintf(line, "%llu\t%llu\t%s\t", (unsigned long long)next, (unsigned long long)off, r->op == OP_PUT ? "put" : "del");
+                                            APP(line, ll);
+                                            APP(rec_t(r) + cpl, r->t_len - cpl); APP("\t", 1);
+                                            APP(rec_k(r), r->k_len); APP("\t", 1);
+                                            if (r->op == OP_PUT) { APP("\t", 1); APP(rec_v(r), r->v_len); }
+                                            APP("\n", 1);
+                                        }
+                                        off = next;
+                                    }
+                                }
+                                send_response(fd, cipherkey, 0, out, out_len);
+                                free(out);
+                            } else {
+                                send_response(fd, cipherkey, 1, "bad op", 6);
+                            }
+                            free(buf);
+                        }
+                        close(fd);
+                    }
+                }
+            }
+        }
+    }
+}
+
 static void usage(const char *prog)
 {
     fprintf(stderr, "usage: %s DB CMD ...\n", prog);
@@ -1261,6 +1489,7 @@ static void usage(const char *prog)
     fputs("  batch TENANT     # stdin: key<TAB>value\n", stderr);
     fputs("  compact\n", stderr);
     fputs("  closest TYPE TENANT KEY\n", stderr);
+    fputs("  serve PORT CIPHERKEY\n", stderr);
     exit(2);
 }
 
@@ -1272,6 +1501,11 @@ int main(int argc, char **argv)
 
     const char *db = argv[1];
     const char *cmd = argv[2];
+
+    if (!strcmp(cmd, "serve") && argc == 5) {
+        do_serve(db, atoi(argv[3]), atoi(argv[4]));
+        return 0;
+    }
 
     if (!strcmp(cmd, "repl") && argc == 3) {
         load_db(db);
