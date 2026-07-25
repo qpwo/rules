@@ -168,12 +168,16 @@ static int key_eq(uint64_t off, const char *t, uint16_t tl, const char *k, uint1
     return memcmp(rec_t(r), t, tl) == 0 && memcmp(rec_k(r), k, kl) == 0;
 }
 
+#ifndef MAP_ANONYMOUS
+#define MAP_ANONYMOUS 0x20
+#endif
+
 static void ht_grow(void)
 {
     uint64_t ncap = ht_cap ? ht_cap * 2 : 4096;
-    Node *nht = calloc(ncap, sizeof(*nht));
-    if (!nht) {
-        die("calloc");
+    Node *nht = mmap(NULL, ncap * sizeof(*nht), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (nht == MAP_FAILED) {
+        die("mmap nht");
     }
 
     for (uint64_t i = 0; i < ht_cap; i++) {
@@ -203,7 +207,9 @@ static void ht_grow(void)
         nht[j].off1 = off1;
     }
 
-    free(ht);
+    if (ht) {
+        munmap(ht, ht_cap * sizeof(*ht));
+    }
     ht = nht;
     ht_cap = ncap;
 }
