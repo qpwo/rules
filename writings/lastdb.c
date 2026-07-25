@@ -1831,7 +1831,10 @@ static inline int srv_read_lock_func(const char *db_path) {
     if (srv_db_fd < 0) {
         pthread_rwlock_unlock(&srv_rwlocks[cpu].rw);
         for (int i = 0; i < 256; i++) pthread_rwlock_wrlock(&srv_rwlocks[i].rw);
-        
+        if (srv_db_fd < 0) {
+            load_db(db_path);
+            srv_db_fd = open_append(db_path);
+        }
         for (int i = 256; i-- > 0; ) pthread_rwlock_unlock(&srv_rwlocks[i].rw);
         pthread_rwlock_rdlock(&srv_rwlocks[cpu].rw);
     }
