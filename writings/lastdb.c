@@ -198,31 +198,31 @@ static void ht_put(uint64_t hash, uint64_t off)
 {
     if (ht_len >= ht_cap / 2) {
         uint64_t ncap = ht_cap ? ht_cap * 2 : 4096;
-        Node *nht = mmap(NULL, ncap * sizeof(*nht), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
+        Node *nht = mmap(NULL, (ncap + 256) * sizeof(*nht), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
         if (nht == MAP_FAILED) die("mmap nht");
-        madvise(nht, ncap * sizeof(*nht), MADV_HUGEPAGE);
+        madvise(nht, (ncap + 256) * sizeof(*nht), MADV_HUGEPAGE);
         if (ht) {
-            for (uint64_t i = 0; i < ht_cap; i++) {
+            for (uint64_t i = 0; i < ht_cap + 256; i++) {
                 if (ht[i].off1) {
                     uint64_t mask = ncap - 1;
                     uint64_t pos = ht[i].hash & mask;
                     Node curr = ht[i];
                     uint64_t d = 0;
                     while (nht[pos].off1) {
-                        uint64_t existing_d = (pos - (nht[pos].hash & mask)) & mask;
+                        uint64_t existing_d = pos - (nht[pos].hash & mask);
                         if (existing_d < d) {
                             Node tmp = nht[pos];
                             nht[pos] = curr;
                             curr = tmp;
                             d = existing_d;
                         }
-                        pos = (pos + 1) & mask;
+                        pos++;
                         d++;
                     }
                     nht[pos] = curr;
                 }
             }
-            munmap(ht, ht_cap * sizeof(*nht));
+            munmap(ht, (ht_cap + 256) * sizeof(*nht));
         }
         ht = nht;
         ht_cap = ncap;
@@ -236,7 +236,8 @@ static void ht_put(uint64_t hash, uint64_t off)
 
     int check_dup = 1;
     while (ht[pos].off1) {
-        uint64_t existing_d = (pos - (ht[pos].hash & mask)) & mask;
+        if (d > 250) die("probe too long");
+        uint64_t existing_d = pos - (ht[pos].hash & mask);
         if (existing_d < d) {
             check_dup = 0;
             Node tmp = ht[pos];
@@ -254,7 +255,7 @@ static void ht_put(uint64_t hash, uint64_t off)
                 return;
             }
         }
-        pos = (pos + 1) & mask;
+        pos++;
         d++;
     }
     ht[pos] = curr;
@@ -269,12 +270,12 @@ static Node *ht_get(const char *t, uint16_t tl, const char *k, uint16_t kl)
     uint64_t pos = hash & mask;
     uint64_t d = 0;
     while (ht[pos].off1) {
-        uint64_t existing_d = (pos - (ht[pos].hash & mask)) & mask;
+        uint64_t existing_d = pos - (ht[pos].hash & mask);
         if (existing_d < d) return NULL;
         if (ht[pos].hash == hash) {
             if (key_eq(ht[pos].off1 - 1, t, tl, k, kl)) return &ht[pos];
         }
-        pos = (pos + 1) & mask;
+        pos++;
         d++;
     }
     return NULL;
@@ -742,7 +743,8 @@ static int do_verify(const char *path)
         off += r->len;
     }
 
-    for (uint64_t i = 0; i < ht_cap; i++) {
+    uint64_t iter_cap = ht_cap ? ht_cap + 256 : 0;
+    for (uint64_t i = 0; i < iter_cap; i++) {
         if (!ht[i].off1) continue;
         Record *r = rec_at(ht[i].off1 - 1);
         if (r->op == OP_DEL) {
@@ -824,9 +826,9 @@ static int do_search(const char *t, int argc, char **argv)
 
     #pragma omp parallel
     {
-        uint64_t chunk = ht_cap / omp_get_num_threads();
+        uint64_t chunk = (ht_cap + 256) / omp_get_num_threads();
         uint64_t start = omp_get_thread_num() * chunk;
-        uint64_t end = (omp_get_thread_num() == omp_get_num_threads() - 1) ? ht_cap : start + chunk;
+        uint64_t end = (omp_get_thread_num() == omp_get_num_threads() - 1) ? (ht_cap + 256) : start + chunk;
         for (uint64_t i = start; i < end; i++) {
             if (!ht[i].off1) continue;
             Record *r = rec_at(ht[i].off1 - 1);
@@ -867,7 +869,7 @@ static int do_scan(const char *t, const char *prefix)
         return 0;
     }
 
-    for (uint64_t i = 0; i < ht_cap; i++) {
+    for (uint64_t i = 0; i < ht_cap + 256; i++) {
         if (!ht[i].off1) continue;
         Record *r = rec_at(ht[i].off1 - 1);
         if (r->op == OP_DEL || r->t_len != tl) {
@@ -1022,9 +1024,9 @@ static int do_closest(const char *path, const char *type, const char *t, const c
         const char *local_k = NULL;
         uint16_t local_k_len = 0;
 
-        uint64_t chunk = ht_cap / omp_get_num_threads();
+        uint64_t chunk = (ht_cap + 256) / omp_get_num_threads();
         uint64_t start = omp_get_thread_num() * chunk;
-        uint64_t end = (omp_get_thread_num() == omp_get_num_threads() - 1) ? ht_cap : start + chunk;
+        uint64_t end = (omp_get_thread_num() == omp_get_num_threads() - 1) ? (ht_cap + 256) : start + chunk;
 
         for (uint64_t i = start; i < end; i++) {
             if (!ht[i].off1) continue;
@@ -1164,7 +1166,8 @@ int main(int argc, char **argv)
                 uint64_t c = 0;
                 size_t tl = strlen(args[1]);
                 size_t pl = n == 3 ? strlen(args[2]) : 0;
-                for (uint64_t i = 0; i < ht_cap; i++) {
+                uint64_t iter_cap = ht_cap ? ht_cap + 256 : 0;
+                for (uint64_t i = 0; i < iter_cap; i++) {
                     if (!ht[i].off1) continue;
                     Record *r = rec_at(ht[i].off1 - 1);
                     if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
