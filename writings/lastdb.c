@@ -73,6 +73,7 @@ static size_t valid_size;
 static Node *ht;
 static uint64_t ht_cap;
 static uint64_t ht_len;
+static uint64_t ht_sorted_len;
 static int8_t ht_max_probe;
 
 static void ht_put(uint64_t hash, uint64_t off);
@@ -299,6 +300,7 @@ static void ht_reserve(uint64_t need)
     ht_cap = ncap;
     ht_max_probe = max_probe;
     ht_len = 0;
+    ht_sorted_len = 0;
 
     if (oht) {
         for (uint64_t i = 0; i < old_cap + old_mp; i++) {
@@ -416,6 +418,24 @@ static void deduplicate_ht(void) {
     ht_sorted_len = out;
 }
 
+
+static uint64_t ht_lower_bound(uint64_t hash) {
+    uint64_t lo = 0, hi = ht_sorted_len;
+    while (lo < hi) {
+        uint64_t mid = lo + (hi - lo) / 2;
+        if (ht[mid].hash < hash) lo = mid + 1;
+        else hi = mid;
+    }
+    return lo;
+}
+
+static void ht_tenant_range(const char *t, size_t tl, uint64_t *start, uint64_t *end) {
+    uint64_t th = fnv_bytes(FNV0, t, tl);
+    uint64_t tenant_bits = th << 32;
+    *start = ht_lower_bound(tenant_bits);
+    *end = *start;
+    while (*end < ht_sorted_len && (ht[*end].hash >> 32) == (tenant_bits >> 32)) (*end)++;
+}
 
 static Node *ht_get(const char *t, uint16_t tl, const char *k, uint16_t kl)
 {
