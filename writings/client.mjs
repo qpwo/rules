@@ -162,8 +162,16 @@ export async function decay(client, color, tenant, key, half_life, delta, now = 
 }
 
 export async function batch(client, color, tenant, pairs) {
-    var lines = pairs.map(p => p[0] + '\t' + p[1]).join('\n');
-    return request(client, 'batch', color, tenant, '', lines);
+    var bufs = [];
+    for (var i = 0; i < pairs.length; i++) {
+        var kb = Buffer.isBuffer(pairs[i][0]) ? pairs[i][0] : Buffer.from(pairs[i][0]);
+        var vb = Buffer.isBuffer(pairs[i][1]) ? pairs[i][1] : Buffer.from(pairs[i][1]);
+        var head = Buffer.alloc(6);
+        head.writeUInt16BE(kb.length, 0);
+        head.writeUInt32BE(vb.length, 2);
+        bufs.push(head, kb, vb);
+    }
+    return request(client, 'batch', color, tenant, '', Buffer.concat(bufs));
 }
 
 export async function request(client, op, color, tenant, key, value) {
@@ -172,8 +180,8 @@ export async function request(client, op, color, tenant, key, value) {
 }
 
 function encodeRequest(client, op, color, tenant, key, value) {
-    var tb = Buffer.from(tenant);
-    var kb = Buffer.from(key);
+    var tb = Buffer.isBuffer(tenant) ? tenant : Buffer.from(tenant);
+    var kb = Buffer.isBuffer(key) ? key : Buffer.from(key);
     var vb = Buffer.isBuffer(value) ? value : Buffer.from(value);
     var body = Buffer.alloc(32 + tb.length + kb.length + vb.length);
     body.writeUInt32BE(MAGIC, 0);

@@ -139,7 +139,7 @@ static uint64_t ht_lower_bound(uint64_t hash) {
 
 static void ht_tenant_range(const char *t, uint16_t tl, uint64_t *start_idx, uint64_t *end_idx) {
     if (ht_sorted_len != ht_len) {
-        deduplicate_ht();
+        deduplicate_ht(); /* only safe if caller holds write lock or is single-threaded */
     }
     if (!ht_sorted_len) { *start_idx = 0; *end_idx = 0; return; }
     uint64_t th = fnv_bytes(FNV0, t, tl);
@@ -1676,14 +1676,10 @@ static int batch_pressure(int fd, size_t need, double *keep, uint8_t *weight_log
     return 1;
 }
 
-static int batch_put(int fd, char *buf, size_t *used, const char *t, const char *k, const char *v)
+static int batch_put(int fd, char *buf, size_t *used, const char *t, size_t tl, const char *k, size_t kl, const char *v, size_t vl)
 {
     static double keep = 1.0;
     static uint8_t weight_log = 0;
-
-    size_t tl = strlen(t);
-    size_t kl = strlen(k);
-    size_t vl = strlen(v);
     if (tl > 255 || kl > UINT16_MAX) diex("tenant/key too long");
     if (vl > UINT32_MAX) diex("value too long");
     if (sizeof(Record) + tl + kl + vl > UINT32_MAX) diex("record too long");
@@ -1773,7 +1769,7 @@ static int do_batch(const char *path, const char *t)
         }
 
         *tab = 0;
-        if (!batch_put(fd, buf, &used, t, line, tab + 1)) {
+        if (!batch_put(fd, buf, &used, t, strlen(t), line, tab - line, tab + 1, strlen(tab + 1))) {
             ok = 0;
             break;
         }
@@ -2017,7 +2013,7 @@ static inline int srv_read_lock_func(const char *db_path) {
     pthread_rwlock_rdlock(&srv_rwlocks[cpu].rw);
     struct stat st, fd_st;
     int needs_reopen = (srv_db_fd < 0) || (!stat(db_path, &st) && !fstat(srv_db_fd, &fd_st) && st.st_ino != fd_st.st_ino);
-    if (needs_reopen) {
+    if (needs_reopen || ht_len != ht_sorted_len) {
         pthread_rwlock_unlock(&srv_rwlocks[cpu].rw);
         for (int i = 0; i < 256; i++) pthread_rwlock_wrlock(&srv_rwlocks[i].rw);
         needs_reopen = (srv_db_fd < 0) || (!stat(db_path, &st) && !fstat(srv_db_fd, &fd_st) && st.st_ino != fd_st.st_ino);
@@ -2027,6 +2023,7 @@ static inline int srv_read_lock_func(const char *db_path) {
             load_db(db_path);
             srv_db_fd = open_append(db_path);
         }
+        if (ht_len != ht_sorted_len) deduplicate_ht();
         for (int i = 256; i-- > 0; ) pthread_rwlock_unlock(&srv_rwlocks[i].rw);
         pthread_rwlock_rdlock(&srv_rwlocks[cpu].rw);
     }
@@ -2673,17 +2670,18 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 int bad = 0;
                                 char *end = v + vl;
                                 for (char *p = v; p < end && !bad; ) {
-                                    char *nl = memchr(p, '\n', end - p);
-                                    size_t line_len = nl ? (size_t)(nl - p) : (size_t)(end - p);
-                                    char *tab = memchr(p, '\t', line_len);
-                                    bad = !tab || (size_t)(tab - p) > UINT16_MAX || line_len - (size_t)(tab - p) - 1 > UINT32_MAX || (!nl && end >= (char *)c->data + sizeof(c->data));
-                                    p += line_len + (nl ? 1 : 0);
+                                    if (end - p < 6) { bad = 1; break; }
+                                    uint16_t item_kl = ntohs(*(uint16_t*)p);
+                                    uint32_t item_vl = ntohl(*(uint32_t*)(p + 2));
+                                    p += 6;
+                                    if (item_kl > UINT16_MAX || item_vl > UINT32_MAX || (size_t)(end - p) < (size_t)item_kl + item_vl) { bad = 1; break; }
+                                    p += item_kl + item_vl;
                                 }
                                 { SRV_WRITE_LOCK(db_path); Chunk *batch_c = NULL;
                                     char *batch_buf = NULL;
                                     size_t used = 0;
                                     if (!bad) {
-                                        
+
                                         batch_c = chunk_pop();
                                         if (!batch_c) {
                                             shed = 1;
@@ -2691,21 +2689,15 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                             batch_buf = (char *)batch_c->data;
                                         }
                                         for (char *p = v; p < end && !shed; ) {
-                                            char *nl = memchr(p, '\n', end - p);
-                                            size_t line_len = nl ? (size_t)(nl - p) : (size_t)(end - p);
-                                            char *tab = memchr(p, '\t', line_len);
-                                            *tab = 0;
-                                            if (nl) {
-                                                *nl = 0;
-                                            } else {
-                                                *end = 0;
-                                            }
-                                            if (batch_put(srv_db_fd, batch_buf, &used, full_tenant, p, tab + 1)) {
+                                            uint16_t item_kl = ntohs(*(uint16_t*)p);
+                                            uint32_t item_vl = ntohl(*(uint32_t*)(p + 2));
+                                            p += 6;
+                                            if (batch_put(srv_db_fd, batch_buf, &used, full_tenant, ft_len, p, item_kl, p + item_kl, item_vl)) {
                                                 wrote++;
                                             } else {
                                                 shed = 1;
                                             }
-                                            p += line_len + (nl ? 1 : 0);
+                                            p += item_kl + item_vl;
                                         }
                                         if (batch_c) {
                                             if (used && !batch_flush(srv_db_fd, batch_buf, &used)) {
