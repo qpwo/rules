@@ -230,14 +230,29 @@ static int key_eq(uint64_t off, const char *t, uint16_t tl, const char *k, uint1
 
 
 
+static uint64_t get_mem_avail(uint64_t *total_out) {
+    struct sysinfo si;
+    if (sysinfo(&si)) return 0;
+    if (total_out) *total_out = (uint64_t)si.totalram * si.mem_unit;
+    int fd = open("/proc/meminfo", O_RDONLY | O_CLOEXEC);
+    if (fd >= 0) {
+        char buf[2048];
+        ssize_t n = read(fd, buf, sizeof(buf) - 1);
+        close(fd);
+        if (n > 0) {
+            buf[n] = 0;
+            char *p = strstr(buf, "MemAvailable:");
+            if (p) return strtoull(p + 13, NULL, 10) * 1024ULL;
+        }
+    }
+    return (uint64_t)(si.freeram + si.bufferram) * si.mem_unit;
+}
+
 static void reserve_ram(size_t bytes)
 {
-    struct sysinfo si;
-    if (sysinfo(&si)) die("sysinfo");
-
-    uint64_t total = (uint64_t)si.totalram * si.mem_unit;
-    uint64_t freeish = (uint64_t)(si.freeram + si.bufferram) * si.mem_unit;
-    if (freeish < total / 10 + bytes) {
+    uint64_t total = 0;
+    uint64_t freeish = get_mem_avail(&total);
+    if (total && freeish < total / 10 + bytes) {
         diex("ram reserve below 10 percent");
     }
 }
@@ -449,7 +464,7 @@ static int append_raw(int fd, const char *t, size_t tl, const char *k, size_t kl
         if (free_bytes < reserve_bytes + r.len) {
             return 0;
         }
-        if (wl > 0) {
+        if (wl > 0 && tl > 0 && t[0] != '0') {
             int exists = (op == OP_DEL);
             if (!exists && ht_cap) {
                 Node *n = ht_get(t, (uint16_t)tl, k, (uint16_t)kl);
@@ -1593,7 +1608,7 @@ static int batch_put(int fd, char *buf, size_t *used, const char *t, const char 
     if (!*used && !batch_pressure(fd, r.len, &keep, &weight_log)) {
         return 0;
     }
-    if (keep < 1.0) {
+    if (keep < 1.0 && tl > 0 && t[0] != '0') {
         int exists = 0;
         if (ht_cap) {
             Node *n = ht_get(t, r.t_len, k, r.k_len);
@@ -1786,12 +1801,9 @@ static inline Chunk *chunk_pop(void) {
         if (chunk) return chunk;
     }
 
-    struct sysinfo si;
-    if (!sysinfo(&si)) {
-        uint64_t total = (uint64_t)si.totalram * si.mem_unit;
-        uint64_t freeish = (uint64_t)(si.freeram + si.bufferram) * si.mem_unit;
-        if (freeish < total / 10 + sizeof(*chunk)) return NULL;
-    }
+    uint64_t total = 0;
+    uint64_t freeish = get_mem_avail(&total);
+    if (total && freeish < total / 10 + sizeof(*chunk)) return NULL;
     double load[1];
     if (getloadavg(load, 1) == 1 && load[0] > omp_get_num_procs() * 0.9) return NULL;
     chunk = mmap(NULL, sizeof(*chunk), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
