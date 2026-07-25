@@ -24,6 +24,11 @@ var OP = new Map([
     ['sum', 9],
     ['incr', 10],
     ['grant', 11],
+    ['take', 12],
+    ['putnx', 13],
+    ['cas', 14],
+    ['decay', 15],
+    ['batch', 16],
 ]);
 
 export async function open(host, username, password, cipherkey, port = 51515) {
@@ -67,6 +72,22 @@ export async function tail(client, color, offset = 0) {
     return request(client, 'tail', color, '', '', String(offset));
 }
 
+export async function* follow(client, color, offset = 0) {
+    while (true) {
+        var res = await request(client, 'tail', color, '', '', String(offset));
+        var str = res.toString();
+        var lines = str.split('\n');
+        for (var i = 0; i < lines.length - 1; i++) {
+            var parts = lines[i].split('\t');
+            offset = Number(parts[0]);
+            yield parts;
+        }
+        if (!res.hasMore && lines.length < 2) {
+            await new Promise(r => setTimeout(r, 500));
+        }
+    }
+}
+
 export async function closest(client, color, tenant, keyOrType, typeOrVector) {
     return request(client, 'closest', color, tenant, keyOrType, typeOrVector);
 }
@@ -83,8 +104,29 @@ export async function incr(client, color, tenant, key, delta) {
     return request(client, 'incr', color, tenant, key, String(delta));
 }
 
+export async function take(client, color, tenant, key) {
+    return request(client, 'take', color, tenant, key, '');
+}
+
+export async function putnx(client, color, tenant, key, value) {
+    return request(client, 'putnx', color, tenant, key, value);
+}
+
+export async function cas(client, color, tenant, key, old_val, new_val) {
+    return request(client, 'cas', color, tenant, key, old_val + '\t' + new_val);
+}
+
 export async function grant(client, color, user, password, permissions) {
     return request(client, 'grant', color, '', String(user), i32(password) + ',' + i32(permissions));
+}
+
+export async function decay(client, color, tenant, key, half_life, now, delta) {
+    return request(client, 'decay', color, tenant, key, String(half_life) + '\t' + String(now) + '\t' + String(delta));
+}
+
+export async function batch(client, color, tenant, pairs) {
+    var lines = pairs.map(p => p[0] + '\t' + p[1]).join('\n');
+    return request(client, 'batch', color, tenant, '', lines);
 }
 
 export async function request(client, op, color, tenant, key, value) {
@@ -177,9 +219,10 @@ function decodeResponse(client, body) {
         throw new Error('bad response length: ' + JSON.stringify({frame: body.length, payload: n}));
     }
     var payload = body.subarray(16);
-    if (status !== OK) {
+    if (status !== OK && status !== 4) {
         throw new Error(payload.toString() || ('lastdb status ' + status));
     }
+    payload.hasMore = status === 4;
     return payload;
 }
 
@@ -216,6 +259,12 @@ async function cli(client, a) {
     if (a[0] === 'tail' && (a.length === 2 || a.length === 3)) {
         return tail(client, parseI32(a[1]), a[2] ?? 0);
     }
+    if (a[0] === 'follow' && (a.length === 2 || a.length === 3)) {
+        for await (var parts of follow(client, parseI32(a[1]), a[2] ?? 0)) {
+            process.stdout.write(parts.join('\t') + '\n');
+        }
+        return '';
+    }
     if (a[0] === 'closest' && a.length === 5) {
         return closest(client, parseI32(a[1]), a[2], a[3], a[4]);
     }
@@ -228,8 +277,25 @@ async function cli(client, a) {
     if (a[0] === 'incr' && a.length === 5) {
         return incr(client, parseI32(a[1]), a[2], a[3], a[4]);
     }
+    if (a[0] === 'take' && a.length === 4) {
+        return take(client, parseI32(a[1]), a[2], a[3]);
+    }
+    if (a[0] === 'putnx' && a.length === 5) {
+        return putnx(client, parseI32(a[1]), a[2], a[3], a[4]);
+    }
+    if (a[0] === 'cas' && a.length === 6) {
+        return cas(client, parseI32(a[1]), a[2], a[3], a[4], a[5]);
+    }
     if (a[0] === 'grant' && a.length === 5) {
         return grant(client, parseI32(a[1]), parseI32(a[2]), parseI32(a[3]), parseI32(a[4]));
+    }
+    if (a[0] === 'decay' && a.length === 7) {
+        return decay(client, parseI32(a[1]), a[2], a[3], a[4], a[5], a[6]);
+    }
+    if (a[0] === 'batch' && a.length >= 5 && a.length % 2 === 1) {
+        var pairs = [];
+        for (var i = 3; i < a.length; i += 2) pairs.push([a[i], a[i+1]]);
+        return batch(client, parseI32(a[1]), a[2], pairs);
     }
     usage();
 }
@@ -303,6 +369,11 @@ function usage() {
         '  count COLOR TENANT [PREFIX] [THRESHOLD]',
         '  sum COLOR TENANT [PREFIX] [THRESHOLD]',
         '  incr COLOR TENANT KEY DELTA',
+        '  take COLOR TENANT KEY',
+        '  putnx COLOR TENANT KEY VALUE',
+        '  cas COLOR TENANT KEY OLD NEW',
+        '  decay COLOR TENANT KEY HALF_LIFE NOW DELTA',
+        '  batch COLOR TENANT KEY1 VAL1 [KEY2 VAL2 ...]',
         '  grant COLOR USER PASS PERMS',
         '',
     ].join('\n'));

@@ -1864,7 +1864,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         }
                                     }
                                 }
-                                send_response(fd, cipherkey, out_len > OUT_CAP ? 4 : 0, out_len > OUT_CAP ? "more" : out, out_len > OUT_CAP ? 4 : out_len);
+                                send_response(fd, cipherkey, out_len > OUT_CAP ? 4 : 0, out, out_len > OUT_CAP ? OUT_CAP : out_len);
                                 chunk_push(out_c);
                             }
                             else if (op == 2 || op == 3) {
@@ -1888,7 +1888,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
                                 Chunk *out_c = chunk_pop();
                                 if (!out_c) { send_response(fd, cipherkey, 3, "shed", 4); chunk_push(c); continue; }
-                                uint8_t *out = out_c->data; size_t out_len = 0;
+                                uint8_t *out = out_c->data; size_t out_len = 0; int more = 0;
                                 char v_null[64]; size_t vln = vl > 63 ? 63 : vl; memcpy(v_null, v, vln); v_null[vln] = 0;
                                 uint64_t off = strtoull(v_null, NULL, 10);
 
@@ -1900,21 +1900,24 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         if (!rec_valid(off)) break;
                                         Record *r = rec_at(off);
                                         uint64_t next = off + r->len;
+                                        if (out_len + r->k_len + r->v_len + 256 > OUT_CAP) { more = 1; break; }
                                         char color_prefix[32];
                                         int cpl = sprintf(color_prefix, "%d:", color);
                                         if (r->t_len >= cpl && !memcmp(rec_t(r), color_prefix, cpl)) {
                                             char line[128];
                                             int ll = sprintf(line, "%llu\t%llu\t%s\t%u\t", (unsigned long long)next, (unsigned long long)off, r->op == OP_PUT ? "put" : "del", 1U << r->weight_log);
-                                            APP(line, ll);
-                                            APP(rec_t(r) + cpl, r->t_len - cpl); APP("\t", 1);
-                                            APP(rec_k(r), r->k_len); APP("\t", 1);
-                                            if (r->op == OP_PUT) { APP("\t", 1); APP(rec_v(r), r->v_len); }
-                                            APP("\n", 1);
+                                            memcpy(out + out_len, line, ll); out_len += ll;
+                                            memcpy(out + out_len, rec_t(r) + cpl, r->t_len - cpl); out_len += r->t_len - cpl;
+                                            out[out_len++] = '\t';
+                                            memcpy(out + out_len, rec_k(r), r->k_len); out_len += r->k_len;
+                                            out[out_len++] = '\t';
+                                            if (r->op == OP_PUT) { memcpy(out + out_len, rec_v(r), r->v_len); out_len += r->v_len; }
+                                            out[out_len++] = '\n';
                                         }
                                         off = next;
                                     }
                                 }
-                                send_response(fd, cipherkey, out_len > OUT_CAP ? 4 : 0, out_len > OUT_CAP ? "more" : out, out_len > OUT_CAP ? 4 : out_len);
+                                send_response(fd, cipherkey, more ? 4 : 0, out, out_len);
                                 chunk_push(out_c);
                             } else if (op == 7) {
                                 if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
@@ -2040,6 +2043,145 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     load_db(db_path);
                                 }
                                 send_response(fd, cipherkey, 0, "ok", 2);
+                            } else if (op == 12) {
+                                if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
+                                char val[64]; int vl_out = 0; int ok = 0;
+                                #pragma omp critical (db)
+                                {
+                                    if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
+                                    long long cur = 0;
+                                    Node *n = ht_get(full_tenant, ft_len, k, kl);
+                                    if (n) { Record *r = rec_at(n->off1 - 1); if (r->op != OP_DEL && r->v_len < 64) { char buf[64]={0}; memcpy(buf, rec_v(r), r->v_len); cur = strtoll(buf, NULL, 10); } }
+                                    if (cur > 0) {
+                                        vl_out = snprintf(val, sizeof(val), "%lld", cur - 1);
+                                        append_raw(srv_db_fd, full_tenant, ft_len, k, kl, val, vl_out, OP_PUT);
+                                        load_db(db_path);
+                                        ok = 1;
+                                    }
+                                }
+                                if (ok) send_response(fd, cipherkey, 0, val, vl_out);
+                                else send_response(fd, cipherkey, 2, "zero", 4);
+                            } else if (op == 13) {
+                                if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
+                                int wrote = 0;
+                                #pragma omp critical (db)
+                                {
+                                    if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
+                                    Node *n = ht_get(full_tenant, ft_len, k, kl);
+                                    int exists = 0;
+                                    if (n) { Record *r = rec_at(n->off1 - 1); if (r->op != OP_DEL) exists = 1; }
+                                    if (!exists) {
+                                        wrote = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, v, vl, OP_PUT);
+                                        if (wrote) sync_fd(srv_db_fd);
+                                        load_db(db_path);
+                                    }
+                                }
+                                if (wrote) send_response(fd, cipherkey, 0, v, vl);
+                                else send_response(fd, cipherkey, 2, "exists", 6);
+                            } else if (op == 14) {
+                                if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
+                                char *tab = memchr(v, '\t', vl);
+                                if (!tab) { send_response(fd, cipherkey, 1, "bad arg", 7); chunk_push(c); continue; }
+                                size_t old_len = tab - (char*)v;
+                                char *new_val = tab + 1;
+                                size_t new_len = vl - old_len - 1;
+                                int wrote = 0;
+                                #pragma omp critical (db)
+                                {
+                                    if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
+                                    Node *n = ht_get(full_tenant, ft_len, k, kl);
+                                    int match = 0;
+                                    if (n) {
+                                        Record *r = rec_at(n->off1 - 1);
+                                        if (r->op != OP_DEL && r->v_len == old_len && !memcmp(rec_v(r), v, old_len)) match = 1;
+                                    }
+                                    if (match) {
+                                        wrote = append_raw(srv_db_fd, full_tenant, ft_len, k, kl, new_val, new_len, OP_PUT);
+                                        if (wrote) sync_fd(srv_db_fd);
+                                        load_db(db_path);
+                                    }
+                                }
+                                if (wrote) send_response(fd, cipherkey, 0, new_val, new_len);
+                                else send_response(fd, cipherkey, 2, "mismatch", 8);
+                            } else if (op == 15) {
+                                if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
+                                char v_null[128]; size_t vln = vl > 127 ? 127 : vl; memcpy(v_null, v, vln); v_null[vln] = 0;
+                                char *tab1 = strchr(v_null, '\t');
+                                char *tab2 = tab1 ? strchr(tab1 + 1, '\t') : NULL;
+                                if (!tab1 || !tab2) { send_response(fd, cipherkey, 1, "bad arg", 7); chunk_push(c); continue; }
+                                *tab1 = 0; *tab2 = 0;
+                                double hl = parse_f64(v_null);
+                                double ts = parse_f64(tab1 + 1);
+                                double d = parse_f64(tab2 + 1);
+                                if (hl <= 0 || !__builtin_isfinite(hl) || !__builtin_isfinite(ts) || !__builtin_isfinite(d)) {
+                                    send_response(fd, cipherkey, 1, "bad arg", 7); chunk_push(c); continue;
+                                }
+
+                                char val[192]; int vl_out = 0; int ok = 1; char err_msg[32] = "error";
+                                #pragma omp critical (db)
+                                {
+                                    if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
+                                    double stored_hl = hl, last = ts, value = 0;
+                                    int had = 0;
+                                    Node *n = ht_get(full_tenant, ft_len, k, kl);
+                                    if (n) {
+                                        Record *r = rec_at(n->off1 - 1);
+                                        if (r->op != OP_DEL && r->v_len < 192) {
+                                            char buf[192] = {0}; memcpy(buf, rec_v(r), r->v_len);
+                                            char *t1 = strchr(buf, '\t'); char *t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
+                                            if (t1 && t2) {
+                                                *t1 = 0; *t2 = 0;
+                                                stored_hl = strtod(buf, NULL); last = strtod(t1 + 1, NULL); value = strtod(t2 + 1, NULL);
+                                                had = 1;
+                                            }
+                                        }
+                                    }
+                                    if (had && stored_hl != hl) { ok = 0; strcpy(err_msg, "hl changed"); }
+                                    else if (had && ts < last) { ok = 0; strcpy(err_msg, "time reversed"); }
+                                    else {
+                                        double next = value * __builtin_exp2((last - ts) / hl) + d;
+                                        if (!__builtin_isfinite(next)) { ok = 0; strcpy(err_msg, "not finite"); }
+                                        else if (__builtin_fabs(next) < 1e-12) {
+                                            if (had) {
+                                                append_raw(srv_db_fd, full_tenant, ft_len, k, kl, NULL, 0, OP_DEL);
+                                                sync_fd(srv_db_fd);
+                                            }
+                                            strcpy(val, "0"); vl_out = 1;
+                                        } else {
+                                            vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%.17g", hl, ts, next);
+                                            append_raw(srv_db_fd, full_tenant, ft_len, k, kl, val, vl_out, OP_PUT);
+                                            sync_fd(srv_db_fd);
+                                        }
+                                        load_db(db_path);
+                                    }
+                                }
+                                if (ok) send_response(fd, cipherkey, 0, val, vl_out);
+                                else send_response(fd, cipherkey, 2, err_msg, strlen(err_msg));
+                            } else if (op == 16) {
+                                if (!(perms & 2)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
+                                int wrote = 0;
+                                #pragma omp critical (db)
+                                {
+                                    if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
+                                    char *p = v; char *end = v + vl;
+                                    while (p < end) {
+                                        char *nl = memchr(p, '\n', end - p);
+                                        size_t line_len = nl ? (size_t)(nl - p) : (size_t)(end - p);
+                                        char *tab = memchr(p, '\t', line_len);
+                                        if (tab) {
+                                            size_t b_kl = tab - p;
+                                            size_t b_vl = line_len - b_kl - 1;
+                                            if (b_kl <= UINT16_MAX && b_vl <= UINT32_MAX) {
+                                                if (append_raw(srv_db_fd, full_tenant, ft_len, p, b_kl, tab + 1, b_vl, OP_PUT)) wrote++;
+                                            }
+                                        }
+                                        p += line_len + (nl ? 1 : 0);
+                                    }
+                                    if (wrote) sync_fd(srv_db_fd);
+                                    load_db(db_path);
+                                }
+                                char res[32]; int rl = snprintf(res, sizeof(res), "%d", wrote);
+                                send_response(fd, cipherkey, 0, res, rl);
                             } else {
                                 send_response(fd, cipherkey, 1, "bad op", 6);
                             }
