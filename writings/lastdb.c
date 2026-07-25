@@ -432,7 +432,10 @@ static int append_raw(int fd, const char *t, size_t tl, const char *k, size_t kl
 
 static int append_fd(int fd, const char *t, const char *k, const char *v, uint8_t op)
 {
-    return append_raw(fd, t, strlen(t), k, strlen(k), v ? v : "", v ? strlen(v) : 0, op);
+    if (!append_raw(fd, t, strlen(t), k, strlen(k), v ? v : "", v ? strlen(v) : 0, op)) {
+        diex("shed");
+    }
+    return 1;
 }
 
 static int open_lockfile(const char *path)
@@ -729,7 +732,8 @@ static int do_decay(const char *path, const char *t, const char *k, const char *
     double stored_hl = hl;
     double last = ts;
     double value = 0;
-    if (current_decay(t, k, &stored_hl, &last, &value)) {
+    int had = current_decay(t, k, &stored_hl, &last, &value);
+    if (had) {
         if (stored_hl != hl) {
             close(lockfd);
             diex("decay half life changed");
@@ -741,6 +745,24 @@ static int do_decay(const char *path, const char *t, const char *k, const char *
     }
 
     double next = value * __builtin_exp2((last - ts) / hl) + d;
+    if (!__builtin_isfinite(next)) {
+        close(lockfd);
+        diex("decay value not finite");
+    }
+    if (__builtin_fabs(next) < 1e-12) {
+        if (had) {
+            int fd = open_append(path);
+            append_fd(fd, t, k, NULL, OP_DEL);
+            sync_fd(fd);
+            if (close(fd)) {
+                die("close");
+            }
+        }
+        close(lockfd);
+        puts("0");
+        return 0;
+    }
+
     char val[192];
     snprintf(val, sizeof(val), "%.17g\t%.17g\t%.17g", hl, ts, next);
 
