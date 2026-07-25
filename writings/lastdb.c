@@ -1388,13 +1388,7 @@ static int batch_flush(int fd, char *buf, size_t *used)
     if (!fstatvfs(fd, &st) && st.f_blocks > 0 && st.f_frsize > 0) {
         uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
         uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.1L);
-        double avail = (double)st.f_bavail / st.f_blocks;
-        double keep = __builtin_exp2(50.0 * (avail - 0.2));
-        double gate = (double)(fnv_bytes(FNV0, buf, *used) >> 11) * 0x1.0p-53;
         if (free_bytes < reserve_bytes + *used) {
-            return 0;
-        }
-        if (avail < 0.2 && gate > keep) {
             return 0;
         }
     }
@@ -1404,8 +1398,38 @@ static int batch_flush(int fd, char *buf, size_t *used)
     return 1;
 }
 
+static int batch_pressure(int fd, size_t need, double *keep, uint8_t *weight_log)
+{
+    *keep = 1.0;
+    *weight_log = 0;
+
+    struct statvfs st;
+    if (fstatvfs(fd, &st) || st.f_blocks == 0 || st.f_frsize == 0) {
+        return 1;
+    }
+
+    uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
+    uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.1L);
+    if (free_bytes < reserve_bytes + need) {
+        return 0;
+    }
+
+    double avail = (double)st.f_bavail / st.f_blocks;
+    if (avail >= 0.2) {
+        return 1;
+    }
+
+    *keep = __builtin_exp2(50.0 * (avail - 0.2));
+    int wl = (int)(-50.0 * (avail - 0.2));
+    *weight_log = wl > 31 ? 31 : wl;
+    return 1;
+}
+
 static int batch_put(int fd, char *buf, size_t *used, const char *t, const char *k, const char *v)
 {
+    static double keep = 1.0;
+    static uint8_t weight_log = 0;
+
     size_t tl = strlen(t);
     size_t kl = strlen(k);
     size_t vl = strlen(v);
@@ -1417,13 +1441,9 @@ static int batch_put(int fd, char *buf, size_t *used, const char *t, const char 
     r.magic = MAGIC;
     r.len = (uint32_t)(sizeof(r) + tl + kl + vl);
     r.t_len = (uint8_t)tl;
-    r.weight_log = 0;
     r.k_len = (uint16_t)kl;
     r.v_len = (uint32_t)vl;
     r.op = OP_PUT;
-    r.bf = compute_bf(k, kl) | compute_bf(v, vl);
-    r.key_hash = key_hash(t, r.t_len, k, r.k_len);
-    r.check = rec_check(&r, t, k, v);
 
     if (r.len > BATCH_WRITE_BYTES) {
         if (!batch_flush(fd, buf, used)) return 0;
@@ -1432,6 +1452,20 @@ static int batch_put(int fd, char *buf, size_t *used, const char *t, const char 
     if (BATCH_WRITE_BYTES - *used < r.len && !batch_flush(fd, buf, used)) {
         return 0;
     }
+    if (!*used && !batch_pressure(fd, r.len, &keep, &weight_log)) {
+        return 0;
+    }
+    if (keep < 1.0) {
+        double gate = (double)(key_hash(t, r.t_len, k, r.k_len) >> 11) * 0x1.0p-53;
+        if (gate > keep) {
+            return 1;
+        }
+        r.weight_log = weight_log;
+    }
+
+    r.bf = compute_bf(k, kl) | compute_bf(v, vl);
+    r.key_hash = key_hash(t, r.t_len, k, r.k_len);
+    r.check = rec_check(&r, t, k, v);
 
     memcpy(buf + *used, &r, sizeof(r));
     *used += sizeof(r);
