@@ -2557,8 +2557,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
                                     }
                                     if (match) {
                                         double db_w = (double)(1U << (r->weight_log > 20 ? 20 : r->weight_log));
-                                        double qw = (threshold < 1.0 && r->weight_log < max_w) ? 1.0 / threshold : 1.0;
-                                        double w_weight = db_w * qw;
+                                        double w_weight = (threshold < 1.0 && r->weight_log < max_w) ? (db_w > 1.0 / threshold ? db_w : 1.0 / threshold) : db_w;
                                         double eff_w = is_decay ? w_weight * __builtin_fabs(cur) : w_weight;
                                         if (eff_w < min_weight) continue;
                                         if (op == 4 || op == 5) {
@@ -3092,8 +3091,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
             }
             double db_w = (double)(1U << (r->weight_log > 20 ? 20 : r->weight_log));
 
-            double qw = (threshold < 1.0 && r->weight_log < max_w) ? 1.0 / threshold : 1.0;
-            double w = db_w * qw;
+            double w = (threshold < 1.0 && r->weight_log < max_w) ? (db_w > 1.0 / threshold ? db_w : 1.0 / threshold) : db_w;
             double dc = 1;
             if (r->v_len > 0 && r->v_len < 192) {
                 double cur = 0;
@@ -3132,8 +3130,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
             }
             double db_w = (double)(1U << (r->weight_log > 20 ? 20 : r->weight_log));
 
-            double qw = (threshold < 1.0 && r->weight_log < max_w) ? 1.0 / threshold : 1.0;
-            double w = db_w * qw;
+            double w = (threshold < 1.0 && r->weight_log < max_w) ? (db_w > 1.0 / threshold ? db_w : 1.0 / threshold) : db_w;
             int is_decay = 0;
             double cur = 0;
             if (r->v_len > 0 && r->v_len < 192) {
