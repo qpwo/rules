@@ -304,7 +304,7 @@ static void load_db(const char *path)
     }
 
     map_size = (size_t)st.st_size;
-    map_base = mmap(NULL, map_size, PROT_READ, MAP_SHARED, fd, 0);
+    map_base = mmap(NULL, map_size, PROT_READ, MAP_SHARED | MAP_POPULATE, fd, 0);
     if (close(fd)) {
         die("close");
     }
@@ -822,40 +822,32 @@ static int do_search(const char *t, int argc, char **argv)
 
     #pragma omp parallel
     {
-        uint64_t chunk = valid_size / omp_get_num_threads();
+        uint64_t chunk = ht_cap / omp_get_num_threads();
         uint64_t start = omp_get_thread_num() * chunk;
-        uint64_t end = (omp_get_thread_num() == omp_get_num_threads() - 1) ? valid_size : start + chunk;
-        while (start < end) {
-            if (start + sizeof(Record) <= valid_size && *(uint32_t*)(map_base + start) == MAGIC) {
-                if (rec_valid(start)) break;
-            }
-            start++;
-        }
-        while (start < end) {
-            Record *r = rec_at(start);
-            if (r->t_len == tl && !memcmp(rec_t(r), t, tl)) {
-                Node *n = ht_get(rec_t(r), r->t_len, rec_k(r), r->k_len);
-                if (n && n->off1 - 1 == start && r->op != OP_DEL) {
-                    int match = 1;
-                    for (int j = 4; j < argc; j++) {
-                        if (!memmem(rec_v(r), r->v_len, argv[j], strlen(argv[j])) &&
-                            !memmem(rec_k(r), r->k_len, argv[j], strlen(argv[j]))) {
-                            match = 0;
-                            break;
-                        }
-                    }
-                    if (match) {
-                        #pragma omp critical
-                        {
-                            if (fwrite(rec_k(r), 1, r->k_len, stdout) != r->k_len) die("fwrite");
-                            putchar('\t');
-                            if (fwrite(rec_v(r), 1, r->v_len, stdout) != r->v_len) die("fwrite");
-                            putchar('\n');
-                        }
-                    }
+        uint64_t end = (omp_get_thread_num() == omp_get_num_threads() - 1) ? ht_cap : start + chunk;
+        for (uint64_t i = start; i < end; i++) {
+            if (!ht[i].off1) continue;
+            Record *r = rec_at(ht[i].off1 - 1);
+            if (r->op == OP_DEL || r->t_len != tl) continue;
+            if (memcmp(rec_t(r), t, tl) != 0) continue;
+
+            int match = 1;
+            for (int j = 4; j < argc; j++) {
+                if (!memmem(rec_v(r), r->v_len, argv[j], strlen(argv[j])) &&
+                    !memmem(rec_k(r), r->k_len, argv[j], strlen(argv[j]))) {
+                    match = 0;
+                    break;
                 }
             }
-            start += r->len;
+            if (match) {
+                #pragma omp critical
+                {
+                    if (fwrite(rec_k(r), 1, r->k_len, stdout) != r->k_len) die("fwrite");
+                    putchar('\t');
+                    if (fwrite(rec_v(r), 1, r->v_len, stdout) != r->v_len) die("fwrite");
+                    putchar('\n');
+                }
+            }
         }
     }
     return 0;
@@ -1028,30 +1020,23 @@ static int do_closest(const char *path, const char *type, const char *t, const c
         const char *local_k = NULL;
         uint16_t local_k_len = 0;
 
-        uint64_t chunk = valid_size / omp_get_num_threads();
+        uint64_t chunk = ht_cap / omp_get_num_threads();
         uint64_t start = omp_get_thread_num() * chunk;
-        uint64_t end = (omp_get_thread_num() == omp_get_num_threads() - 1) ? valid_size : start + chunk;
-        while (start < end) {
-            if (start + sizeof(Record) <= valid_size && *(uint32_t*)(map_base + start) == MAGIC) {
-                if (rec_valid(start)) break;
-            }
-            start++;
-        }
+        uint64_t end = (omp_get_thread_num() == omp_get_num_threads() - 1) ? ht_cap : start + chunk;
 
-        while (start < end) {
-            Record *c = rec_at(start);
-            if (c->t_len == r->t_len && c->v_len == r->v_len && !memcmp(rec_t(c), t, r->t_len)) {
-                Node *cn = ht_get(rec_t(c), c->t_len, rec_k(c), c->k_len);
-                if (cn && cn->off1 - 1 == start && c->op != OP_DEL && start != (uint64_t)(n->off1 - 1)) {
-                    float score = dot_fn(rec_v(r), rec_v(c), r->v_len);
-                    if (score > local_best) {
-                        local_best = score;
-                        local_k = rec_k(c);
-                        local_k_len = c->k_len;
-                    }
-                }
+        for (uint64_t i = start; i < end; i++) {
+            if (!ht[i].off1) continue;
+            Record *c = rec_at(ht[i].off1 - 1);
+            if (c->op == OP_DEL || c->t_len != r->t_len || c->v_len != r->v_len) continue;
+            if (ht[i].off1 == n->off1) continue; // skip self
+            if (memcmp(rec_t(c), t, r->t_len) != 0) continue;
+
+            float score = dot_fn(rec_v(r), rec_v(c), r->v_len);
+            if (score > local_best) {
+                local_best = score;
+                local_k = rec_k(c);
+                local_k_len = c->k_len;
             }
-            start += c->len;
         }
 
         #pragma omp critical
