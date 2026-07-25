@@ -2575,8 +2575,8 @@ if (match) {
                                 } else {
                                     char val[128]; int vl_out = 0;
 if (max_wl < 0) max_wl = 0;
-                                double rse = count_est > 0 ? __builtin_sqrt(w2_sum > count_est ? w2_sum - count_est : 0) / count_est : 0;
-                                double confidence = rse >= 1.0 ? 0.0 : 1.0 - rse;
+double rse = count_est > 0 ? __builtin_sqrt(count_est > (double)raw_count ? count_est - (double)raw_count : 0) / count_est : 0;
+double confidence = rse >= 1.0 ? 0.0 : 1.0 - rse;
                                 if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu\t%d\t%.4g", count_est, (unsigned long long)raw_count, max_wl, confidence);
                                 else vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%llu\t%d\t%.4g", sum, raw_sum, (unsigned long long)raw_count, max_wl, confidence);
                                     send_response(fd, cipherkey, 0, val, vl_out);
