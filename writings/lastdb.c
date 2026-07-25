@@ -1273,7 +1273,7 @@ static int rec_has_terms(Record *r, int num_words, char **words, size_t *lens, u
 }
 
 static void write_all(int fd, const void *p, size_t n);
-static void write_weighted_record(Record *r, double now);
+static size_t build_weighted(Record *r, double now, char *out, size_t cap);
 
 static int do_search(const char *t, int num_words, char **words)
 {
@@ -1298,63 +1298,58 @@ static int do_search(const char *t, int num_words, char **words)
     ht_tenant_range(t, tl, &start_idx, &end_idx);
     uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
     uint64_t *offs = get_sorted_offs(start_idx, count);
+    size_t out_cap = 256 * 1024 * 1024;
+    char *out = mmap(NULL, out_cap, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+    if (out == MAP_FAILED) die("mmap search out");
+    size_t out_len = 0;
     #pragma omp parallel for schedule(static, 4096) num_threads(worker_threads())
     for (uint64_t i = 0; i < count; i++) {
         Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
         if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), t, tl)) continue;
         if (r->weight_log > 0 && !(r->v_len > 0 && r->v_len < 192 && rec_v(r)[0] == '\x1F')) continue;
         if (!rec_has_terms(r, num_words, words, lens, term_bfs, now)) continue;
-        #pragma omp critical
-        {
-            write_weighted_record(r, now);
-        }
+        char lb[65536];
+        size_t rl = build_weighted(r, now, lb, sizeof(lb));
+        if (!rl) continue;
+        size_t my_off;
+        #pragma omp atomic capture
+        { my_off = out_len; out_len += rl; }
+        if (my_off + rl <= out_cap) memcpy(out + my_off, lb, rl);
     }
+    write_all(1, out, out_len > out_cap ? out_cap : out_len);
+    munmap(out, out_cap);
     if (offs) munmap(offs, count * 8);
     return 0;
 }
 
-static void write_weighted_record(Record *r, double now)
+static size_t build_weighted(Record *r, double now, char *out, size_t cap)
 {
     const char *v = rec_v(r);
     size_t vl = r->v_len;
-    char buf[64];
+    char dbuf[64];
     double cur = 0;
-
     if (vl > 0 && vl < 192 && decay_value_at(v, vl, now, &cur)) {
-        if (cur == 0) {
-            return;
-        }
-        int n = snprintf(buf, sizeof(buf), "%.17g", cur);
-        if (n < 0 || n >= (int)sizeof(buf)) {
-            diex("decay value print failed");
-        }
-        v = buf;
+        if (cur == 0) return 0;
+        int n = snprintf(dbuf, sizeof(dbuf), "%.17g", cur);
+        if (n < 0 || n >= (int)sizeof(dbuf)) return 0;
+        v = dbuf;
         vl = (size_t)n;
     }
-
     double print_w = (double)(1U << (r->weight_log > 13 ? 13 : r->weight_log));
     if (cur) print_w *= __builtin_fabs(cur);
-    if (print_w < 0.5) return;
+    if (print_w < 0.5) return 0;
     char wbuf[32];
     int wl = snprintf(wbuf, sizeof(wbuf), "%.5g\t", print_w);
-    if (wl < 0 || wl >= (int)sizeof(wbuf)) diex("weight print failed");
-    char lbuf[8192];
+    if (wl < 0 || wl >= (int)sizeof(wbuf)) return 0;
     size_t total = (size_t)wl + r->k_len + 1 + vl + 1;
-    if (total <= sizeof(lbuf)) {
-        size_t off = 0;
-        memcpy(lbuf, wbuf, wl); off = wl;
-        memcpy(lbuf + off, rec_k(r), r->k_len); off += r->k_len;
-        lbuf[off++] = '\t';
-        memcpy(lbuf + off, v, vl); off += vl;
-        lbuf[off++] = '\n';
-        write_all(1, lbuf, off);
-    } else {
-        write_all(1, wbuf, wl);
-        write_all(1, rec_k(r), r->k_len);
-        write_all(1, "\t", 1);
-        write_all(1, v, vl);
-        write_all(1, "\n", 1);
-    }
+    if (total > cap) return 0;
+    size_t off = 0;
+    memcpy(out, wbuf, wl); off = wl;
+    memcpy(out + off, rec_k(r), r->k_len); off += r->k_len;
+    out[off++] = '\t';
+    memcpy(out + off, v, vl); off += vl;
+    out[off++] = '\n';
+    return off;
 }
 
 static int do_scan(const char *t, const char *prefix)
@@ -1374,25 +1369,30 @@ static int do_scan(const char *t, const char *prefix)
     ht_tenant_range(t, tl, &start_idx, &end_idx);
     uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
     uint64_t *offs = get_sorted_offs(start_idx, count);
+    size_t out_cap = 256 * 1024 * 1024;
+    char *out = mmap(NULL, out_cap, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+    if (out == MAP_FAILED) die("mmap scan out");
+    size_t out_len = 0;
     #pragma omp parallel for schedule(static, 4096) num_threads(worker_threads())
     for (uint64_t i = 0; i < count; i++) {
         Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
-        if (r->op == OP_DEL || r->t_len != tl) {
-            continue;
-        }
-        if (memcmp(rec_t(r), t, tl)) {
-            continue;
-        }
-        if (pl && (r->k_len < pl || memcmp(rec_k(r), prefix, pl))) {
-            continue;
-        }
+        if (r->op == OP_DEL || r->t_len != tl) continue;
+        if (memcmp(rec_t(r), t, tl)) continue;
+        if (pl && (r->k_len < pl || memcmp(rec_k(r), prefix, pl))) continue;
         if (r->v_len > 0 && r->v_len < 192 && rec_v(r)[0] == '\x1F') {
             double dc;
             if (decay_value_at(rec_v(r), r->v_len, now, &dc) && dc == 0) continue;
         }
-        #pragma omp critical
-        write_weighted_record(r, now);
+        char lb[65536];
+        size_t rl = build_weighted(r, now, lb, sizeof(lb));
+        if (!rl) continue;
+        size_t my_off;
+        #pragma omp atomic capture
+        { my_off = out_len; out_len += rl; }
+        if (my_off + rl <= out_cap) memcpy(out + my_off, lb, rl);
     }
+    write_all(1, out, out_len > out_cap ? out_cap : out_len);
+    munmap(out, out_cap);
     if (offs) munmap(offs, count * 8);
     return 0;
 }
