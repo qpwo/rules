@@ -326,47 +326,14 @@ static void sync_fd(int fd)
     }
 }
 
-static void write_allv(int fd, struct iovec *iov, int n)
-{
-    while (n) {
-        ssize_t got = writev(fd, iov, n);
-        if (got < 0 && errno == EINTR) {
-            continue;
-        }
-        if (got < 0) {
-            die("writev");
-        }
-        if (!got) {
-            diex("writev returned zero");
-        }
-
-        size_t done = (size_t)got;
-        while (n && done >= iov[0].iov_len) {
-            done -= iov[0].iov_len;
-            iov++;
-            n--;
-        }
-        if (n && done) {
-            iov[0].iov_base = (char *)iov[0].iov_base + done;
-            iov[0].iov_len -= done;
-        }
-    }
-}
-
 static void append_fd(int fd, const char *t, const char *k, const char *v, uint8_t op)
 {
     size_t tl = strlen(t);
     size_t kl = strlen(k);
     size_t vl = v ? strlen(v) : 0;
-    if (tl > UINT16_MAX || kl > UINT16_MAX) {
-        diex("tenant/key too long");
-    }
-    if (vl > UINT32_MAX) {
-        diex("value too long");
-    }
-    if (sizeof(Record) + tl + kl + vl > UINT32_MAX) {
-        diex("record too long");
-    }
+    if (tl > UINT16_MAX || kl > UINT16_MAX) diex("tenant/key too long");
+    if (vl > UINT32_MAX) diex("value too long");
+    if (sizeof(Record) + tl + kl + vl > UINT32_MAX) diex("record too long");
 
     Record r = {0};
     r.magic = MAGIC;
@@ -378,13 +345,24 @@ static void append_fd(int fd, const char *t, const char *k, const char *v, uint8
     r.key_hash = key_hash(t, r.t_len, k, r.k_len);
     r.check = rec_check(&r, t, k, v ? v : "");
 
-    struct iovec iov[4] = {
-        {&r, sizeof(r)},
-        {(void *)t, tl},
-        {(void *)k, kl},
-        {(void *)(v ? v : ""), vl},
-    };
-    write_allv(fd, iov, 4);
+    char stack_buf[4096];
+    char *buf = r.len <= sizeof(stack_buf) ? stack_buf : malloc(r.len);
+    if (!buf) die("malloc");
+    memcpy(buf, &r, sizeof(r));
+    memcpy(buf + sizeof(r), t, tl);
+    memcpy(buf + sizeof(r) + tl, k, kl);
+    if (vl) memcpy(buf + sizeof(r) + tl + kl, v, vl);
+
+    char *s = buf;
+    size_t n = r.len;
+    while (n) {
+        ssize_t got = write(fd, s, n);
+        if (got < 0 && errno == EINTR) continue;
+        if (got <= 0) die("write");
+        s += got;
+        n -= (size_t)got;
+    }
+    if (buf != stack_buf) free(buf);
 }
 
 static int open_lockfile(const char *path)
@@ -414,23 +392,11 @@ static int open_append(const char *path)
 
 static int do_write(const char *path, const char *t, const char *k, const char *v, uint8_t op)
 {
-    int lockfd = open_lockfile(path);
-    struct stat st;
-    if (!stat(path, &st)) {
-        map_size = (size_t)st.st_size;
-        valid_size = map_size;
-    } else {
-        map_size = 0;
-        valid_size = 0;
-    }
-
-    int fd = open_append(path);
+    int fd = open(path, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0666);
+    if (fd < 0) die("open");
     append_fd(fd, t, k, v, op);
     sync_fd(fd);
-    if (close(fd)) {
-        die("close");
-    }
-    close(lockfd);
+    if (close(fd)) die("close");
     return 0;
 }
 
@@ -823,29 +789,42 @@ static int do_search(const char *t, int argc, char **argv)
     size_t tl = strlen(t);
     if (tl > UINT16_MAX || !ht_cap) return 0;
 
-    #pragma omp parallel for schedule(dynamic, 256)
-    for (uint64_t i = 0; i < ht_cap; i++) {
-        if (!ht[i].off1) continue;
-        Record *r = rec_at(ht[i].off1 - 1);
-        if (r->op == OP_DEL || r->t_len != tl) continue;
-        if (memcmp(rec_t(r), t, tl)) continue;
-
-        int match = 1;
-        for (int j = 4; j < argc; j++) {
-            if (!memmem(rec_v(r), r->v_len, argv[j], strlen(argv[j])) &&
-                !memmem(rec_k(r), r->k_len, argv[j], strlen(argv[j]))) {
-                match = 0;
-                break;
+    #pragma omp parallel
+    {
+        uint64_t chunk = valid_size / omp_get_num_threads();
+        uint64_t start = omp_get_thread_num() * chunk;
+        uint64_t end = (omp_get_thread_num() == omp_get_num_threads() - 1) ? valid_size : start + chunk;
+        while (start < end) {
+            if (start + sizeof(Record) <= valid_size && *(uint32_t*)(map_base + start) == MAGIC) {
+                if (rec_valid(start)) break;
             }
+            start++;
         }
-        if (match) {
-            #pragma omp critical
-            {
-                if (fwrite(rec_k(r), 1, r->k_len, stdout) != r->k_len) die("fwrite");
-                putchar('\t');
-                if (fwrite(rec_v(r), 1, r->v_len, stdout) != r->v_len) die("fwrite");
-                putchar('\n');
+        while (start < end) {
+            Record *r = rec_at(start);
+            if (r->t_len == tl && !memcmp(rec_t(r), t, tl)) {
+                Node *n = ht_get(rec_t(r), r->t_len, rec_k(r), r->k_len);
+                if (n && n->off1 - 1 == start && r->op != OP_DEL) {
+                    int match = 1;
+                    for (int j = 4; j < argc; j++) {
+                        if (!memmem(rec_v(r), r->v_len, argv[j], strlen(argv[j])) &&
+                            !memmem(rec_k(r), r->k_len, argv[j], strlen(argv[j]))) {
+                            match = 0;
+                            break;
+                        }
+                    }
+                    if (match) {
+                        #pragma omp critical
+                        {
+                            if (fwrite(rec_k(r), 1, r->k_len, stdout) != r->k_len) die("fwrite");
+                            putchar('\t');
+                            if (fwrite(rec_v(r), 1, r->v_len, stdout) != r->v_len) die("fwrite");
+                            putchar('\n');
+                        }
+                    }
+                }
             }
+            start += r->len;
         }
     }
     return 0;
@@ -1018,20 +997,30 @@ static int do_closest(const char *path, const char *type, const char *t, const c
         const char *local_k = NULL;
         uint16_t local_k_len = 0;
 
-        #pragma omp for schedule(static) nowait
-        for (uint64_t i = 0; i < ht_cap; i++) {
-            if (!ht[i].off1) continue;
-            if (ht[i].off1 - 1 == (uint64_t)(n->off1 - 1)) continue;
-            Record *c = rec_at(ht[i].off1 - 1);
-            if (c->op == OP_DEL || c->t_len != r->t_len || c->v_len != r->v_len) continue;
-            if (memcmp(rec_t(c), t, r->t_len) != 0) continue;
-
-            float score = dot_fn(rec_v(r), rec_v(c), r->v_len);
-            if (score > local_best) {
-                local_best = score;
-                local_k = rec_k(c);
-                local_k_len = c->k_len;
+        uint64_t chunk = valid_size / omp_get_num_threads();
+        uint64_t start = omp_get_thread_num() * chunk;
+        uint64_t end = (omp_get_thread_num() == omp_get_num_threads() - 1) ? valid_size : start + chunk;
+        while (start < end) {
+            if (start + sizeof(Record) <= valid_size && *(uint32_t*)(map_base + start) == MAGIC) {
+                if (rec_valid(start)) break;
             }
+            start++;
+        }
+
+        while (start < end) {
+            Record *c = rec_at(start);
+            if (c->t_len == r->t_len && c->v_len == r->v_len && !memcmp(rec_t(c), t, r->t_len)) {
+                Node *cn = ht_get(rec_t(c), c->t_len, rec_k(c), c->k_len);
+                if (cn && cn->off1 - 1 == start && c->op != OP_DEL && start != (uint64_t)(n->off1 - 1)) {
+                    float score = dot_fn(rec_v(r), rec_v(c), r->v_len);
+                    if (score > local_best) {
+                        local_best = score;
+                        local_k = rec_k(c);
+                        local_k_len = c->k_len;
+                    }
+                }
+            }
+            start += c->len;
         }
 
         #pragma omp critical
