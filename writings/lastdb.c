@@ -1521,6 +1521,7 @@ static int do_compact(const char *path)
     size_t used = 0;
     double compact_now = (double)time(NULL);
     uint64_t *offs = get_sorted_offs(0, ht_len);
+    if (offs) (void)posix_madvise(map_base, map_size, POSIX_MADV_SEQUENTIAL);
     for (uint64_t i = 0; i < ht_len; i++) {
         uint64_t off = offs ? offs[i] : (ht[i].off1 - 1);
         Record *r = rec_at(off);
