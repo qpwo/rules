@@ -253,12 +253,8 @@ static int worker_threads(void)
     return n > keep ? n - keep : 1;
 }
 
-static void ht_reserve(uint64_t need)
+static uint64_t ht_target_cap(uint64_t need)
 {
-    if (need <= ht_cap) {
-        return;
-    }
-
     uint64_t ncap = ht_cap ? ht_cap : 4096;
     while (ncap < need) {
         if (ncap > UINT64_MAX / 2) {
@@ -266,7 +262,16 @@ static void ht_reserve(uint64_t need)
         }
         ncap *= 2;
     }
+    return ncap + 64;
+}
 
+static void ht_reserve(uint64_t need)
+{
+    if (need + 64 <= ht_cap) {
+        return;
+    }
+
+    uint64_t ncap = ht_target_cap(need);
     size_t old_bytes = ht_cap * sizeof(*ht);
     size_t bytes = ncap * sizeof(*ht);
     if (bytes / sizeof(*ht) != ncap) {
