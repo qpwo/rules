@@ -1646,7 +1646,16 @@ typedef struct {
 static inline void chunk_push(Chunk *chunk);
 static inline Chunk *chunk_pop(void);
 
+struct rseq {
+    uint32_t cpu_id_start;
+    uint32_t cpu_id;
+    uint64_t rseq_cs;
+    uint32_t flags;
+} __attribute__((aligned(32)));
+extern __thread struct rseq __rseq_abi __attribute__((weak));
+
 static inline int fast_getcpu(void) {
+    if (&__rseq_abi && __rseq_abi.cpu_id_start < 1000000) return __rseq_abi.cpu_id_start;
     return sched_getcpu();
 }
 
@@ -1874,6 +1883,41 @@ typedef struct {
 static CacheLine cpu_chunks[1024];
 
 static inline Chunk *chunk_swap(Chunk *in) {
+    if (&__rseq_abi && __rseq_abi.cpu_id_start < 1000000) {
+        uint64_t cs[4] __attribute__((aligned(32))) = {0};
+        int ok = 1;
+        Chunk *scratch;
+        uint64_t vcpu;
+        __asm__ __volatile__ (
+            "leaq 90f(%%rip), %%rax\n\t"
+            "movq %%rax, 8(%[cs])\n\t"
+            "leaq 91f(%%rip), %%rax\n\t"
+            "subq 8(%[cs]), %%rax\n\t"
+            "movq %%rax, 16(%[cs])\n\t"
+            "leaq 92f(%%rip), %%rax\n\t"
+            "movq %%rax, 24(%[cs])\n\t"
+            "movq %[cs], 8(%[rseq])\n\t"
+            "90:\n\t"
+            "movl 4(%[rseq]), %k[vcpu]\n\t"
+            "andl $1023, %k[vcpu]\n\t"
+            "shlq $6, %q[vcpu]\n\t"
+            "addq %[ptrs], %q[vcpu]\n\t"
+            "movq (%q[vcpu]), %[scratch]\n\t"
+            "movq %[in], (%q[vcpu])\n\t"
+            "91:\n\t"
+            "jmp 93f\n\t"
+            ".int 0x53053053\n\t"
+            "92:\n\t"
+            "xorl %[ok], %[ok]\n\t"
+            "93:\n\t"
+            "movq $0, 8(%[rseq])\n\t"
+            : [ok] "+r" (ok), [scratch] "=&r" (scratch), [vcpu] "=&r" (vcpu)
+            : [cs] "r" (cs), [rseq] "r" (&__rseq_abi),
+              [ptrs] "r" (cpu_chunks), [in] "r" (in)
+            : "rax", "memory", "cc"
+        );
+        if (ok) return scratch;
+    }
     int cpu = sched_getcpu();
     if (cpu < 0 || cpu >= 1024) cpu = 0;
     return __atomic_exchange_n(&cpu_chunks[cpu].chunk, in, __ATOMIC_RELAXED);
