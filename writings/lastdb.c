@@ -3038,7 +3038,7 @@ int main(int argc, char **argv)
             else if (!strcmp(args[0], "search") && n >= 3) do_search(args[1], n - 2, args + 2);
             else if (!strcmp(args[0], "closest") && n == 4) do_closest(db, args[1], args[2], args[3]);
             else if (!strcmp(args[0], "count") && n >= 2) {
-                double count_est = 0; uint64_t raw_c = 0;
+                double count_est = 0; uint64_t raw_c = 0; int max_wl = 0;
                 size_t tl = strlen(args[1]);
                 size_t pl = n >= 3 ? strlen(args[2]) : 0;
                 double threshold = n >= 4 ? strtod(args[3], NULL) : 1.0;
@@ -3048,7 +3048,7 @@ if (threshold > 1.0) threshold = 1.0;
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
             uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
             uint64_t *offs = get_sorted_offs(start_idx, count);
-            #pragma omp parallel for reduction(+:count_est,raw_c) schedule(static, 4096) num_threads(worker_threads())
+            #pragma omp parallel for reduction(+:count_est,raw_c) reduction(max:max_wl) schedule(static, 4096) num_threads(worker_threads())
             for (uint64_t i = 0; i < count; i++) {
                 Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
                 if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
@@ -3058,6 +3058,7 @@ if (threshold > 1.0) threshold = 1.0;
                 if ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
             }
             double db_w = (double)(1U << (r->weight_log > 13 ? 13 : r->weight_log));
+            if (r->weight_log > max_wl) max_wl = r->weight_log;
 
             double w = (threshold < 1.0 && r->weight_log == 0) ? db_w / threshold : db_w;
             count_est += w;
@@ -3065,10 +3066,11 @@ if (threshold > 1.0) threshold = 1.0;
 
                 }
                 if (offs) munmap(offs, count * 8);
-                printf("%.4g\t%llu\n", count_est, (unsigned long long)raw_c);
+                if (max_wl > 0 && raw_c > 0 && raw_c < (1ULL << max_wl)) { count_est = (double)raw_c; max_wl = 0; }
+                printf("%.4g\t%llu\t%d\n", count_est, (unsigned long long)raw_c, max_wl);
             }
             else if (!strcmp(args[0], "sum") && n >= 2) {
-                double s = 0; uint64_t raw_s = 0; double raw_sum = 0;
+                double s = 0; uint64_t raw_s = 0; double raw_sum = 0; int max_wl = 0;
                 size_t tl = strlen(args[1]);
                 size_t pl = n >= 3 ? strlen(args[2]) : 0;
                 double threshold = n >= 4 ? strtod(args[3], NULL) : 1.0;
@@ -3078,7 +3080,7 @@ if (threshold > 1.0) threshold = 1.0;
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
             uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
             uint64_t *offs = get_sorted_offs(start_idx, count);
-            #pragma omp parallel for reduction(+:s,raw_s,raw_sum) schedule(static, 4096) num_threads(worker_threads())
+            #pragma omp parallel for reduction(+:s,raw_s,raw_sum) reduction(max:max_wl) schedule(static, 4096) num_threads(worker_threads())
             for (uint64_t i = 0; i < count; i++) {
                 Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
                 if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
@@ -3088,6 +3090,7 @@ if (threshold > 1.0) threshold = 1.0;
                 if ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
             }
             double db_w = (double)(1U << (r->weight_log > 13 ? 13 : r->weight_log));
+            if (r->weight_log > max_wl) max_wl = r->weight_log;
 
             double w = (threshold < 1.0 && r->weight_log == 0) ? db_w / threshold : db_w;
             int is_decay = 0;
@@ -3111,7 +3114,9 @@ if (threshold > 1.0) threshold = 1.0;
                     }
                 }
                 if (offs) munmap(offs, count * 8);
-                printf("%.17g\t%.17g\t%llu\n", s, raw_sum, (unsigned long long)raw_s);
+                if (max_wl > 0 && raw_s > 0 && raw_s < (1ULL << max_wl)) { s = raw_sum; max_wl = 0; }
+                printf("%.17g\t%.17g\t%llu\t%d\n", s, raw_sum, (unsigned long long)raw_s, max_wl);
+
             }
             else printf("ERR\n");
             fflush(stdout);
