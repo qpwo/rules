@@ -2204,36 +2204,14 @@ static inline Chunk *chunk_pop(void) {
 static int srv_db_fd = -1;
 #include <sys/resource.h>
 #include <pthread.h>
-static struct { pthread_rwlock_t rw; char pad[64 - sizeof(pthread_rwlock_t)]; } srv_rwlocks[256];
-static pthread_mutex_t srv_all_lock = PTHREAD_MUTEX_INITIALIZER;
-static int srv_rwlocks_init = 0;
-static inline void srv_init_locks(void) {
-    if (!__atomic_load_n(&srv_rwlocks_init, __ATOMIC_ACQUIRE)) {
-        #pragma omp critical (init)
-        if (!__atomic_load_n(&srv_rwlocks_init, __ATOMIC_ACQUIRE)) {
-            for (int i = 0; i < 256; i++) pthread_rwlock_init(&srv_rwlocks[i].rw, NULL);
-            __atomic_store_n(&srv_rwlocks_init, 1, __ATOMIC_RELEASE);
-        }
-    }
-}
-static inline void srv_lock_all(void) {
-    pthread_mutex_lock(&srv_all_lock);
-    for (int i = 0; i < 256; i++) pthread_rwlock_wrlock(&srv_rwlocks[i].rw);
-}
-static inline void srv_unlock_all(void) {
-    for (int i = 256; i-- > 0; ) pthread_rwlock_unlock(&srv_rwlocks[i].rw);
-    pthread_mutex_unlock(&srv_all_lock);
-}
+static pthread_rwlock_t srv_rw = PTHREAD_RWLOCK_INITIALIZER;
 static inline int srv_read_lock_func(const char *db_path) {
-    srv_init_locks();
-    int cpu = fast_getcpu();
-    if (cpu < 0 || cpu >= 256) cpu = 0;
-    pthread_rwlock_rdlock(&srv_rwlocks[cpu].rw);
+    pthread_rwlock_rdlock(&srv_rw);
     struct stat st, fd_st;
     int needs_reopen = (srv_db_fd < 0) || (!stat(db_path, &st) && (!fstat(srv_db_fd, &fd_st) && st.st_ino != fd_st.st_ino || st.st_size > (off_t)map_size));
     if (needs_reopen || ht_len != ht_sorted_len) {
-        pthread_rwlock_unlock(&srv_rwlocks[cpu].rw);
-        srv_lock_all();
+        pthread_rwlock_unlock(&srv_rw);
+        pthread_rwlock_wrlock(&srv_rw);
         needs_reopen = (srv_db_fd < 0) || (!stat(db_path, &st) && (!fstat(srv_db_fd, &fd_st) && st.st_ino != fd_st.st_ino || st.st_size > (off_t)map_size));
         if (needs_reopen) {
             if (srv_db_fd >= 0 && (!fstat(srv_db_fd, &fd_st) && st.st_ino != fd_st.st_ino)) { close(srv_db_fd); srv_db_fd = -1; }
@@ -2241,14 +2219,13 @@ static inline int srv_read_lock_func(const char *db_path) {
             if (srv_db_fd < 0) srv_db_fd = open_append(db_path);
         }
         if (ht_len != ht_sorted_len) deduplicate_ht();
-        srv_unlock_all();
-        pthread_rwlock_rdlock(&srv_rwlocks[cpu].rw);
+        pthread_rwlock_unlock(&srv_rw);
+        pthread_rwlock_rdlock(&srv_rw);
     }
-    return cpu;
+    return 0;
 }
 static inline int srv_write_lock_func(const char *db_path) {
-    srv_init_locks();
-    srv_lock_all();
+    pthread_rwlock_wrlock(&srv_rw);
     struct stat st, fd_st;
     if (srv_db_fd >= 0 && !stat(db_path, &st) && !fstat(srv_db_fd, &fd_st) && st.st_ino != fd_st.st_ino) {
         close(srv_db_fd); srv_db_fd = -1;
@@ -2259,15 +2236,10 @@ static inline int srv_write_lock_func(const char *db_path) {
     }
     return 0;
 }
-static inline void srv_unlock_read_attr(int *cpu) {
-    if (*cpu >= 0) pthread_rwlock_unlock(&srv_rwlocks[*cpu].rw);
-}
-static inline void srv_unlock_write_attr(int *dummy) {
-    (void)dummy;
-    srv_unlock_all();
-}
-#define SRV_READ_LOCK(path) int _srv_cpu __attribute__((cleanup(srv_unlock_read_attr))) = srv_read_lock_func(path)
-#define SRV_WRITE_LOCK(path) int _srv_dummy __attribute__((cleanup(srv_unlock_write_attr))) = srv_write_lock_func(path)
+static inline void srv_unlock_read_attr(int *dummy) { (void)dummy; pthread_rwlock_unlock(&srv_rw); }
+static inline void srv_unlock_write_attr(int *dummy) { (void)dummy; pthread_rwlock_unlock(&srv_rw); }
+#define SRV_READ_LOCK(path) int _srv_r __attribute__((cleanup(srv_unlock_read_attr))) = srv_read_lock_func(path)
+#define SRV_WRITE_LOCK(path) int _srv_w __attribute__((cleanup(srv_unlock_write_attr))) = srv_write_lock_func(path)
 
 static void do_serve(const char *db_path, int port, int32_t cipherkey) {
     omp_set_dynamic(1);
