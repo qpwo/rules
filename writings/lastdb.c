@@ -329,6 +329,19 @@ static int cmp_node(const void *a, const void *b) {
     return x->off1 < y->off1 ? -1 : 1;
 }
 
+static int cmp_node_key(const void *a, const void *b) {
+    const Node *x = a, *y = b;
+    Record *rx = rec_at(x->off1 - 1);
+    Record *ry = rec_at(y->off1 - 1);
+    if (rx->t_len != ry->t_len) return rx->t_len < ry->t_len ? -1 : 1;
+    if (rx->k_len != ry->k_len) return rx->k_len < ry->k_len ? -1 : 1;
+    int c1 = memcmp(rec_t(rx), rec_t(ry), rx->t_len);
+    if (c1) return c1;
+    int c2 = memcmp(rec_k(rx), rec_k(ry), rx->k_len);
+    if (c2) return c2;
+    return x->off1 > y->off1 ? -1 : (x->off1 < y->off1 ? 1 : 0);
+}
+
 static void deduplicate_ht(void) {
     if (!ht_len) { ht_sorted_len = 0; return; }
     if (ht_len > ht_sorted_len) {
@@ -338,18 +351,22 @@ static void deduplicate_ht(void) {
     for (uint64_t i = 0; i < ht_len; ) {
         uint64_t j = i + 1;
         while (j < ht_len && ht[j].hash == ht[i].hash) j++;
-        for (uint64_t k = j; k-- > i; ) {
-            Record *rk = rec_at(ht[k].off1 - 1);
-            int dup = 0;
-            for (uint64_t prev = out; prev > 0 && ht[prev-1].hash == ht[i].hash; prev--) {
-                Record *rp = rec_at(ht[prev-1].off1 - 1);
-                if (rk->t_len == rp->t_len && rk->k_len == rp->k_len &&
-                    !memcmp(rec_t(rk), rec_t(rp), rk->t_len) &&
-                    !memcmp(rec_k(rk), rec_k(rp), rk->k_len)) {
-                    dup = 1; break;
+        if (j - i > 1) {
+            qsort(ht + i, j - i, sizeof(*ht), cmp_node_key);
+            for (uint64_t k = i; k < j; k++) {
+                if (k > i) {
+                    Record *rk = rec_at(ht[k].off1 - 1);
+                    Record *rp = rec_at(ht[k-1].off1 - 1);
+                    if (rk->t_len == rp->t_len && rk->k_len == rp->k_len &&
+                        !memcmp(rec_t(rk), rec_t(rp), rk->t_len) &&
+                        !memcmp(rec_k(rk), rec_k(rp), rk->k_len)) {
+                        continue;
+                    }
                 }
+                ht[out++] = ht[k];
             }
-            if (!dup) ht[out++] = ht[k];
+        } else {
+            ht[out++] = ht[i];
         }
         i = j;
     }
@@ -394,7 +411,7 @@ static void load_db(const char *path)
     if (close(fd)) {
         die("close");
     }
-    (void)posix_madvise(map_base, map_size, POSIX_MADV_SEQUENTIAL);
+    (void)posix_madvise(map_base, map_size, POSIX_MADV_RANDOM);
     (void)posix_madvise(map_base, map_size, POSIX_MADV_NOREUSE);
     uint64_t off = valid_size;
     uint64_t start_len = ht_len;
@@ -477,7 +494,7 @@ static int append_raw(int fd, const char *t, size_t tl, const char *k, size_t kl
             if (exists) {
                 r.weight_log = old_wl;
             } else if (wl > 0 && op != OP_DEL) {
-                if (gate > keep) return 0;
+                if (gate > keep) return 1;
                 r.weight_log = wl;
             }
         }
