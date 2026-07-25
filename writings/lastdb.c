@@ -1655,11 +1655,11 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
             while (1) {
                 int fd = accept(srv, NULL, NULL);
                 if (fd >= 0) {
-                    if (active_conn >= max_conn) {
+                    if (__atomic_fetch_add(&active_conn, 1, __ATOMIC_RELAXED) >= max_conn) {
+                        __atomic_fetch_sub(&active_conn, 1, __ATOMIC_RELAXED);
                         close(fd);
                         continue;
                     }
-                    active_conn++;
                     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
                     struct timeval tv = {30, 0};
                     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
@@ -2164,7 +2164,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             chunk_push(c);
                         }
                         close(fd);
-                        active_conn--;
+                        __atomic_fetch_sub(&active_conn, 1, __ATOMIC_RELAXED);
                     }
                 }
             }
