@@ -607,7 +607,7 @@ static double parse_f64(const char *s)
     return x;
 }
 
-static int current_decay(const char *t, const char *k, double *last, double *value)
+static int current_decay(const char *t, const char *k, double *half_life, double *last, double *value)
 {
     if (strlen(t) > UINT16_MAX || strlen(k) > UINT16_MAX) {
         return 0;
@@ -622,19 +622,25 @@ static int current_decay(const char *t, const char *k, double *last, double *val
     if (r->op == OP_DEL) {
         return 0;
     }
-    if (r->v_len >= 128) {
+    if (r->v_len >= 192) {
         diex("stored decay state too long");
     }
 
-    char buf[128] = {0};
+    char buf[192] = {0};
     memcpy(buf, rec_v(r), r->v_len);
-    char *tab = strchr(buf, '\t');
-    if (!tab) {
+    char *tab1 = strchr(buf, '\t');
+    if (!tab1) {
         diex("stored decay state malformed");
     }
-    *tab = 0;
-    *last = parse_f64(buf);
-    *value = parse_f64(tab + 1);
+    *tab1 = 0;
+    char *tab2 = strchr(tab1 + 1, '\t');
+    if (!tab2) {
+        diex("stored decay state malformed");
+    }
+    *tab2 = 0;
+    *half_life = parse_f64(buf);
+    *last = parse_f64(tab1 + 1);
+    *value = parse_f64(tab2 + 1);
     return 1;
 }
 
@@ -650,16 +656,23 @@ static int do_decay(const char *path, const char *t, const char *k, const char *
         diex("half life must be positive");
     }
 
+    double stored_hl = hl;
     double last = ts;
     double value = 0;
-    if (current_decay(t, k, &last, &value) && ts < last) {
-        close(lockfd);
-        diex("time went backwards");
+    if (current_decay(t, k, &stored_hl, &last, &value)) {
+        if (stored_hl != hl) {
+            close(lockfd);
+            diex("decay half life changed");
+        }
+        if (ts < last) {
+            close(lockfd);
+            diex("time went backwards");
+        }
     }
 
     double next = value * exp2((last - ts) / hl) + d;
-    char val[128];
-    snprintf(val, sizeof(val), "%.17g\t%.17g", ts, next);
+    char val[192];
+    snprintf(val, sizeof(val), "%.17g\t%.17g\t%.17g", hl, ts, next);
 
     int fd = open_append(path);
     append_fd(fd, t, k, val, OP_PUT);
