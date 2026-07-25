@@ -1443,6 +1443,18 @@ static int write_full(int fd, const void *buf, size_t n) {
 
 static void send_response(int fd, int32_t cipherkey, int32_t status, const void *payload, uint32_t n) {
     uint32_t len = 16 + n;
+    if (!cipherkey) {
+        uint8_t head[20];
+        *(uint32_t*)(head + 0) = htonl(len);
+        *(uint32_t*)(head + 4) = htonl(0x4c444231);
+        *(uint32_t*)(head + 8) = htonl(status);
+        *(uint32_t*)(head + 12) = 0;
+        *(uint32_t*)(head + 16) = htonl(n);
+        write_full(fd, head, sizeof(head));
+        if (n) write_full(fd, payload, n);
+        return;
+    }
+
     uint8_t small[4096];
     uint8_t *buf = 4 + len <= sizeof(small) ? small : malloc(4 + len);
     if (!buf) die("malloc response");
