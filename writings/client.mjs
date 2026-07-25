@@ -111,6 +111,7 @@ export async function count(client, color, tenant, prefix = '', threshold = 1.0)
 }
 
 export async function sum(client, color, tenant, prefix = '', threshold = 1.0, now = null) {
+    if (now === null) now = Date.now() / 1000.0;
     var val = String(threshold);
     if (now !== null) val += '\t' + String(now);
     var res = await request(client, 'sum', color, tenant, prefix, val);
@@ -138,7 +139,8 @@ export async function grant(client, color, user, password, permissions) {
     return request(client, 'grant', color, '', String(user), i32(password) + ',' + i32(permissions));
 }
 
-export async function decay(client, color, tenant, key, half_life, now, delta) {
+export async function decay(client, color, tenant, key, half_life, delta, now = null) {
+    if (now === null) now = Date.now() / 1000.0;
     return request(client, 'decay', color, tenant, key, String(half_life) + '\t' + String(now) + '\t' + String(delta));
 }
 
@@ -316,8 +318,8 @@ async function cli(client, a) {
     if (a[0] === 'grant' && a.length === 5) {
         return grant(client, parseI32(a[1]), parseI32(a[2]), parseI32(a[3]), parseI32(a[4]));
     }
-    if (a[0] === 'decay' && a.length === 7) {
-        return decay(client, parseI32(a[1]), a[2], a[3], a[4], a[5], a[6]);
+    if (a[0] === 'decay' && (a.length === 6 || a.length === 7)) {
+        return decay(client, parseI32(a[1]), a[2], a[3], Number(a[4]), Number(a[5]), a[6] ? Number(a[6]) : null);
     }
     if (a[0] === 'batch' && a.length >= 5 && a.length % 2 === 1) {
         var pairs = [];
@@ -399,7 +401,7 @@ function usage() {
         '  take COLOR TENANT KEY',
         '  putnx COLOR TENANT KEY VALUE',
         '  cas COLOR TENANT KEY OLD NEW',
-        '  decay COLOR TENANT KEY HALF_LIFE NOW DELTA',
+        '  decay COLOR TENANT KEY HALF_LIFE DELTA [NOW]',
         '  batch COLOR TENANT KEY1 VAL1 [KEY2 VAL2 ...]',
         '  grant COLOR USER PASS PERMS',
         '',

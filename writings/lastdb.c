@@ -1943,7 +1943,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         if (match) {
                                             double db_w = (double)(1U << r->weight_log);
                                             double qw = 1.0 / threshold;
-                                            double w = threshold < 1.0 ? (db_w > qw ? db_w : qw) : 1.0;
+                                            double w = db_w > qw ? db_w : qw;
                                             char weight[32];
                                             int wlen = snprintf(weight, sizeof(weight), "%.0f\t", w);
                                             size_t rec_len = wlen + r->k_len + 1 + r->v_len + 1;
