@@ -2579,7 +2579,8 @@ if (max_wl < 0) max_wl = 0;
 double rse = count_est > 0 ? __builtin_sqrt(w2_sum > count_est ? w2_sum - count_est : 0) / count_est : 0;
 double confidence = rse >= 1.0 ? 0.0 : 1.0 - rse;
 if (decay_est > 0 && count_est > 0) { double decay_frac = decay_est / count_est; confidence *= 1.0 - decay_frac * 0.5; }
-if (max_wl > 0 && w2_sum > 0 && count_est > 0) { double ess = count_est * count_est / w2_sum; if (ess < 30.0) confidence *= ess / 30.0; }
+if (max_wl > 0 && w2_sum > 0 && count_est > 0) { double ess = count_est * count_est / w2_sum; if (ess < 100.0) confidence *= ess / 100.0; }
+if (max_wl > 8) confidence *= 1.0 / (1U << (max_wl - 8 > 12 ? 12 : max_wl - 8));
                                 if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu\t%d\t%.4g", count_est, (unsigned long long)raw_count, max_wl, confidence);
                                 else vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%llu\t%d\t%.4g", sum, raw_sum, (unsigned long long)raw_count, max_wl, confidence);
                                 send_response(fd, cipherkey, 0, val, vl_out);
@@ -3079,6 +3080,7 @@ if (threshold > 1.0) threshold = 1.0;
                 if (offs) munmap(offs, count * 8);
                 double conf = count_est > 0 ? (double)raw_c / __builtin_sqrt(count_est) : 1.0;
                 if (conf > 1.0) conf = 1.0;
+                if (max_wl > 8) conf *= 1.0 / (1U << (max_wl - 8 > 12 ? 12 : max_wl - 8));
                 printf("%.4g\t%llu\t%d\t%.4g\n", count_est, (unsigned long long)raw_c, max_wl, conf);
             }
             else if (!strcmp(args[0], "sum") && n >= 2) {
