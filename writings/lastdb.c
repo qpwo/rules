@@ -1,4 +1,4 @@
-//bin/sh -c 'o=${0%.c}; [ "$o" -nt "$0" ] || { ${CC:-cc} -O3 -march=native -ffast-math -Wall -Wextra -Werror -o "$o" "$0" || exit; }; exec "$o" "$@"' "$0" "$@"; exit
+//bin/sh -c 'o=${0%.c}; [ "$o" -nt "$0" ] || { ${CC:-cc} -O3 -march=native -ffast-math -fopenmp -Wall -Wextra -Werror -o "$o" "$0" || exit; }; exec "$o" "$@"' "$0" "$@"; exit
 /** lastdb: one-file durable append-only tenant key/value store, no sqlite, no deps. */
 #define _POSIX_C_SOURCE 200809L
 #include <errno.h>
@@ -171,14 +171,21 @@ static int key_eq(uint64_t off, const char *t, uint16_t tl, const char *k, uint1
 #ifndef MAP_ANONYMOUS
 #define MAP_ANONYMOUS 0x20
 #endif
+#ifndef MAP_POPULATE
+#define MAP_POPULATE 0x08000
+#endif
+#ifndef MADV_HUGEPAGE
+#define MADV_HUGEPAGE 14
+#endif
 
 static void ht_grow(void)
 {
     uint64_t ncap = ht_cap ? ht_cap * 2 : 4096;
-    Node *nht = mmap(NULL, ncap * sizeof(*nht), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    Node *nht = mmap(NULL, ncap * sizeof(*nht), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
     if (nht == MAP_FAILED) {
         die("mmap nht");
     }
+    madvise(nht, ncap * sizeof(*nht), MADV_HUGEPAGE);
 
     for (uint64_t i = 0; i < ht_cap; i++) {
         if (!ht[i].off1) {
@@ -207,9 +214,7 @@ static void ht_grow(void)
         nht[j].off1 = off1;
     }
 
-    if (ht) {
-        munmap(ht, ht_cap * sizeof(*ht));
-    }
+    /* To avoid TLB shootdowns and jitter, we deliberately do not munmap the old ht. */
     ht = nht;
     ht_cap = ncap;
 }
@@ -919,17 +924,34 @@ static int do_closest(const char *path, const char *type, const char *t, const c
     const char *best_k = NULL;
     uint16_t best_k_len = 0;
 
-    for (uint64_t i = 0; i < ht_cap; i++) {
-        if (!ht[i].off1 || ht[i].off1 - 1 == (uint64_t)(n->off1 - 1)) continue;
-        Record *c = rec_at(ht[i].off1 - 1);
-        if (c->op == OP_DEL || c->t_len != r->t_len || c->v_len != r->v_len) continue;
-        if (memcmp(rec_t(c), t, r->t_len) != 0) continue;
+    #pragma omp parallel
+    {
+        float local_best = -1e30f;
+        const char *local_k = NULL;
+        uint16_t local_k_len = 0;
 
-        float score = dot_fn(rec_v(r), rec_v(c), r->v_len);
-        if (score > best_score) {
-            best_score = score;
-            best_k = rec_k(c);
-            best_k_len = c->k_len;
+        #pragma omp for schedule(static) nowait
+        for (uint64_t i = 0; i < ht_cap; i++) {
+            if (!ht[i].off1 || ht[i].off1 - 1 == (uint64_t)(n->off1 - 1)) continue;
+            Record *c = rec_at(ht[i].off1 - 1);
+            if (c->op == OP_DEL || c->t_len != r->t_len || c->v_len != r->v_len) continue;
+            if (memcmp(rec_t(c), t, r->t_len) != 0) continue;
+
+            float score = dot_fn(rec_v(r), rec_v(c), r->v_len);
+            if (score > local_best) {
+                local_best = score;
+                local_k = rec_k(c);
+                local_k_len = c->k_len;
+            }
+        }
+
+        #pragma omp critical
+        {
+            if (local_best > best_score) {
+                best_score = local_best;
+                best_k = local_k;
+                best_k_len = local_k_len;
+            }
         }
     }
 
