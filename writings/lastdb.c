@@ -1155,48 +1155,69 @@ static int do_compact(const char *path)
 }
 
 typedef float unaligned_f32 __attribute__((aligned(1)));
-typedef _Float16 unaligned_f16 __attribute__((aligned(1)));
+typedef uint16_t unaligned_f16 __attribute__((aligned(1)));
 
-__attribute__((target("avx512f,avx512vl")))
+__attribute__((target("avx2,fma")))
 static float vec_dot_f32(const void *a, const void *b, size_t bytes) {
     size_t n = bytes / 4;
-    __m512 sum_vec = _mm512_set1_ps(0.0f);
+    __m256 sum_vec = _mm256_setzero_ps();
     const unaligned_f32 *fa = a, *fb = b;
-    for (size_t i = 0; i < n; i += 16) {
-        __mmask16 mask = n - i >= 16 ? 0xFFFF : ((1u << (n - i)) - 1u);
-        __m512 va = _mm512_maskz_loadu_ps(mask, fa + i);
-        __m512 vb = _mm512_maskz_loadu_ps(mask, fb + i);
-        sum_vec = _mm512_fmadd_ps(va, vb, sum_vec);
+    size_t i = 0;
+    for (; i + 7 < n; i += 8) {
+        __m256 va = _mm256_loadu_ps(fa + i);
+        __m256 vb = _mm256_loadu_ps(fb + i);
+        sum_vec = _mm256_fmadd_ps(va, vb, sum_vec);
     }
-    return _mm512_reduce_add_ps(sum_vec);
+    float buf[8];
+    _mm256_storeu_ps(buf, sum_vec);
+    float sum = buf[0] + buf[1] + buf[2] + buf[3] + buf[4] + buf[5] + buf[6] + buf[7];
+    for (; i < n; i++) sum += fa[i] * fb[i];
+    return sum;
 }
 
-__attribute__((target("avx512fp16,avx512vl,avx512f")))
+__attribute__((target("avx2,fma,f16c")))
 static float vec_dot_f16(const void *a, const void *b, size_t bytes) {
     size_t n = bytes / 2;
-    __m512h sum_vec = _mm512_set1_ph(0);
+    __m256 sum_vec = _mm256_setzero_ps();
     const unaligned_f16 *fa = a, *fb = b;
-    for (size_t i = 0; i < n; i += 32) {
-        __mmask32 mask = n - i >= 32 ? 0xFFFFFFFF : ((1u << (n - i)) - 1u);
-        __m512i va = _mm512_maskz_loadu_epi16(mask, fa + i);
-        __m512i vb = _mm512_maskz_loadu_epi16(mask, fb + i);
-        sum_vec = _mm512_fmadd_ph(_mm512_castsi512_ph(va), _mm512_castsi512_ph(vb), sum_vec);
+    size_t i = 0;
+    for (; i + 7 < n; i += 8) {
+        __m256 va = _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fa + i)));
+        __m256 vb = _mm256_cvtph_ps(_mm_loadu_si128((const __m128i*)(fb + i)));
+        sum_vec = _mm256_fmadd_ps(va, vb, sum_vec);
     }
-    return (float)_mm512_reduce_add_ph(sum_vec);
+    float buf[8];
+    _mm256_storeu_ps(buf, sum_vec);
+    float sum = buf[0] + buf[1] + buf[2] + buf[3] + buf[4] + buf[5] + buf[6] + buf[7];
+    for (; i < n; i++) {
+        __m128 va = _mm_cvtph_ps(_mm_cvtsi32_si128(fa[i]));
+        __m128 vb = _mm_cvtph_ps(_mm_cvtsi32_si128(fb[i]));
+        sum += _mm_cvtss_f32(va) * _mm_cvtss_f32(vb);
+    }
+    return sum;
 }
 
-__attribute__((target("avx512f,avx512vl,avx512bw,avx512vnni")))
+__attribute__((target("avx2")))
 static float vec_dot_i8(const void *a, const void *b, size_t bytes) {
     size_t n = bytes;
-    __m512i sum_vec = _mm512_setzero_si512();
+    __m256i sum_vec = _mm256_setzero_si256();
     const int8_t *ca = a, *cb = b;
-    for (size_t i = 0; i < n; i += 64) {
-        __mmask64 mask = n - i >= 64 ? -1ULL : ((1ULL << (n - i)) - 1ULL);
-        __m512i va = _mm512_maskz_loadu_epi8(mask, ca + i);
-        __m512i vb = _mm512_maskz_loadu_epi8(mask, cb + i);
-        sum_vec = _mm512_dpbusd_epi32(sum_vec, va, vb);
+    size_t i = 0;
+    for (; i + 31 < n; i += 32) {
+        __m256i va = _mm256_loadu_si256((const __m256i*)(ca + i));
+        __m256i vb = _mm256_loadu_si256((const __m256i*)(cb + i));
+        __m256i va_lo = _mm256_cvtepi8_epi16(_mm256_castsi256_si128(va));
+        __m256i va_hi = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(va, 1));
+        __m256i vb_lo = _mm256_cvtepi8_epi16(_mm256_castsi256_si128(vb));
+        __m256i vb_hi = _mm256_cvtepi8_epi16(_mm256_extracti128_si256(vb, 1));
+        sum_vec = _mm256_add_epi32(sum_vec, _mm256_madd_epi16(va_lo, vb_lo));
+        sum_vec = _mm256_add_epi32(sum_vec, _mm256_madd_epi16(va_hi, vb_hi));
     }
-    return (float)_mm512_reduce_add_epi32(sum_vec);
+    int32_t buf[8];
+    _mm256_storeu_si256((__m256i*)buf, sum_vec);
+    int32_t sum = buf[0] + buf[1] + buf[2] + buf[3] + buf[4] + buf[5] + buf[6] + buf[7];
+    for (; i < n; i++) sum += (int32_t)ca[i] * (int32_t)cb[i];
+    return (float)sum;
 }
 
 static int do_closest(const char *path, const char *type, const char *t, const char *k)
