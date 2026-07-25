@@ -2578,7 +2578,7 @@ if (is_decay) decay_est += disp_w;
 if (max_wl < 0) max_wl = 0;
 double rse = count_est > 0 ? __builtin_sqrt(w2_sum > count_est ? w2_sum - count_est : 0) / count_est : 0;
 double confidence = rse >= 1.0 ? 0.0 : 1.0 - rse;
-if (decay_est > 0 && count_est > 0) { double decay_frac = decay_est / count_est; confidence *= 1.0 - decay_frac * decay_frac; }
+if (decay_est > 0 && count_est > 0) { double decay_frac = decay_est / count_est; confidence *= 1.0 - decay_frac * 0.5; }
 if (max_wl > 0 && w2_sum > 0 && count_est > 0) { double ess = count_est * count_est / w2_sum; if (ess < 30.0) confidence *= ess / 30.0; }
                                 if (confidence < 0.3) {
                                     send_response(fd, cipherkey, 2, "low_confidence", 14);
