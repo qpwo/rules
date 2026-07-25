@@ -2234,7 +2234,6 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         }
                                     }
                                         if (match) {
-                                            if (is_decay && cur < threshold) continue;
                                             double db_w = (double)(1U << r->weight_log);
                                             double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
                                             double w = db_w > qw ? db_w : qw;
@@ -2414,7 +2413,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 if (r->v_len > 0 && r->v_len < 192) {
                                     if (decay_value_at(rec_v(r), r->v_len, sum_now, &cur)) is_decay = 1;
                                 }
-                                if (is_decay && cur < threshold) continue;
+                                if (is_decay && cur == 0) continue;
                                 if (is_decay) w *= cur;
                                 count_est += w;
                                         raw_count++;
@@ -2804,7 +2803,7 @@ int main(int argc, char **argv)
             if (r->v_len > 0 && r->v_len < 192) {
                 double cur = 0;
                 if (decay_value_at(rec_v(r), r->v_len, now, &cur)) {
-                    if (cur < threshold) continue;
+                    if (cur == 0) continue;
                     w *= cur;
                 }
             }
@@ -2840,7 +2839,7 @@ int main(int argc, char **argv)
             if (r->v_len > 0 && r->v_len < 192) {
                 if (decay_value_at(rec_v(r), r->v_len, sum_now, &cur)) is_decay = 1;
             }
-            if (is_decay && cur < threshold) continue;
+            if (is_decay && cur == 0) continue;
             if (is_decay) w *= cur;
             raw_s++;
             if (r->v_len > 0) {
