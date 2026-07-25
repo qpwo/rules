@@ -1911,11 +1911,6 @@ struct rseq {
 } __attribute__((aligned(32)));
 extern __thread struct rseq __rseq_abi __attribute__((weak));
 
-static inline int fast_getcpu(void) {
-    if (&__rseq_abi && __rseq_abi.cpu_id < 1000000) return __rseq_abi.cpu_id_start;
-    return sched_getcpu();
-}
-
 static int batch_flush(int fd, char *buf, size_t *used)
 {
     if (!*used) {
@@ -2550,8 +2545,8 @@ if (match) {
                                                 out[my_off++] = '\n';
                                             }
                                         } else {
-count_est += db_w;
-w2_sum += db_w * db_w;
+count_est += disp_w;
+w2_sum += disp_w * disp_w;
                                     raw_count++;
                                             if (op == 9 && r->v_len > 0) {
                                                 if (is_decay) {
