@@ -1,4 +1,4 @@
-//bin/sh -c 'o=${0%.c}; [ "$o" -nt "$0" ] || { if [ "$(uname -s)" = Darwin ]; then p="$(brew --prefix libomp)"; ${CC:-clang} -O3 -march=native -DNDEBUG -Xpreprocessor -fopenmp -I"$p/include" -L"$p/lib" -Wl,-rpath,"$p/lib" "$0" -lomp -o "$o"; else ${CC:-gcc} -O3 -march=native -DNDEBUG -fopenmp "$0" -o "$o"; fi; } || exit; exec "$o" "$@"' "$0" "$@"; exit
+//bin/sh -c 'o=${0%.c}; [ "$o" -nt "$0" ] || ${CC:-gcc} -O3 -march=native -DNDEBUG -fopenmp "$0" -o "$o" || exit; exec "$o" "$@"' "$0" "$@"; exit
 /** lastdb: one-file durable append-only tenant key/value store, no sqlite, no deps. */
 #define _GNU_SOURCE
 #include <errno.h>
@@ -825,7 +825,7 @@ static int decay_value_at(const char *s, size_t n, double now, double *out)
     }
 
     double x = now >= last ? val * __builtin_exp2((last - now) / hl) : val;
-    *out = __builtin_fabs(x) < 1e-12 ? 0 : x;
+    *out = __builtin_fabs(x) < 0.001 ? 0 : x;
     return 1;
 }
 
@@ -1171,21 +1171,6 @@ static const void *memmem_pivot(const void *haystack, size_t hay_len, const void
 static int rec_has_terms(Record *r, int argc, char **argv, size_t *lens, uint64_t *term_bfs)
 {
     for (int j = 4; j < argc; j++) {
-        if (lens[j] > 1 && (argv[j][0] == '>' || argv[j][0] == '<')) {
-            char *endp;
-            double term_val = strtod(argv[j] + 1, &endp);
-            if (endp == argv[j] + lens[j]) {
-                double v_val = 0;
-                if (r->v_len > 0 && r->v_len < 192 && decay_value_at(rec_v(r), r->v_len, (double)time(NULL), &v_val)) {}
-                else {
-                    char vbuf[192] = {0}; memcpy(vbuf, rec_v(r), r->v_len < 191 ? r->v_len : 191);
-                    v_val = strtod(vbuf, NULL);
-                }
-                if (argv[j][0] == '>' && !(v_val > term_val)) return 0;
-                if (argv[j][0] == '<' && !(v_val < term_val)) return 0;
-                continue;
-            }
-        }
         int is_decay_val = 0;
         if (r->v_len > 0 && r->v_len < 192) {
             double dummy_cur;
@@ -1214,7 +1199,7 @@ static int do_search(const char *t, int argc, char **argv)
     size_t lens[argc];
     term_lens(argc, argv, lens);
     for (int i = 4; i < argc; i++) {
-        if (lens[i] < 3 && argv[i][0] != '>' && argv[i][0] != '<') {
+        if (lens[i] < 3) {
             diex("search terms need at least 3 bytes");
         }
     }
@@ -2120,7 +2105,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 while (w < end && num_words < 64) {
                                     char *tab = memchr(w, '\t', end - w);
                                     size_t wl = tab ? tab - w : end - w;
-                                    if (wl > 0 && w[0] != '-') query_bfs[num_words++] = compute_bf(w, wl);
+                                    if (wl > 0) query_bfs[num_words++] = compute_bf(w, wl);
                                     w += wl + 1;
                                 }
                             }
@@ -2178,33 +2163,9 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                             char *tab = memchr(w, '\t', end - w);
                                             size_t wl = tab ? tab - w : end - w;
                                             if (wl > 0) {
-                                                if (wl > 1 && (w[0] == '>' || w[0] == '<')) {
-                                                    char *endp;
-                                                    double term_val = strtod(w + 1, &endp);
-                                                    if (endp == w + wl) {
-                                                        double v_val = 0;
-                                                        if (is_decay) v_val = cur;
-                                                        else {
-                                                            char vbuf[192] = {0}; memcpy(vbuf, out_val, out_vl < 191 ? out_vl : 191);
-                                                            v_val = strtod(vbuf, NULL);
-                                                        }
-                                                        if (w[0] == '>' && !(v_val > term_val)) { match = 0; break; }
-                                                        if (w[0] == '<' && !(v_val < term_val)) { match = 0; break; }
-                                                        word_idx++;
-                                                        w += wl + 1;
-                                                        continue;
-                                                    }
-                                                }
-                                                int exclude = (w[0] == '-');
-                                                const char *term = exclude ? w + 1 : w;
-                                                size_t term_len = exclude ? wl - 1 : wl;
-                                                if (term_len > 0) {
-                                                    int found = 1;
-                                                    if (!exclude && word_idx < 64 && (r->bf & query_bfs[word_idx]) != query_bfs[word_idx]) found = 0;
-                                                    if (found && (is_decay || !memmem_pivot(out_val, out_vl, term, term_len)) && !memmem_pivot(rec_k(r), r->k_len, term, term_len)) found = 0;
-                                                    if (exclude ? found : !found) { match = 0; break; }
-                                                    if (!exclude) word_idx++;
-                                                }
+                                                if (word_idx < 64 && (r->bf & query_bfs[word_idx]) != query_bfs[word_idx]) { match = 0; break; }
+                                                if ((is_decay || !memmem_pivot(out_val, out_vl, w, wl)) && !memmem_pivot(rec_k(r), r->k_len, w, wl)) { match = 0; break; }
+                                                word_idx++;
                                             }
                                             w += wl + 1;
                                         }
