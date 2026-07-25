@@ -2578,7 +2578,7 @@ double confidence = rse >= 1.0 ? 0.0 : 1.0 - rse;
 if (decay_w > 0 && count_est > 0) { double decay_frac = decay_w / count_est; if (decay_frac > 1) decay_frac = 1; confidence *= (1.0 - decay_frac) * (1.0 - decay_frac) * (1.0 - decay_frac); }
 if (decay_est > 0) { double decay_dom = decay_est / (decay_est + __builtin_fabs(sum) + 1e-30); if (decay_dom > 0.3) confidence *= (1.0 - decay_dom) / 0.7; }
 if (max_wl > 0 && w2_sum > 0 && count_est > 0) { double ess = count_est * count_est / w2_sum; if (ess < 100.0) confidence *= ess / 100.0; }
-if (max_wl > 8) confidence *= 1.0 / (1U << (max_wl - 8 > 12 ? 12 : max_wl - 8));
+if (max_wl > 8) confidence *= 8.0 / (double)max_wl;
 if (max_w < 20.0) confidence *= max_w / 20.0;
                                 if (count_est < 0.5) count_est = 0;
                                 if (__builtin_fabs(sum) < 5e-15) sum = 0;
@@ -3083,7 +3083,7 @@ if (threshold > 1.0) threshold = 1.0;
                 if (offs) munmap(offs, count * 8);
                 double conf = count_est > 0 ? (double)raw_c / __builtin_sqrt(count_est) : 1.0;
                 if (conf > 1.0) conf = 1.0;
-                if (max_wl > 8) conf *= 1.0 / (1U << (max_wl - 8 > 12 ? 12 : max_wl - 8));
+                if (max_wl > 8) conf *= 8.0 / (double)max_wl;
 if (max_w < 20.0) conf *= max_w / 20.0;
                 printf("%.4g\t%llu\t%d\t%.4g\n", count_est, (unsigned long long)raw_c, max_wl, conf);
             }
