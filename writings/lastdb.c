@@ -1290,10 +1290,10 @@ typedef struct {
 static inline void chunk_push(Chunk *chunk);
 static inline Chunk *chunk_pop(void);
 
-static void batch_flush(int fd, char *buf, size_t *used)
+static int batch_flush(int fd, char *buf, size_t *used)
 {
     if (!*used) {
-        return;
+        return 1;
     }
 
     struct statvfs st;
@@ -1304,18 +1304,19 @@ static void batch_flush(int fd, char *buf, size_t *used)
         double keep = __builtin_exp2(50.0 * (avail - 0.2));
         double gate = (double)(fnv_bytes(FNV0, buf, *used) >> 11) * 0x1.0p-53;
         if (free_bytes < reserve_bytes + *used) {
-            *used = 0; return;
+            return 0;
         }
         if (avail < 0.2 && gate > keep) {
-            *used = 0; return;
+            return 0;
         }
     }
 
     write_all(fd, buf, *used);
     *used = 0;
+    return 1;
 }
 
-static void batch_put(int fd, char *buf, size_t *used, const char *t, const char *k, const char *v)
+static int batch_put(int fd, char *buf, size_t *used, const char *t, const char *k, const char *v)
 {
     size_t tl = strlen(t);
     size_t kl = strlen(k);
@@ -1336,12 +1337,11 @@ static void batch_put(int fd, char *buf, size_t *used, const char *t, const char
     r.check = rec_check(&r, t, k, v);
 
     if (r.len > BATCH_WRITE_BYTES) {
-        batch_flush(fd, buf, used);
-        append_fd(fd, t, k, v, OP_PUT);
-        return;
+        if (!batch_flush(fd, buf, used)) return 0;
+        return append_raw(fd, t, tl, k, kl, v, vl, OP_PUT);
     }
-    if (BATCH_WRITE_BYTES - *used < r.len) {
-        batch_flush(fd, buf, used);
+    if (BATCH_WRITE_BYTES - *used < r.len && !batch_flush(fd, buf, used)) {
+        return 0;
     }
 
     memcpy(buf + *used, &r, sizeof(r));
@@ -1352,6 +1352,7 @@ static void batch_put(int fd, char *buf, size_t *used, const char *t, const char
     *used += kl;
     memcpy(buf + *used, v, vl);
     *used += vl;
+    return 1;
 }
 
 static int do_batch(const char *path, const char *t)
@@ -1363,6 +1364,7 @@ static int do_batch(const char *path, const char *t)
     char *buf = NULL;
     size_t cap = 0;
     size_t used = 0;
+    int ok = 1;
 
     Chunk *batch_c = chunk_pop();
     buf = (char *)batch_c->data;
@@ -1382,13 +1384,18 @@ static int do_batch(const char *path, const char *t)
         }
 
         *tab = 0;
-        batch_put(fd, buf, &used, t, line, tab + 1);
+        if (!batch_put(fd, buf, &used, t, line, tab + 1)) {
+            ok = 0;
+            break;
+        }
     }
 
     if (ferror(stdin)) {
         die("getline");
     }
-    batch_flush(fd, buf, &used);
+    if (!batch_flush(fd, buf, &used)) {
+        ok = 0;
+    }
     chunk_push(batch_c);
     free(line);
     sync_fd(fd);
@@ -1396,6 +1403,9 @@ static int do_batch(const char *path, const char *t)
         die("close");
     }
     close(lockfd);
+    if (!ok) {
+        diex("shed");
+    }
     return 0;
 }
 
