@@ -1468,6 +1468,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     load_db(db_path);
                                 uint64_t start_idx, end_idx;
                                 ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
+                                #pragma omp parallel for schedule(dynamic, 1024) num_threads(worker_threads())
                                 for (uint64_t i = start_idx; i < end_idx; i++) {
                                     Record *r = rec_at(ht[i].off1 - 1);
                                     if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
@@ -1487,8 +1488,11 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                             }
                                         }
                                         if (match) {
-                                            APP(rec_k(r), r->k_len); APP("\t", 1);
-                                            APP(rec_v(r), r->v_len); APP("\n", 1);
+                                            #pragma omp critical (app)
+                                            {
+                                                APP(rec_k(r), r->k_len); APP("\t", 1);
+                                                APP(rec_v(r), r->v_len); APP("\n", 1);
+                                            }
                                         }
                                     }
                                 }
@@ -1563,13 +1567,24 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                                 float best_score = -1e30f;
                                                 uint64_t start_idx, end_idx;
                                                 ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
-                                                for (uint64_t i = start_idx; i < end_idx; i++) {
-                                                    Record *c_rec = rec_at(ht[i].off1 - 1);
-                                                    if (c_rec->op == OP_DEL || c_rec->t_len != ft_len || c_rec->v_len != r->v_len) continue;
-                                                    if (ht[i].off1 == n->off1) continue;
-                                                    if (memcmp(rec_t(c_rec), full_tenant, ft_len) != 0) continue;
-                                                    float score = dot_fn(rec_v(r), rec_v(c_rec), r->v_len);
-                                                    if (score > best_score) { best_score = score; best_k = rec_k(c_rec); best_k_len = c_rec->k_len; }
+                                                #pragma omp parallel num_threads(worker_threads())
+                                                {
+                                                    float local_best = -1e30f;
+                                                    const char *local_k = NULL;
+                                                    uint16_t local_k_len = 0;
+                                                    #pragma omp for schedule(dynamic, 1024)
+                                                    for (uint64_t i = start_idx; i < end_idx; i++) {
+                                                        Record *c_rec = rec_at(ht[i].off1 - 1);
+                                                        if (c_rec->op == OP_DEL || c_rec->t_len != ft_len || c_rec->v_len != r->v_len) continue;
+                                                        if (ht[i].off1 == n->off1) continue;
+                                                        if (memcmp(rec_t(c_rec), full_tenant, ft_len) != 0) continue;
+                                                        float score = dot_fn(rec_v(r), rec_v(c_rec), r->v_len);
+                                                        if (score > local_best) { local_best = score; local_k = rec_k(c_rec); local_k_len = c_rec->k_len; }
+                                                    }
+                                                    #pragma omp critical (best)
+                                                    {
+                                                        if (local_best > best_score) { best_score = local_best; best_k = local_k; best_k_len = local_k_len; }
+                                                    }
                                                 }
                                             }
                                         }
@@ -1585,6 +1600,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     load_db(db_path);
                                     uint64_t start_idx, end_idx;
                                     ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
+                                    #pragma omp parallel for reduction(+:count,sum) schedule(static, 4096) num_threads(worker_threads())
                                     for (uint64_t i = start_idx; i < end_idx; i++) {
                                         Record *r = rec_at(ht[i].off1 - 1);
                                         if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
