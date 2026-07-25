@@ -2549,8 +2549,8 @@ if (match) {
                                                 out[my_off++] = '\n';
                                             }
                                         } else {
-count_est += disp_w;
-w2_sum += disp_w * disp_w;
+count_est += db_w;
+w2_sum += db_w * db_w;
                                     raw_count++;
                                             if (op == 9 && r->v_len > 0) {
                                                 if (is_decay) {
