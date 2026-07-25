@@ -2430,10 +2430,9 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         }
                                     }
                                 }
-                                if (threshold <= 0) threshold = 1.0;
-                                double max_w = 0;
+                                double max_w = 31.0;
                                 if (threshold > 1.0) { max_w = threshold; threshold = 1.0; }
-                                if (threshold < 1.0) max_w = 31.0;
+                                else if (threshold <= 0.0) { max_w = 0; threshold = 1.0; }
 
                                 double count_est = 0; uint64_t raw_count = 0; double sum = 0;
 
@@ -2488,11 +2487,11 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         double db_w = (double)(1U << r->weight_log);
                                         double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
                                         double w_weight = db_w > qw ? db_w : qw;
-                                        if (is_decay) w_weight *= cur;
-                                        if (w_weight < 0.5) continue;
+                                        double eff_w = is_decay ? w_weight * cur : w_weight;
+                                        if (eff_w < 0.5) continue;
                                         if (op == 4 || op == 5) {
                                             char weight[32];
-                                            int wlen = snprintf(weight, sizeof(weight), "%.5g\t", w_weight);
+                                            int wlen = snprintf(weight, sizeof(weight), "%.5g\t", eff_w);
                                             size_t rec_len = wlen + r->k_len + 1 + out_vl + 1;
                                             size_t my_off;
                                             #pragma omp atomic capture
@@ -2509,7 +2508,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                             raw_count++;
                                             if (op == 9 && r->v_len > 0) {
                                                 if (is_decay) {
-                                                    sum += w_weight * cur;
+                                                    sum += eff_w;
                                                 } else if (r->v_len < 192) {
                                                     char buf2[192] = {0};
                                                     memcpy(buf2, rec_v(r), r->v_len);
@@ -3014,10 +3013,9 @@ int main(int argc, char **argv)
                 size_t tl = strlen(args[1]);
                 size_t pl = n >= 3 ? strlen(args[2]) : 0;
                 double threshold = n >= 4 ? strtod(args[3], NULL) : 1.0;
-                if (threshold <= 0) threshold = 1.0;
-                double max_w = 0;
+                double max_w = 31.0;
                 if (threshold > 1.0) { max_w = threshold; threshold = 1.0; }
-                if (threshold < 1.0) max_w = 31.0;
+                else if (threshold <= 0.0) { max_w = 0; threshold = 1.0; }
                 double now = (double)time(NULL);
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
             uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
@@ -3052,10 +3050,9 @@ int main(int argc, char **argv)
                 size_t tl = strlen(args[1]);
                 size_t pl = n >= 3 ? strlen(args[2]) : 0;
                 double threshold = n >= 4 ? strtod(args[3], NULL) : 1.0;
-                if (threshold <= 0) threshold = 1.0;
-                double max_w = 0;
+                double max_w = 31.0;
                 if (threshold > 1.0) { max_w = threshold; threshold = 1.0; }
-                if (threshold < 1.0) max_w = 31.0;
+                else if (threshold <= 0.0) { max_w = 0; threshold = 1.0; }
                 double sum_now = n >= 5 ? strtod(args[4], NULL) : (double)time(NULL);
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
             uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
