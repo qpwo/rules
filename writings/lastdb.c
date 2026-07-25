@@ -288,7 +288,7 @@ static void ht_reserve(uint64_t need)
 
 static void ht_put(uint64_t hash, uint64_t off)
 {
-    if ((ht_len >= ht_cap && ht_len >= 1048576) || ht_len - ht_sorted_len >= 65536) {
+    if ((ht_len >= ht_cap && ht_len >= 1048576) || ht_len - ht_sorted_len >= ht_sorted_len / 16 + 65536) {
         deduplicate_ht();
     }
     ht_reserve(ht_len + 1);
@@ -306,11 +306,21 @@ static int cmp_node(const void *a, const void *b) {
 }
 
 static void deduplicate_ht(void) {
-    if (!ht_len) {
-        ht_sorted_len = 0;
-        return;
+    if (!ht_len) { ht_sorted_len = 0; return; }
+    if (ht_len > ht_sorted_len) {
+        qsort(ht + ht_sorted_len, ht_len - ht_sorted_len, sizeof(*ht), cmp_node);
+        if (ht_sorted_len > 0) {
+            uint64_t n = ht_len - ht_sorted_len;
+            Node *tmp = malloc(n * sizeof(Node));
+            if (tmp) {
+                memcpy(tmp, ht + ht_sorted_len, n * sizeof(Node));
+                uint64_t i = ht_sorted_len, j = n, o = ht_len;
+                while (i > 0 && j > 0) ht[--o] = (cmp_node(&ht[i-1], &tmp[j-1]) > 0) ? ht[--i] : tmp[--j];
+                while (j > 0) ht[--o] = tmp[--j];
+                free(tmp);
+            } else qsort(ht, ht_len, sizeof(*ht), cmp_node);
+        }
     }
-    qsort(ht, ht_len, sizeof(*ht), cmp_node);
     uint64_t out = 0;
     for (uint64_t i = 0; i < ht_len; ) {
         uint64_t j = i + 1;
