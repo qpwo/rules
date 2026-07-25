@@ -219,6 +219,9 @@ static int rec_valid(uint64_t off)
     if (r->op != OP_PUT && r->op != OP_DEL) {
         return 0;
     }
+    if (r->weight_log > 31) {
+        return 0;
+    }
     if (r->op == OP_DEL && r->v_len) {
         return 0;
     }
