@@ -1265,7 +1265,9 @@ static int write_full(int fd, const void *buf, size_t n) {
 
 static void send_response(int fd, int32_t cipherkey, int32_t status, const void *payload, uint32_t n) {
     uint32_t len = 16 + n;
-    uint8_t *buf = malloc(4 + len);
+    uint8_t small[4096];
+    uint8_t *buf = 4 + len <= sizeof(small) ? small : malloc(4 + len);
+    if (!buf) die("malloc response");
     *(uint32_t*)(buf + 0) = htonl(len);
     *(uint32_t*)(buf + 4) = htonl(0x4c444231);
     *(uint32_t*)(buf + 8) = htonl(status);
@@ -1274,7 +1276,7 @@ static void send_response(int fd, int32_t cipherkey, int32_t status, const void 
     if (n) memcpy(buf + 20, payload, n);
     crypt_buf(buf + 4, len, cipherkey);
     write_full(fd, buf, 4 + len);
-    free(buf);
+    if (buf != small) free(buf);
 }
 
 typedef struct { uint8_t *buf; size_t cap; } BufCache;
