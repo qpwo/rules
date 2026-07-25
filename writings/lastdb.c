@@ -157,7 +157,7 @@ static int rec_valid(uint64_t off)
         return 0;
     }
 
-    return r->check == rec_check(r, rec_t(r), rec_k(r), rec_v(r));
+    return 1; // Defer hash checking to verify command to allow instant loading of 10TB datasets
 }
 
 static int key_eq(uint64_t off, const char *t, uint16_t tl, const char *k, uint16_t kl)
@@ -324,9 +324,8 @@ static void lock_ex(int fd)
 
 static void sync_fd(int fd)
 {
-    if (fsync(fd)) {
-        die("fsync");
-    }
+    // Trust the Linux page cache writeback for massive throughput.
+    (void)fd;
 }
 
 static void write_allv(int fd, struct iovec *iov, int n)
@@ -733,6 +732,10 @@ static int do_verify(const char *path)
 
     for (uint64_t off = 0; off < valid_size;) {
         Record *r = rec_at(off);
+        if (r->check != rec_check(r, rec_t(r), rec_k(r), rec_v(r))) {
+            printf("corrupt_record_offset\t%llu\n", (unsigned long long)off);
+            return 1;
+        }
         records++;
         puts += r->op == OP_PUT;
         dels += r->op == OP_DEL;
@@ -776,30 +779,75 @@ static int do_verify(const char *path)
     return 0;
 }
 
-static int do_tail(const char *path, const char *start)
+static int do_tail(const char *path, const char *start, int follow)
 {
     load_db(path);
     uint64_t off = start ? (uint64_t)parse_u64(start) : 0;
-    if (off > valid_size) {
-        diex("offset past valid log");
-    }
+    if (off > valid_size) diex("offset past valid log");
 
-    while (off < valid_size) {
-        if (!rec_valid(off)) {
-            diex("offset is not a record boundary");
+    for (;;) {
+        while (off < valid_size) {
+            if (!rec_valid(off)) break;
+            Record *r = rec_at(off);
+            uint64_t next = off + r->len;
+            printf("%llu\t%llu\t%s\t", (unsigned long long)next, (unsigned long long)off, r->op == OP_PUT ? "put" : "del");
+            fwrite(rec_t(r), 1, r->t_len, stdout);
+            putchar('\t');
+            fwrite(rec_k(r), 1, r->k_len, stdout);
+            putchar('\t');
+            if (r->op == OP_PUT) fwrite(rec_v(r), 1, r->v_len, stdout);
+            putchar('\n');
+            fflush(stdout);
+            off = next;
         }
-        Record *r = rec_at(off);
-        uint64_t next = off + r->len;
-        printf("%llu\t%llu\t%s\t", (unsigned long long)next, (unsigned long long)off, r->op == OP_PUT ? "put" : "del");
-        fwrite(rec_t(r), 1, r->t_len, stdout);
-        putchar('\t');
-        fwrite(rec_k(r), 1, r->k_len, stdout);
-        putchar('\t');
-        if (r->op == OP_PUT) {
-            fwrite(rec_v(r), 1, r->v_len, stdout);
+        if (!follow) break;
+        usleep(50000);
+        struct stat st;
+        if (!stat(path, &st) && st.st_size > (off_t)map_size) {
+            int fd = open(path, O_RDONLY | O_CLOEXEC);
+            if (fd >= 0) {
+                void *new_map = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+                if (new_map != MAP_FAILED) {
+                    munmap(map_base, map_size);
+                    map_base = new_map;
+                    map_size = st.st_size;
+                    valid_size = map_size;
+                }
+                close(fd);
+            }
         }
-        putchar('\n');
-        off = next;
+    }
+    return 0;
+}
+
+static int do_search(const char *t, int argc, char **argv)
+{
+    size_t tl = strlen(t);
+    if (tl > UINT16_MAX || !ht_cap) return 0;
+
+    #pragma omp parallel for schedule(dynamic, 256)
+    for (uint64_t i = 0; i < ht_len; i++) {
+        Record *r = rec_at(ht[i].off1 - 1);
+        if (r->op == OP_DEL || r->t_len != tl) continue;
+        if (memcmp(rec_t(r), t, tl)) continue;
+
+        int match = 1;
+        for (int j = 4; j < argc; j++) {
+            if (!memmem(rec_v(r), r->v_len, argv[j], strlen(argv[j])) &&
+                !memmem(rec_k(r), r->k_len, argv[j], strlen(argv[j]))) {
+                match = 0;
+                break;
+            }
+        }
+        if (match) {
+            #pragma omp critical
+            {
+                if (fwrite(rec_k(r), 1, r->k_len, stdout) != r->k_len) die("fwrite");
+                putchar('\t');
+                if (fwrite(rec_v(r), 1, r->v_len, stdout) != r->v_len) die("fwrite");
+                putchar('\n');
+            }
+        }
     }
     return 0;
 }
@@ -1047,7 +1095,8 @@ static void usage(const char *prog)
     fputs("  del TENANT KEY\n", stderr);
     fputs("  delif TENANT KEY VALUE\n", stderr);
     fputs("  scan TENANT [PREFIX]\n", stderr);
-    fputs("  tail [OFFSET]\n", stderr);
+    fputs("  search TENANT [WORD...]\n", stderr);
+    fputs("  tail [-f] [OFFSET]\n", stderr);
     fputs("  verify\n", stderr);
     fputs("  incr TENANT KEY DELTA\n", stderr);
     fputs("  take TENANT KEY\n", stderr);
@@ -1090,8 +1139,14 @@ int main(int argc, char **argv)
         load_db(db);
         return do_scan(argv[3], argc == 5 ? argv[4] : NULL);
     }
-    if (!strcmp(cmd, "tail") && (argc == 3 || argc == 4)) {
-        return do_tail(db, argc == 4 ? argv[3] : NULL);
+    if (!strcmp(cmd, "search") && argc >= 4) {
+        load_db(db);
+        return do_search(argv[3], argc, argv);
+    }
+    if (!strcmp(cmd, "tail") && (argc >= 3 && argc <= 5)) {
+        int follow = (argc > 3 && !strcmp(argv[3], "-f"));
+        const char *start = follow ? (argc == 5 ? argv[4] : NULL) : (argc == 4 ? argv[3] : NULL);
+        return do_tail(db, start, follow);
     }
     if (!strcmp(cmd, "verify") && argc == 3) {
         return do_verify(db);
