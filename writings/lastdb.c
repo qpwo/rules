@@ -420,21 +420,13 @@ static void deduplicate_ht(void) {
 
 
 static uint64_t ht_lower_bound(uint64_t hash) {
-    uint64_t n = ht_sorted_len;
-    if (!n) return 0;
-    uint64_t step = 1ULL << (63 - __builtin_clzll(n));
-    uint64_t base = 0;
-    if (step < n && ht[step].hash < hash) {
-        n -= step + 1;
-        if (!n) return ht_sorted_len;
-        step = 1;
-        if (n > 1) step <<= (64 - __builtin_clzll(n - 1));
-        base = ht_sorted_len - step;
+    uint64_t lo = 0, hi = ht_sorted_len;
+    while (lo < hi) {
+        uint64_t mid = lo + (hi - lo) / 2;
+        if (ht[mid].hash < hash) lo = mid + 1;
+        else hi = mid;
     }
-    for (step >>= 1; step; step >>= 1)
-        if (ht[base + step].hash < hash)
-            base += step;
-    return base + (ht[base].hash < hash);
+    return lo;
 }
 
 static void ht_tenant_range(const char *t, size_t tl, uint64_t *start, uint64_t *end) {
@@ -2557,7 +2549,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
                                     }
                                     if (match) {
                                         double db_w = (double)(1U << (r->weight_log > 20 ? 20 : r->weight_log));
-                                        double w_weight = (threshold < 1.0 && r->weight_log < max_w) ? (db_w > 1.0 / threshold ? db_w : 1.0 / threshold) : db_w;
+                                        double w_weight = (threshold < 1.0 && r->weight_log < max_w) ? db_w / threshold : db_w;
                                         double eff_w = is_decay ? w_weight * __builtin_fabs(cur) : w_weight;
                                         if (eff_w < min_weight) continue;
                                         if (op == 4 || op == 5) {
@@ -3091,7 +3083,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
             }
             double db_w = (double)(1U << (r->weight_log > 20 ? 20 : r->weight_log));
 
-            double w = (threshold < 1.0 && r->weight_log < max_w) ? (db_w > 1.0 / threshold ? db_w : 1.0 / threshold) : db_w;
+            double w = (threshold < 1.0 && r->weight_log < max_w) ? db_w / threshold : db_w;
             double dc = 1;
             if (r->v_len > 0 && r->v_len < 192) {
                 double cur = 0;
@@ -3130,7 +3122,7 @@ if (threshold < 1.0 && threshold > 0.0) max_w = -__builtin_log2(threshold) + 4;
             }
             double db_w = (double)(1U << (r->weight_log > 20 ? 20 : r->weight_log));
 
-            double w = (threshold < 1.0 && r->weight_log < max_w) ? (db_w > 1.0 / threshold ? db_w : 1.0 / threshold) : db_w;
+            double w = (threshold < 1.0 && r->weight_log < max_w) ? db_w / threshold : db_w;
             int is_decay = 0;
             double cur = 0;
             if (r->v_len > 0 && r->v_len < 192) {
