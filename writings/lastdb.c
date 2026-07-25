@@ -197,7 +197,7 @@ static int key_eq(uint64_t off, const char *t, uint16_t tl, const char *k, uint1
 
 static void ht_put(uint64_t hash, uint64_t off)
 {
-    if (ht_len >= ht_cap / 2) {
+    if (ht_len * 4 >= ht_cap * 3) {
         uint64_t ncap = ht_cap ? ht_cap * 2 : 4096;
         Node *nht = mmap(NULL, (ncap + 256) * sizeof(*nht), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
         if (nht == MAP_FAILED) die("mmap nht");
@@ -350,7 +350,9 @@ static void append_fd(int fd, const char *t, const char *k, const char *v, uint8
     if (!fstatvfs(fd, &st) && st.f_blocks > 0) {
         double avail = (double)st.f_bavail / st.f_blocks;
         if (avail < 0.1) {
-            if ((rand() / (double)RAND_MAX) > exp2(100.0 * (avail - 0.1))) return;
+            if ((rand() / (double)RAND_MAX) > exp2(100.0 * (avail - 0.1))) {
+                diex("disk reserve below 10 percent");
+            }
         }
     }
     size_t tl = strlen(t);
