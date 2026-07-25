@@ -1684,6 +1684,17 @@ static float vec_dot_i8(const void *a, const void *b, size_t bytes) {
     return vec_dot_i8_avx2(a, b, bytes);
 }
 
+__attribute__((target("popcnt")))
+static float vec_dot_b8(const void *a, const void *b, size_t bytes) {
+    size_t n = bytes / 8;
+    const uint64_t *la = a, *lb = b;
+    uint64_t pop = 0;
+    for (size_t i = 0; i < n; i++) pop += __builtin_popcountll(la[i] ^ lb[i]);
+    const uint8_t *ca = a, *cb = b;
+    for (size_t i = n * 8; i < bytes; i++) pop += __builtin_popcount(ca[i] ^ cb[i]);
+    return -(float)pop;
+}
+
 static int do_closest(const char *path, const char *type, const char *t, const char *k)
 {
     load_db(path);
@@ -1697,6 +1708,7 @@ static int do_closest(const char *path, const char *type, const char *t, const c
     if (!strcmp(type, "f32") && r->v_len % 4 == 0) dot_fn = vec_dot_f32;
     else if (!strcmp(type, "f16") && r->v_len % 2 == 0) dot_fn = vec_dot_f16;
     else if (!strcmp(type, "i8")) dot_fn = vec_dot_i8;
+    else if (!strcmp(type, "b8")) dot_fn = vec_dot_b8;
     else diex("invalid type or length");
 
     float best_score = -1e30f;
@@ -2453,6 +2465,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 if (!strcmp(type, "f32")) dot_fn = vec_dot_f32;
                                 else if (!strcmp(type, "f16")) dot_fn = vec_dot_f16;
                                 else if (!strcmp(type, "i8")) dot_fn = vec_dot_i8;
+                                else if (!strcmp(type, "b8")) dot_fn = vec_dot_b8;
                                 else { send_response(fd, cipherkey, 1, "bad type", 8); chunk_push(c); continue; }
 
                                 const char *best_k = NULL;
@@ -2463,7 +2476,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         n = ht_get(full_tenant, ft_len, k, kl);
                                         if (n) { Record *r = rec_at(n->off1 - 1); if (r->op != OP_DEL && r->v_len) { q_vec = rec_v(r); q_len = r->v_len; } }
                                     }
-                                    if (q_vec && ((!strcmp(type,"f32") && q_len%4==0) || (!strcmp(type,"f16") && q_len%2==0) || (!strcmp(type,"i8")))) {
+                                    if (q_vec && ((!strcmp(type,"f32") && q_len%4==0) || (!strcmp(type,"f16") && q_len%2==0) || (!strcmp(type,"i8")) || (!strcmp(type,"b8")))) {
                                         float best_score = -1e30f;
                                         uint64_t start_idx, end_idx;
                                         ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
