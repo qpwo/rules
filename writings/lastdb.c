@@ -2500,14 +2500,14 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
 { double _sn = (double)time(NULL); if (eval_now < 1 || eval_now > _sn) eval_now = _sn; }
 double max_w = threshold > 1.0 ? threshold : 13.0;
 
-                                double count_est = 0; uint64_t raw_count = 0; double sum = 0; double raw_sum = 0; int max_wl = 0;
+                                double count_est = 0; uint64_t raw_count = 0; double sum = 0; double raw_sum = 0; int max_wl = 0; int has_decay = 0;
 
                                 { SRV_READ_LOCK(db_path);
                                 uint64_t start_idx, end_idx;
                                 ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
                                 uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
                                 uint64_t *offs = get_sorted_offs(start_idx, count);
-                                #pragma omp parallel for reduction(+:count_est,raw_count,sum,raw_sum) reduction(max:max_wl) schedule(static, 4096) num_threads(worker_threads())
+                                #pragma omp parallel for reduction(+:count_est,raw_count,sum,raw_sum) reduction(max:max_wl) reduction(|:has_decay) schedule(static, 4096) num_threads(worker_threads())
                                 for (uint64_t i = 0; i < count; i++) {
                                     Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
                                     if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
@@ -2524,8 +2524,9 @@ double max_w = threshold > 1.0 ? threshold : 13.0;
                                         if (decay_value_at(out_val, out_vl, eval_now, &cur)) {
                                             if (cur == 0) continue;
                                             out_vl = snprintf(eval_buf, sizeof(eval_buf), "%.17g", cur);
-                                            out_val = eval_buf;
-                                            is_decay = 1;
+out_val = eval_buf;
+is_decay = 1;
+has_decay = 1;
                                         }
                                     }
 
@@ -2596,7 +2597,7 @@ if (match) {
                                 } else {
                                     char val[128]; int vl_out = 0;
 if (max_wl < 0) max_wl = 0;
-                                if (raw_count < 100) { count_est = raw_count; sum = raw_sum; }
+                                if (raw_count < 100 && !has_decay) { count_est = raw_count; sum = raw_sum; }
                                 if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu\t%d", count_est, (unsigned long long)raw_count, max_wl);
                                 else vl_out = snprintf(val, sizeof(val), "%.17g\t%.17g\t%llu\t%d", sum, raw_sum, (unsigned long long)raw_count, max_wl);
                                     send_response(fd, cipherkey, 0, val, vl_out);
