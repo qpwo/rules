@@ -745,6 +745,12 @@ static double parse_f64(const char *s)
     return x;
 }
 
+static double decay_live_value(double hl, double last, double val, double now)
+{
+    double x = now >= last ? val * __builtin_exp2((last - now) / hl) : val;
+    return __builtin_fabs(x) < 1e-12 ? 0 : x;
+}
+
 static int current_decay(const char *t, const char *k, double *half_life, double *last, double *value)
 {
     if (strlen(t) > UINT16_MAX || strlen(k) > UINT16_MAX) {
@@ -2033,7 +2039,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                             double hl = strtod(buf2, NULL);
                                             double last = strtod(t1 + 1, NULL);
                                             double val = strtod(t2 + 1, NULL);
-                                            sum += (sum_now >= last ? val * __builtin_exp2((last - sum_now) / hl) : val) * w;
+                                            sum += decay_live_value(hl, last, val, sum_now) * w;
                                         } else {
                                             sum += strtod(t2 + 1, NULL) * w;
                                         }
@@ -2383,7 +2389,7 @@ int main(int argc, char **argv)
                         double hl = strtod(buf, NULL);
                         double last = strtod(t1 + 1, NULL);
                         double val = strtod(t2 + 1, NULL);
-                        s += (sum_now >= last ? val * __builtin_exp2((last - sum_now) / hl) : val) * w;
+                        s += decay_live_value(hl, last, val, sum_now) * w;
                     } else {
                         s += strtod(t2 + 1, NULL) * w;
                     }
