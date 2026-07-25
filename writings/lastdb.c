@@ -197,7 +197,7 @@ static int key_eq(uint64_t off, const char *t, uint16_t tl, const char *k, uint1
 
 static void ht_put(uint64_t hash, uint64_t off)
 {
-    if (ht_len * 4 >= ht_cap * 3) {
+    if (ht_len * 2 >= ht_cap) {
         uint64_t ncap = ht_cap ? ht_cap * 2 : 4096;
         Node *nht = mmap(NULL, (ncap + 256) * sizeof(*nht), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
         if (nht == MAP_FAILED) die("mmap nht");
@@ -837,12 +837,8 @@ static int do_search(const char *t, int argc, char **argv)
     size_t tl = strlen(t);
     if (tl > UINT16_MAX || !ht_cap) return 0;
 
-    #pragma omp parallel
-    {
-        uint64_t chunk = (ht_cap + 256) / omp_get_num_threads();
-        uint64_t start = omp_get_thread_num() * chunk;
-        uint64_t end = (omp_get_thread_num() == omp_get_num_threads() - 1) ? (ht_cap + 256) : start + chunk;
-        for (uint64_t i = start; i < end; i++) {
+    #pragma omp parallel for schedule(dynamic, 1024)
+    for (uint64_t i = 0; i < ht_cap + 256; i++) {
             if (!ht[i].off1) continue;
             Record *r = rec_at(ht[i].off1 - 1);
             if (r->op == OP_DEL || r->t_len != tl) continue;
@@ -1006,10 +1002,10 @@ static float vec_dot_f16(const void *a, const void *b, size_t bytes) {
 }
 
 static float vec_dot_i8(const void *a, const void *b, size_t bytes) {
-    float sum = 0;
+    int32_t sum = 0;
     const int8_t *ca = a, *cb = b;
-    for (size_t i = 0; i < bytes; i++) sum += (float)ca[i] * (float)cb[i];
-    return sum;
+    for (size_t i = 0; i < bytes; i++) sum += (int32_t)ca[i] * (int32_t)cb[i];
+    return (float)sum;
 }
 
 static int do_closest(const char *path, const char *type, const char *t, const char *k)
@@ -1037,11 +1033,8 @@ static int do_closest(const char *path, const char *type, const char *t, const c
         const char *local_k = NULL;
         uint16_t local_k_len = 0;
 
-        uint64_t chunk = (ht_cap + 256) / omp_get_num_threads();
-        uint64_t start = omp_get_thread_num() * chunk;
-        uint64_t end = (omp_get_thread_num() == omp_get_num_threads() - 1) ? (ht_cap + 256) : start + chunk;
-
-        for (uint64_t i = start; i < end; i++) {
+        #pragma omp for schedule(dynamic, 1024)
+        for (uint64_t i = 0; i < ht_cap + 256; i++) {
             if (!ht[i].off1) continue;
             Record *c = rec_at(ht[i].off1 - 1);
             if (c->op == OP_DEL || c->t_len != r->t_len || c->v_len != r->v_len) continue;
