@@ -2356,22 +2356,44 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     char *nl = memchr(p, '\n', end - p);
                                     size_t line_len = nl ? (size_t)(nl - p) : (size_t)(end - p);
                                     char *tab = memchr(p, '\t', line_len);
-                                    bad = !tab || (size_t)(tab - p) > UINT16_MAX || line_len - (size_t)(tab - p) - 1 > UINT32_MAX;
+                                    bad = !tab || (size_t)(tab - p) > UINT16_MAX || line_len - (size_t)(tab - p) - 1 > UINT32_MAX || (!nl && end >= (char *)c->data + sizeof(c->data));
                                     p += line_len + (nl ? 1 : 0);
                                 }
                                 #pragma omp critical (db)
                                 {
+                                    Chunk *batch_c = NULL;
+                                    char *batch_buf = NULL;
+                                    size_t used = 0;
                                     if (!bad) {
                                         if (srv_db_fd < 0) { open_lockfile(db_path); load_db(db_path); srv_db_fd = open_append(db_path); }
+                                        batch_c = chunk_pop();
+                                        if (!batch_c) {
+                                            shed = 1;
+                                        } else {
+                                            batch_buf = (char *)batch_c->data;
+                                        }
                                         for (char *p = v; p < end && !shed; ) {
                                             char *nl = memchr(p, '\n', end - p);
                                             size_t line_len = nl ? (size_t)(nl - p) : (size_t)(end - p);
                                             char *tab = memchr(p, '\t', line_len);
-                                            size_t b_kl = tab - p;
-                                            size_t b_vl = line_len - b_kl - 1;
-                                            if (append_raw(srv_db_fd, full_tenant, ft_len, p, b_kl, tab + 1, b_vl, OP_PUT)) wrote++;
-                                            else shed = 1;
+                                            *tab = 0;
+                                            if (nl) {
+                                                *nl = 0;
+                                            } else {
+                                                *end = 0;
+                                            }
+                                            if (batch_put(srv_db_fd, batch_buf, &used, full_tenant, p, tab + 1)) {
+                                                wrote++;
+                                            } else {
+                                                shed = 1;
+                                            }
                                             p += line_len + (nl ? 1 : 0);
+                                        }
+                                        if (batch_c) {
+                                            if (used && !batch_flush(srv_db_fd, batch_buf, &used)) {
+                                                shed = 1;
+                                            }
+                                            chunk_push(batch_c);
                                         }
                                         if (wrote) sync_fd(srv_db_fd);
                                         load_db(db_path);
@@ -2385,7 +2407,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     rl = snprintf(res, sizeof(res), "bad batch");
                                 } else if (shed) {
                                     status = 3;
-                                    rl = snprintf(res, sizeof(res), "shed after %d", wrote);
+                                    rl = snprintf(res, sizeof(res), "shed");
                                 }
                                 send_response(fd, cipherkey, status, res, rl);
                             } else {
