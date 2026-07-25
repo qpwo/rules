@@ -1,4 +1,4 @@
-//bin/sh -c 'o=${0%.c}; [ "$o" -nt "$0" ] || { ${CC:-cc} -O3 -Wall -Wextra -Werror -o "$o" "$0" || exit; }; exec "$o" "$@"' "$0" "$@"; exit
+//bin/sh -c 'o=${0%.c}; [ "$o" -nt "$0" ] || { ${CC:-cc} -O3 -march=native -ffast-math -Wall -Wextra -Werror -o "$o" "$0" || exit; }; exec "$o" "$@"' "$0" "$@"; exit
 /** lastdb: one-file durable append-only tenant key/value store, no sqlite, no deps. */
 #define _POSIX_C_SOURCE 200809L
 #include <errno.h>
@@ -874,6 +874,83 @@ static int do_compact(const char *path)
     return 0;
 }
 
+static float vec_dot_f32(const void *a, const void *b, size_t bytes) {
+    size_t n = bytes / 4;
+    float sum = 0, va, vb;
+    const char *ca = a, *cb = b;
+    for (size_t i = 0; i < n; i++) {
+        memcpy(&va, ca + i * 4, 4);
+        memcpy(&vb, cb + i * 4, 4);
+        sum += va * vb;
+    }
+    return sum;
+}
+
+static float vec_dot_f16(const void *a, const void *b, size_t bytes) {
+    size_t n = bytes / 2;
+    float sum = 0;
+    _Float16 va, vb;
+    const char *ca = a, *cb = b;
+    for (size_t i = 0; i < n; i++) {
+        memcpy(&va, ca + i * 2, 2);
+        memcpy(&vb, cb + i * 2, 2);
+        sum += (float)va * (float)vb;
+    }
+    return sum;
+}
+
+static float vec_dot_i8(const void *a, const void *b, size_t bytes) {
+    float sum = 0;
+    int8_t va, vb;
+    const char *ca = a, *cb = b;
+    for (size_t i = 0; i < bytes; i++) {
+        va = ca[i];
+        vb = cb[i];
+        sum += (float)va * (float)vb;
+    }
+    return sum;
+}
+
+static int do_closest(const char *path, const char *type, const char *t, const char *k)
+{
+    load_db(path);
+    if (strlen(t) > UINT16_MAX || strlen(k) > UINT16_MAX) diex("tenant/key too long");
+    Node *n = ht_get(t, (uint16_t)strlen(t), k, (uint16_t)strlen(k));
+    if (!n) return 1;
+    Record *r = rec_at(n->off1 - 1);
+    if (r->op == OP_DEL || !r->v_len) return 1;
+
+    float (*dot_fn)(const void *, const void *, size_t) = NULL;
+    if (!strcmp(type, "f32") && r->v_len % 4 == 0) dot_fn = vec_dot_f32;
+    else if (!strcmp(type, "f16") && r->v_len % 2 == 0) dot_fn = vec_dot_f16;
+    else if (!strcmp(type, "i8")) dot_fn = vec_dot_i8;
+    else diex("invalid type or length");
+
+    float best_score = -1e30f;
+    const char *best_k = NULL;
+    uint16_t best_k_len = 0;
+
+    for (uint64_t i = 0; i < ht_cap; i++) {
+        if (!ht[i].off1 || ht[i].off1 - 1 == (uint64_t)(n->off1 - 1)) continue;
+        Record *c = rec_at(ht[i].off1 - 1);
+        if (c->op == OP_DEL || c->t_len != r->t_len || c->v_len != r->v_len) continue;
+        if (memcmp(rec_t(c), t, r->t_len) != 0) continue;
+
+        float score = dot_fn(rec_v(r), rec_v(c), r->v_len);
+        if (score > best_score) {
+            best_score = score;
+            best_k = rec_k(c);
+            best_k_len = c->k_len;
+        }
+    }
+
+    if (best_k) {
+        fwrite(best_k, 1, best_k_len, stdout);
+        putchar('\n');
+    }
+    return 0;
+}
+
 static int do_batch(const char *path, const char *t)
 {
     int lockfd = open_lockfile(path);
@@ -925,6 +1002,7 @@ static void usage(const char *prog)
     fputs("  take TENANT KEY\n", stderr);
     fputs("  batch TENANT     # stdin: key<TAB>value\n", stderr);
     fputs("  compact\n", stderr);
+    fputs("  closest TYPE TENANT KEY\n", stderr);
     exit(2);
 }
 
@@ -977,6 +1055,9 @@ int main(int argc, char **argv)
     }
     if (!strcmp(cmd, "compact") && argc == 3) {
         return do_compact(db);
+    }
+    if (!strcmp(cmd, "closest") && argc == 6) {
+        return do_closest(db, argv[3], argv[4], argv[5]);
     }
 
     usage(argv[0]);
