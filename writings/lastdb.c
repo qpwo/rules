@@ -269,9 +269,9 @@ static uint64_t ht_target_cap(uint64_t need)
 
 static void ht_reserve(uint64_t need)
 {
-    if (need <= ht_cap / 2) return;
+    if (need <= ht_cap * 3 / 4) return;
 
-    uint64_t ncap = ht_target_cap(need * 2);
+    uint64_t ncap = ht_target_cap(need * 4 / 3);
     if (ncap <= ht_cap) return;
 
     int8_t max_probe = 0;
