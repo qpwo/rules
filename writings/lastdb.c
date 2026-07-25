@@ -1335,7 +1335,7 @@ static size_t build_weighted(Record *r, double now, char *out, size_t cap)
         v = dbuf;
         vl = (size_t)n;
     }
-    double print_w = (double)(1U << (r->weight_log > 26 ? 26 : r->weight_log));
+    double print_w = (double)(1ULL << (r->weight_log > 31 ? 31 : r->weight_log));
     if (cur) print_w *= __builtin_fabs(cur);
     if (print_w < 0.5) return 0;
     char wbuf[32];
@@ -2527,7 +2527,7 @@ if (match) {
                                     if ((op == 8 || op == 9) && sample_rate < 1.0 && r->weight_log == 0) {
                                         if ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > sample_rate) continue;
                                     }
-                                    double db_w = (double)(1U << (r->weight_log > 26 ? 26 : r->weight_log));
+                                    double db_w = (double)(1ULL << (r->weight_log > 31 ? 31 : r->weight_log));
                                     if ((op == 8 || op == 9) && sample_rate < 1.0 && r->weight_log == 0) db_w /= sample_rate;
                                     double w_weight = db_w;
 
@@ -3063,7 +3063,7 @@ if (threshold > 1.0) threshold = 1.0;
             if (threshold < 1.0 && r->weight_log == 0) {
                 if ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
             }
-            double db_w = (double)(1U << (r->weight_log > 26 ? 26 : r->weight_log));
+            double db_w = (double)(1ULL << (r->weight_log > 31 ? 31 : r->weight_log));
             if (r->weight_log > max_wl) max_wl = r->weight_log;
 
             double w = (threshold < 1.0 && r->weight_log == 0) ? db_w / threshold : db_w;
@@ -3096,7 +3096,7 @@ if (threshold > 1.0) threshold = 1.0;
             if (threshold < 1.0 && r->weight_log == 0) {
                 if ((double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
             }
-            double db_w = (double)(1U << (r->weight_log > 26 ? 26 : r->weight_log));
+            double db_w = (double)(1ULL << (r->weight_log > 31 ? 31 : r->weight_log));
             if (r->weight_log > max_wl) max_wl = r->weight_log;
 
             double w = (threshold < 1.0 && r->weight_log == 0) ? db_w / threshold : db_w;
