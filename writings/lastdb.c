@@ -345,24 +345,26 @@ static void append_fd(int fd, const char *t, const char *k, const char *v, uint8
     r.key_hash = key_hash(t, r.t_len, k, r.k_len);
     r.check = rec_check(&r, t, k, v ? v : "");
 
-    char stack_buf[4096];
-    char *buf = r.len <= sizeof(stack_buf) ? stack_buf : malloc(r.len);
-    if (!buf) die("malloc");
-    memcpy(buf, &r, sizeof(r));
-    memcpy(buf + sizeof(r), t, tl);
-    memcpy(buf + sizeof(r) + tl, k, kl);
-    if (vl) memcpy(buf + sizeof(r) + tl + kl, v, vl);
-
-    char *s = buf;
-    size_t n = r.len;
-    while (n) {
-        ssize_t got = write(fd, s, n);
+    struct iovec iov[4] = {
+        {&r, sizeof(r)},
+        {(void *)t, tl},
+        {(void *)k, kl},
+        {(void *)(v ? v : ""), vl},
+    };
+    int i = 0;
+    while (i < 4) {
+        ssize_t got = writev(fd, iov + i, 4 - i);
         if (got < 0 && errno == EINTR) continue;
-        if (got <= 0) die("write");
-        s += got;
-        n -= (size_t)got;
+        if (got <= 0) die("writev");
+        while (i < 4 && (size_t)got >= iov[i].iov_len) {
+            got -= (ssize_t)iov[i].iov_len;
+            i++;
+        }
+        if (i < 4 && got) {
+            iov[i].iov_base = (char *)iov[i].iov_base + got;
+            iov[i].iov_len -= (size_t)got;
+        }
     }
-    if (buf != stack_buf) free(buf);
 }
 
 static int open_lockfile(const char *path)
