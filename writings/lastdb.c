@@ -442,7 +442,10 @@ static int append_raw(int fd, const char *t, size_t tl, const char *k, size_t kl
         int wl = avail < 0.2 ? (int)(-50.0 * (avail - 0.2)) : 0;
         if (wl > 31) wl = 31;
         double keep = 1.0 / (1U << wl);
-        double gate = (double)(key_hash(t, r.t_len, k, r.k_len) & 0xFFFFFFFFULL) * 0x1.0p-32;
+        uint64_t gh = key_hash(t, r.t_len, k, r.k_len);
+        const char *sep = memchr(k, '/', r.k_len);
+        if (sep) gh = key_hash(t, r.t_len, k, sep - k);
+        double gate = (double)(gh & 0xFFFFFFFFULL) * 0x1.0p-32;
         if (free_bytes < reserve_bytes + r.len) {
             return 0;
         }
@@ -1570,7 +1573,10 @@ static int batch_put(int fd, char *buf, size_t *used, const char *t, const char 
             if (n && rec_at(n->off1 - 1)->op != OP_DEL) exists = 1;
         }
         if (!exists) {
-            double gate = (double)(key_hash(t, r.t_len, k, r.k_len) & 0xFFFFFFFFULL) * 0x1.0p-32;
+            uint64_t gh = key_hash(t, r.t_len, k, r.k_len);
+            const char *sep = memchr(k, '/', r.k_len);
+            if (sep) gh = key_hash(t, r.t_len, k, sep - k);
+            double gate = (double)(gh & 0xFFFFFFFFULL) * 0x1.0p-32;
             if (gate > keep) return 1;
             r.weight_log = weight_log;
         }
@@ -1910,7 +1916,12 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             for (uint64_t i = start_idx; i < end_idx; i++) {
                                 Record *r = rec_at(ht[i].off1 - 1);
                                 if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
-                                if (threshold < 1.0 && (double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
+                                if (threshold < 1.0) {
+                                    uint64_t gh = r->key_hash;
+                                    const char *sep = memchr(rec_k(r), '/', r->k_len);
+                                    if (sep) gh = key_hash(rec_t(r), r->t_len, rec_k(r), sep - rec_k(r));
+                                    if ((double)(gh & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
+                                }
                                     int match = 0;
                                     if (op == 4) {
                                         match = (kl == 0 || (r->k_len >= kl && !memcmp(rec_k(r), k, kl)));
@@ -2079,7 +2090,12 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         Record *r = rec_at(ht[i].off1 - 1);
                                         if (r->op == OP_DEL || r->t_len != ft_len || memcmp(rec_t(r), full_tenant, ft_len)) continue;
                                         if (kl && (r->k_len < kl || memcmp(rec_k(r), k, kl))) continue;
-                                if (threshold < 1.0 && (double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
+                                if (threshold < 1.0) {
+                                    uint64_t gh = r->key_hash;
+                                    const char *sep = memchr(rec_k(r), '/', r->k_len);
+                                    if (sep) gh = key_hash(rec_t(r), r->t_len, rec_k(r), sep - rec_k(r));
+                                    if ((double)(gh & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
+                                }
                                 double db_w = (double)(1U << r->weight_log);
                                 double qw = 1.0 / threshold;
                                 double w = db_w > qw ? db_w : qw;
@@ -2408,7 +2424,12 @@ int main(int argc, char **argv)
                 Record *r = rec_at(ht[i].off1 - 1);
                 if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
                     if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
-            if (threshold < 1.0 && (double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
+            if (threshold < 1.0) {
+                uint64_t gh = r->key_hash;
+                const char *sep = memchr(rec_k(r), '/', r->k_len);
+                if (sep) gh = key_hash(rec_t(r), r->t_len, rec_k(r), sep - rec_k(r));
+                if ((double)(gh & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
+            }
             double db_w = (double)(1U << r->weight_log);
             double qw = 1.0 / threshold;
             count_est += db_w > qw ? db_w : qw;
@@ -2429,7 +2450,12 @@ int main(int argc, char **argv)
                 Record *r = rec_at(ht[i].off1 - 1);
                 if (r->op == OP_DEL || r->t_len != tl || memcmp(rec_t(r), args[1], tl)) continue;
                     if (pl && (r->k_len < pl || memcmp(rec_k(r), args[2], pl))) continue;
-            if (threshold < 1.0 && (double)(r->key_hash & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
+            if (threshold < 1.0) {
+                uint64_t gh = r->key_hash;
+                const char *sep = memchr(rec_k(r), '/', r->k_len);
+                if (sep) gh = key_hash(rec_t(r), r->t_len, rec_k(r), sep - rec_k(r));
+                if ((double)(gh & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
+            }
             double db_w = (double)(1U << r->weight_log);
             double qw = 1.0 / threshold;
             double w = db_w > qw ? db_w : qw;
