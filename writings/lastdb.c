@@ -2543,8 +2543,11 @@ if (match) {
                                                 out[my_off++] = '\n';
                                             }
                                         } else {
-count_est += db_w;
-w2_sum += db_w * db_w;
+double ac = is_decay ? __builtin_fabs(cur) : 1.0;
+if (ac > 1.0) ac = 1.0;
+double eff_w = db_w * ac;
+count_est += eff_w;
+w2_sum += eff_w * eff_w;
 if (is_decay) { decay_est += db_w * __builtin_fabs(cur); decay_w += db_w; }
                                     raw_count++;
                                             if (op == 9 && r->v_len > 0) {
