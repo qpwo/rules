@@ -993,6 +993,39 @@ static unsigned byte_rank(unsigned char c)
     return 4;
 }
 
+__attribute__((target("avx512bw")))
+static const void *memmem_pivot_scan_avx512(const unsigned char *hay, size_t hay_len, const unsigned char *need, size_t needle_len, size_t pivot)
+{
+    const unsigned char *p = hay + pivot;
+    const unsigned char *end = hay + hay_len - (needle_len - pivot) + 1;
+    __m512i pv = _mm512_set1_epi8((char)need[pivot]);
+
+    while (p + 64 <= end) {
+        uint64_t mask = (uint64_t)_mm512_cmpeq_epi8_mask(_mm512_loadu_si512((const void *)p), pv);
+        while (mask) {
+            uint32_t bit = (uint32_t)__builtin_ctzll(mask);
+            const unsigned char *m = p + bit - pivot;
+            if (!memcmp(m, need, needle_len)) {
+                return m;
+            }
+            mask &= mask - 1;
+        }
+        p += 64;
+    }
+
+    while (p < end) {
+        p = memchr(p, need[pivot], end - p);
+        if (!p) {
+            return NULL;
+        }
+        if (!memcmp(p - pivot, need, needle_len)) {
+            return p - pivot;
+        }
+        p++;
+    }
+    return NULL;
+}
+
 __attribute__((target("avx2")))
 static const void *memmem_pivot_scan_avx2(const unsigned char *hay, size_t hay_len, const unsigned char *need, size_t needle_len, size_t pivot)
 {
@@ -1051,6 +1084,9 @@ static const void *memmem_pivot(const void *haystack, size_t hay_len, const void
         }
     }
 
+    if (__builtin_cpu_supports("avx512bw")) {
+        return memmem_pivot_scan_avx512(hay, hay_len, need, needle_len, pivot);
+    }
     return memmem_pivot_scan_avx2(hay, hay_len, need, needle_len, pivot);
 }
 
