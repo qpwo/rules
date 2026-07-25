@@ -12,6 +12,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/uio.h>
 #include <unistd.h>
 
@@ -345,6 +346,13 @@ static void sync_fd(int fd)
 
 static void append_fd(int fd, const char *t, const char *k, const char *v, uint8_t op)
 {
+    struct statvfs st;
+    if (!fstatvfs(fd, &st) && st.f_blocks > 0) {
+        double avail = (double)st.f_bavail / st.f_blocks;
+        if (avail < 0.1) {
+            if ((rand() / (double)RAND_MAX) > exp2(100.0 * (avail - 0.1))) return;
+        }
+    }
     size_t tl = strlen(t);
     size_t kl = strlen(k);
     size_t vl = v ? strlen(v) : 0;
@@ -411,13 +419,10 @@ static int open_append(const char *path)
 
 static int do_write(const char *path, const char *t, const char *k, const char *v, uint8_t op)
 {
-    int lockfd = open_lockfile(path);
-    load_db(path);
     int fd = open_append(path);
     append_fd(fd, t, k, v, op);
     sync_fd(fd);
     if (close(fd)) die("close");
-    close(lockfd);
     return 0;
 }
 
