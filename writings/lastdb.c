@@ -1288,12 +1288,13 @@ static void send_response(int fd, int32_t cipherkey, int32_t status, const void 
 }
 
 typedef struct { uint8_t *buf; size_t cap; } BufCache;
-static BufCache rx_desk[1024];
+typedef struct __attribute__((aligned(64))) { BufCache x; char pad[64 - sizeof(BufCache)]; } RxSlot;
+static RxSlot rx_desk[1024];
 
 static BufCache checkout_rx(BufCache iou) {
-    int tid = omp_get_thread_num() % 1024;
-    BufCache old = rx_desk[tid];
-    rx_desk[tid] = iou;
+    BufCache *slot = &rx_desk[omp_get_thread_num() % 1024].x;
+    BufCache old = *slot;
+    *slot = iou;
     return old;
 }
 
