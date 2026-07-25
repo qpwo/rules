@@ -2108,16 +2108,9 @@ static void send_response(int fd, int32_t cipherkey, int32_t status, const void 
     uint8_t small[4096];
     uint8_t *buf = small;
     if (4 + len > sizeof(small)) {
-        if (len > 64u * 1024u * 1024u - 4u) {
-            status = 3;
-            payload = "shed";
-            n = 4;
-            len = 16 + n;
-        } else {
-            resp_c = chunk_pop();
-            if (!resp_c) return;
-            buf = resp_c->data;
-        }
+        resp_c = chunk_pop();
+        if (!resp_c) return;
+        buf = resp_c->data;
     }
     *(uint32_t*)(buf + 0) = htonl(len);
     *(uint32_t*)(buf + 4) = htonl(0x4c444231);
