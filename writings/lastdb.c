@@ -327,6 +327,31 @@ static int cmp_u64(const void *a, const void *b) {
     return x < y ? -1 : (x > y ? 1 : 0);
 }
 
+static uint64_t *query_offsets(uint64_t start_idx, uint64_t count)
+{
+    if (!count || count > SIZE_MAX / sizeof(uint64_t)) {
+        return NULL;
+    }
+
+    size_t bytes = (size_t)(count * sizeof(uint64_t));
+    uint64_t total = 0;
+    uint64_t freeish = get_mem_avail(&total);
+    if (total && (bytes > freeish || freeish - bytes < total / 10)) {
+        return NULL;
+    }
+
+    uint64_t *offs = malloc(bytes);
+    if (!offs) {
+        return NULL;
+    }
+
+    for (uint64_t i = 0; i < count; i++) {
+        offs[i] = ht[start_idx + i].off1;
+    }
+    qsort(offs, count, sizeof(*offs), cmp_u64);
+    return offs;
+}
+
 static int cmp_node(const void *a, const void *b) {
     const Node *x = a, *y = b;
     if (x->hash != y->hash) return x->hash < y->hash ? -1 : 1;
@@ -2097,11 +2122,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             uint64_t start_idx, end_idx;
                             ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
                             uint64_t count = end_idx - start_idx;
-                            uint64_t *offs = count ? malloc(count * 8) : NULL;
-                            if (offs) {
-                                for (uint64_t i = 0; i < count; i++) offs[i] = ht[start_idx + i].off1;
-                                qsort(offs, count, 8, cmp_u64);
-                            }
+                            uint64_t *offs = query_offsets(start_idx, count);
                             #pragma omp parallel for schedule(dynamic, 1024) num_threads(worker_threads())
                             for (uint64_t i = 0; i < count; i++) {
                                 Record *r = rec_at((offs ? offs[i] : ht[start_idx + i].off1) - 1);
@@ -2257,11 +2278,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         uint64_t start_idx, end_idx;
                                         ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
                                         uint64_t count = end_idx - start_idx;
-                                        uint64_t *offs = count ? malloc(count * 8) : NULL;
-                                        if (offs) {
-                                            for (uint64_t i = 0; i < count; i++) offs[i] = ht[start_idx + i].off1;
-                                            qsort(offs, count, 8, cmp_u64);
-                                        }
+                            uint64_t *offs = query_offsets(start_idx, count);
                                         #pragma omp parallel num_threads(worker_threads())
                                         {
                                             float local_best = -1e30f;
@@ -2315,11 +2332,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     uint64_t start_idx, end_idx;
                                     ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
                                     uint64_t count = end_idx - start_idx;
-                                    uint64_t *offs = count ? malloc(count * 8) : NULL;
-                                    if (offs) {
-                                        for (uint64_t i = 0; i < count; i++) offs[i] = ht[start_idx + i].off1;
-                                        qsort(offs, count, 8, cmp_u64);
-                                    }
+                            uint64_t *offs = query_offsets(start_idx, count);
                                     #pragma omp parallel for reduction(+:count_est,raw_count,sum) schedule(static, 4096) num_threads(worker_threads())
                                     for (uint64_t i = 0; i < count; i++) {
                                         Record *r = rec_at((offs ? offs[i] : ht[start_idx + i].off1) - 1);
