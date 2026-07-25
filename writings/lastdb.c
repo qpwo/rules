@@ -1167,6 +1167,17 @@ static int rec_has_terms(Record *r, int num_words, char **words, size_t *lens, u
         char *w = negate ? words[j] + 1 : words[j];
         size_t wl = negate ? lens[j] - 1 : lens[j];
         if (wl == 0) continue;
+        if (w[0] == '>' || w[0] == '<') {
+            double thresh = strtod(w + 1, NULL);
+            char v_buf[256];
+            size_t cl = r->v_len < 255 ? r->v_len : 255;
+            memcpy(v_buf, rec_v(r), cl);
+            v_buf[cl] = 0;
+            double val_to_check = is_decay_val ? decay_cur : strtod(v_buf, NULL);
+            int cmp = w[0] == '>' ? (val_to_check > thresh) : (val_to_check < thresh);
+            if (negate ? cmp : !cmp) return 0;
+            continue;
+        }
         if (!negate && (r->bf & term_bfs[j]) != term_bfs[j]) return 0;
         int found = (!is_decay_val && memmem_pivot(rec_v(r), r->v_len, w, wl)) || memmem_pivot(rec_k(r), r->k_len, w, wl);
         if (negate ? found : !found) return 0;
@@ -2268,9 +2279,16 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                                 char *kw = negate ? w + 1 : w;
                                                 size_t kwl = negate ? wl - 1 : wl;
                                                 if (kwl > 0) {
+                                                if (kw[0] == '>' || kw[0] == '<') {
+                                                    double thresh = strtod(kw + 1, NULL);
+                                                    double val_to_check = is_decay ? cur : strtod(out_val, NULL);
+                                                    int cmp = kw[0] == '>' ? (val_to_check > thresh) : (val_to_check < thresh);
+                                                    if (negate ? cmp : !cmp) { match = 0; break; }
+                                                } else {
                                                     if (word_idx < 64 && !negate && (r->bf & query_bfs[word_idx]) != query_bfs[word_idx]) { match = 0; break; }
                                                     int found = (!is_decay && memmem_pivot(out_val, out_vl, kw, kwl)) || memmem_pivot(rec_k(r), r->k_len, kw, kwl);
                                                     if (negate ? found : !found) { match = 0; break; }
+                                                }
                                                 }
                                                 word_idx++;
                                             }
@@ -2279,10 +2297,10 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     }
                                         if (match) {
                                             double db_w = (double)(1U << r->weight_log);
-                                            if (threshold >= 1.0 && db_w > threshold) continue;
+                                            
                                             double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
                                             double w = db_w > qw ? db_w : qw;
-                                            if (is_decay) { w *= cur; if (threshold >= 1.0 && w < threshold) continue; }
+                                            if (is_decay) { w *= cur;  }
                                             char weight[32];
                                             int wlen = snprintf(weight, sizeof(weight), "%.5g\t", w);
                                             size_t rec_len = wlen + r->k_len + 1 + out_vl + 1;
@@ -2451,7 +2469,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     if ((double)(gh & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
                                 }
                                 double db_w = (double)(1U << r->weight_log);
-                                if (threshold >= 1.0 && db_w > threshold) continue;
+                                
                                 double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
                                 double w = db_w > qw ? db_w : qw;
                                 double cur = 0;
@@ -2460,7 +2478,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     if (decay_value_at(rec_v(r), r->v_len, sum_now, &cur)) is_decay = 1;
                                 }
                                 if (is_decay && cur == 0) continue;
-                                if (is_decay) { w *= cur; if (threshold >= 1.0 && w < threshold) continue; }
+                                if (is_decay) { w *= cur;  }
                                 count_est += w;
                                         raw_count++;
                                         if (op == 9 && r->v_len > 0) {
@@ -2869,7 +2887,7 @@ int main(int argc, char **argv)
                 if ((double)(gh & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
             }
             double db_w = (double)(1U << r->weight_log);
-            if (threshold >= 1.0 && db_w > threshold) continue;
+            
             double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
             double w = db_w > qw ? db_w : qw;
             if (r->v_len > 0 && r->v_len < 192) {
@@ -2877,7 +2895,7 @@ int main(int argc, char **argv)
                 if (decay_value_at(rec_v(r), r->v_len, now, &cur)) {
                     if (cur == 0) continue;
                     w *= cur;
-                    if (threshold >= 1.0 && w < threshold) continue;
+                    
                 }
             }
             count_est += w;
@@ -2905,7 +2923,7 @@ int main(int argc, char **argv)
                 if ((double)(gh & 0xFFFFFFFFULL) * 0x1.0p-32 > threshold) continue;
             }
             double db_w = (double)(1U << r->weight_log);
-            if (threshold >= 1.0 && db_w > threshold) continue;
+            
             double qw = threshold < 1.0 ? 1.0 / threshold : 1.0;
             double w = db_w > qw ? db_w : qw;
             int is_decay = 0;
@@ -2914,7 +2932,7 @@ int main(int argc, char **argv)
                 if (decay_value_at(rec_v(r), r->v_len, sum_now, &cur)) is_decay = 1;
             }
             if (is_decay && cur == 0) continue;
-            if (is_decay) { w *= cur; if (threshold >= 1.0 && w < threshold) continue; }
+            if (is_decay) { w *= cur;  }
             raw_s++;
             if (r->v_len > 0) {
                 if (is_decay) {
