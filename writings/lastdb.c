@@ -1734,7 +1734,7 @@ static CacheLine cpu_chunks[1024];
 static inline void chunk_push(Chunk *chunk) {
     int cpu = sched_getcpu();
     if (cpu >= 0 && cpu < 1024) {
-        Chunk *old = __atomic_exchange_n(&cpu_chunks[cpu].chunk, chunk, __ATOMIC_ACQ_REL);
+        Chunk *old = __atomic_exchange_n(&cpu_chunks[cpu].chunk, chunk, __ATOMIC_RELAXED);
         if (!old) return;
         chunk = old;
     }
@@ -1744,7 +1744,7 @@ static inline void chunk_push(Chunk *chunk) {
 static inline Chunk *chunk_pop(void) {
     int cpu = sched_getcpu();
     if (cpu >= 0 && cpu < 1024) {
-        Chunk *chunk = __atomic_exchange_n(&cpu_chunks[cpu].chunk, NULL, __ATOMIC_ACQ_REL);
+        Chunk *chunk = __atomic_exchange_n(&cpu_chunks[cpu].chunk, NULL, __ATOMIC_RELAXED);
         if (chunk) return chunk;
     }
 
