@@ -1490,7 +1490,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
     addr.sin_port = htons(port);
     addr.sin_addr.s_addr = INADDR_ANY;
     if (bind(srv, (struct sockaddr *)&addr, sizeof(addr)) < 0) die("bind");
-    if (listen(srv, 1000) < 0) die("listen");
+    if (listen(srv, SOMAXCONN) < 0) die("listen");
     printf("Listening on port %d...\n", port);
 
     #pragma omp parallel num_threads(worker_threads())
