@@ -762,11 +762,37 @@ static double parse_f64(const char *s)
     return x;
 }
 
-static double decay_live_value(double hl, double last, double val, double now)
+static int decay_value_at(const char *s, size_t n, double now, double *out)
 {
+    if (!n || n >= 192) {
+        return 0;
+    }
+
+    char buf[192] = {0};
+    memcpy(buf, s, n);
+    char *t1 = strchr(buf, '\t');
+    char *t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
+    if (!t1 || !t2) {
+        return 0;
+    }
+
+    char *e1;
+    char *e2;
+    char *e3;
+    *t1 = 0;
+    *t2 = 0;
+    double hl = strtod(buf, &e1);
+    double last = strtod(t1 + 1, &e2);
+    double val = strtod(t2 + 1, &e3);
+    if (e1 != t1 || e2 != t2 || *e3 || hl <= 0 || !__builtin_isfinite(hl) || !__builtin_isfinite(last) || !__builtin_isfinite(val)) {
+        return 0;
+    }
+
     double x = now >= last ? val * __builtin_exp2((last - now) / hl) : val;
-    return __builtin_fabs(x) < 1e-12 ? 0 : x;
+    *out = __builtin_fabs(x) < 1e-12 ? 0 : x;
+    return 1;
 }
+
 
 static int current_decay(const char *t, const char *k, double *half_life, double *last, double *value)
 {
@@ -2046,20 +2072,11 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                             size_t out_vl = r->v_len;
                                             char eval_buf[64];
                                             if (has_now && out_vl > 0 && out_vl < 192) {
-                                                char buf2[192] = {0}; memcpy(buf2, out_val, out_vl);
-                                                char *t1 = strchr(buf2, '\t'); char *t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
-                                                if (t1 && t2) {
-                                                    char *e1, *e2, *e3;
-                                                    *t1 = 0; *t2 = 0;
-                                                    double hl = strtod(buf2, &e1);
-                                                    double last = strtod(t1 + 1, &e2);
-                                                    double val = strtod(t2 + 1, &e3);
-                                                    if (e1 == t1 && e2 == t2 && hl > 0) {
-                                                        double cur = decay_live_value(hl, last, val, eval_now);
-                                                        if (cur == 0) continue;
-                                                        out_vl = snprintf(eval_buf, sizeof(eval_buf), "%.17g", cur);
-                                                        out_val = eval_buf;
-                                                    }
+                                                double cur = 0;
+                                                if (decay_value_at(out_val, out_vl, eval_now, &cur)) {
+                                                    if (cur == 0) continue;
+                                                    out_vl = snprintf(eval_buf, sizeof(eval_buf), "%.17g", cur);
+                                                    out_val = eval_buf;
                                                 }
                                             }
                                             char weight[32];
@@ -2232,21 +2249,12 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                 count_est += w;
                                         raw_count++;
                                         if (op == 9 && r->v_len > 0 && r->v_len < 192) {
-                                    char buf2[192] = {0}; memcpy(buf2, rec_v(r), r->v_len);
-                                    char *t1 = strchr(buf2, '\t'); char *t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
-                                    if (t1 && t2) {
-                                        char *e1, *e2, *e3;
-                                        *t1 = 0; *t2 = 0;
-                                        double hl = strtod(buf2, &e1);
-                                        double last = strtod(t1 + 1, &e2);
-                                        double val = strtod(t2 + 1, &e3);
-                                        if (e1 == t1 && e2 == t2 && hl > 0) {
-                                            if (has_now) sum += decay_live_value(hl, last, val, sum_now) * w;
-                                            else sum += val * w;
-                                        } else {
-                                            sum += val * w;
-                                        }
+                                    double cur = 0;
+                                    if (has_now && decay_value_at(rec_v(r), r->v_len, sum_now, &cur)) {
+                                        sum += cur * w;
                                     } else {
+                                        char buf2[192] = {0};
+                                        memcpy(buf2, rec_v(r), r->v_len);
                                         char *p_str = buf2;
                                         while (*p_str && *p_str != '-' && *p_str != '.' && (*p_str < '0' || *p_str > '9')) p_str++;
                                         sum += strtod(p_str, NULL) * w;
@@ -2655,22 +2663,12 @@ int main(int argc, char **argv)
             double w = db_w > qw ? db_w : qw;
             raw_s++;
                     if (r->v_len > 0 && r->v_len < 192) {
-                char buf[192] = {0};
-                memcpy(buf, rec_v(r), r->v_len);
-                char *t1 = strchr(buf, '\t'); char *t2 = t1 ? strchr(t1 + 1, '\t') : NULL;
-                if (t1 && t2) {
-                    char *e1, *e2, *e3;
-                    *t1 = 0; *t2 = 0;
-                    double hl = strtod(buf, &e1);
-                    double last = strtod(t1 + 1, &e2);
-                    double val = strtod(t2 + 1, &e3);
-                    if (e1 == t1 && e2 == t2 && hl > 0) {
-                        if (has_now) s += decay_live_value(hl, last, val, sum_now) * w;
-                        else s += val * w;
-                    } else {
-                        s += val * w;
-                    }
+                double cur = 0;
+                if (has_now && decay_value_at(rec_v(r), r->v_len, sum_now, &cur)) {
+                    s += cur * w;
                 } else {
+                    char buf[192] = {0};
+                    memcpy(buf, rec_v(r), r->v_len);
                     char *p_str = buf;
                     while (*p_str && *p_str != '-' && *p_str != '.' && (*p_str < '0' || *p_str > '9')) p_str++;
                     s += strtod(p_str, NULL) * w;
