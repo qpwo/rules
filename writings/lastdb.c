@@ -1439,24 +1439,29 @@ typedef struct {
     uint8_t data[64 * 1024 * 1024];
 } Chunk;
 
-static __thread Chunk *free_chunk;
+typedef struct {
+    Chunk *chunk;
+    char pad[64 - sizeof(Chunk *)];
+} CacheLine;
+static CacheLine cpu_chunks[1024] __attribute__((aligned(64)));
 
 static inline void chunk_push(Chunk *chunk) {
-    if (!free_chunk) {
-        free_chunk = chunk;
-        return;
-    }
-    if (munmap(chunk, sizeof(*chunk))) {
+    int cpu = sched_getcpu();
+    if (cpu >= 0 && cpu < 1024) {
+        Chunk *old = __atomic_exchange_n(&cpu_chunks[cpu].chunk, chunk, __ATOMIC_ACQ_REL);
+        if (old) munmap(old, sizeof(*old));
+    } else if (munmap(chunk, sizeof(*chunk))) {
         die("munmap chunk");
     }
 }
 
 static inline Chunk *chunk_pop(void) {
-    Chunk *chunk = free_chunk;
-    if (chunk) {
-        free_chunk = NULL;
-        return chunk;
+    int cpu = sched_getcpu();
+    Chunk *chunk = NULL;
+    if (cpu >= 0 && cpu < 1024) {
+        chunk = __atomic_exchange_n(&cpu_chunks[cpu].chunk, NULL, __ATOMIC_ACQ_REL);
     }
+    if (chunk) return chunk;
     reserve_ram(sizeof(*chunk));
     chunk = mmap(NULL, sizeof(*chunk), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
     if (chunk == MAP_FAILED) {
