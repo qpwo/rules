@@ -412,6 +412,7 @@ static void deduplicate_ht(void) {
         }
         i = j;
     }
+    for (uint64_t i = out; i < ht_len; i++) ht[i].dist = -1;
     ht_len = out;
     ht_sorted_len = out;
 }
