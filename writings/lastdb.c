@@ -1365,11 +1365,8 @@ static int do_batch(const char *path, const char *t)
     size_t cap = 0;
     size_t used = 0;
 
-    reserve_ram(BATCH_WRITE_BYTES);
-    buf = malloc(BATCH_WRITE_BYTES);
-    if (!buf) {
-        die("malloc batch");
-    }
+    Chunk *batch_c = chunk_pop();
+    buf = (char *)batch_c->data;
 
     for (;;) {
         ssize_t n = getline(&line, &cap, stdin);
@@ -1393,7 +1390,7 @@ static int do_batch(const char *path, const char *t)
         die("getline");
     }
     batch_flush(fd, buf, &used);
-    free(buf);
+    chunk_push(batch_c);
     free(line);
     sync_fd(fd);
     if (close(fd)) {
@@ -1455,9 +1452,13 @@ static void send_response(int fd, int32_t cipherkey, int32_t status, const void 
         return;
     }
 
+    Chunk *resp_c = NULL;
     uint8_t small[4096];
-    uint8_t *buf = 4 + len <= sizeof(small) ? small : malloc(4 + len);
-    if (!buf) die("malloc response");
+    uint8_t *buf = small;
+    if (4 + len > sizeof(small)) {
+        resp_c = chunk_pop();
+        buf = resp_c->data;
+    }
     *(uint32_t*)(buf + 0) = htonl(len);
     *(uint32_t*)(buf + 4) = htonl(0x4c444231);
     *(uint32_t*)(buf + 8) = htonl(status);
@@ -1466,7 +1467,7 @@ static void send_response(int fd, int32_t cipherkey, int32_t status, const void 
     if (n) memcpy(buf + 20, payload, n);
     crypt_buf(buf + 4, len, cipherkey);
     write_full(fd, buf, 4 + len);
-    if (buf != small) free(buf);
+    if (resp_c) chunk_push(resp_c);
 }
 
 typedef struct {
@@ -1592,10 +1593,11 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     } else send_response(fd, cipherkey, 2, "not found", 9);
                                 }
                             }
-                        else if (op == 4 || op == 5) {
-                            if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
-                            uint8_t *out = NULL; size_t out_len = 0, out_cap = 0;
-                            uint64_t query_bfs[64] = {0};
+                            else if (op == 4 || op == 5) {
+                                if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
+                                Chunk *out_c = chunk_pop();
+                                uint8_t *out = out_c->data; size_t out_len = 0;
+                                uint64_t query_bfs[64] = {0};
                             if (op == 5) {
                                 int num_words = 0; char *w = v; char *end = v + vl;
                                 while (w < end && num_words < 64) {
@@ -1605,7 +1607,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     w += wl + 1;
                                 }
                             }
-                            #define APP(ptr, lll) do { size_t app_n = (lll); if (out_len < 60u * 1024u * 1024u) { if (app_n > 60u * 1024u * 1024u - out_len) app_n = 60u * 1024u * 1024u - out_len; while (out_len + app_n > out_cap) { size_t next_cap = out_cap ? out_cap * 2 : 4096; out_cap = next_cap > 60u * 1024u * 1024u ? 60u * 1024u * 1024u : next_cap; void *next_out = realloc(out, out_cap); if (!next_out) die("realloc response"); out = next_out; } memcpy(out + out_len, ptr, app_n); out_len += app_n; } } while(0)
+                            #define APP(ptr, lll) do { size_t app_n = (lll); if (out_len + app_n <= 60u * 1024u * 1024u) { memcpy(out + out_len, ptr, app_n); out_len += app_n; } } while(0)
                             #pragma omp critical (db)
                             {
                                 load_db(db_path);
@@ -1643,7 +1645,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     }
                                 }
                                 send_response(fd, cipherkey, 0, out, out_len);
-                                free(out);
+                                chunk_push(out_c);
                             }
                             else if (op == 2 || op == 3) {
                                 int req = op == 2 ? 2 : 4;
@@ -1662,7 +1664,8 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                             }
                             else if (op == 6) {
                                 if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
-                                uint8_t *out = NULL; size_t out_len = 0, out_cap = 0;
+                                Chunk *out_c = chunk_pop();
+                                uint8_t *out = out_c->data; size_t out_len = 0;
                                 char v_null[64]; size_t vln = vl > 63 ? 63 : vl; memcpy(v_null, v, vln); v_null[vln] = 0;
                                 uint64_t off = strtoull(v_null, NULL, 10);
 
@@ -1689,7 +1692,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                     }
                                 }
                                 send_response(fd, cipherkey, 0, out, out_len);
-                                free(out);
+                                chunk_push(out_c);
                             } else if (op == 7) {
                                 if (!(perms & 1)) { send_response(fd, cipherkey, 1, "denied", 6); chunk_push(c); continue; }
                                 float (*dot_fn)(const void *, const void *, size_t) = NULL;
