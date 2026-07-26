@@ -2647,7 +2647,7 @@ double confidence = ess_conf < decay_conf ? ess_conf : decay_conf;
                                 if (__builtin_fabs(sum) < 5e-15) sum = 0;
                                 if (raw_count < 5) confidence *= (double)raw_count / 5.0;
                                 if (!raw_count && sample_rate >= 1.0) confidence = 1.0;
-                                if (ess < 30.0 * (double)(1 + max_wl) || confidence < 0.50) { count_est = 0; sum = 0; }
+                                if (ess < 100.0 * (double)(1 + max_wl) * (double)(1 + max_wl) || confidence < 0.50) { count_est = 0; sum = 0; }
                                 if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu\t%d\t%.4g", count_est, (unsigned long long)raw_count, max_wl, confidence);
                                 else vl_out = snprintf(val, sizeof(val), "%.6g\t%.17g\t%llu\t%d\t%.4g", sum, raw_sum, (unsigned long long)raw_count, max_wl, confidence);
                                 send_response(fd, cipherkey, 0, val, vl_out);
@@ -3156,7 +3156,7 @@ double conf = ess >= 1000 ? 1.0 : ess / 1000.0;
                 if (count_est < 0.5) count_est = 0;
                 if (raw_c < 5) conf *= (double)raw_c / 5.0;
                 if (!raw_c && threshold >= 1.0) conf = 1.0;
-                if (ess < 30.0 * (double)(1 + max_wl) || conf < 0.50) count_est = 0;
+                if (ess < 100.0 * (double)(1 + max_wl) * (double)(1 + max_wl) || conf < 0.50) count_est = 0;
                 printf("%.4g\t%llu\t%d\t%.4g\n", count_est, (unsigned long long)raw_c, max_wl, conf);
             }
             else if (!strcmp(args[0], "sum") && n >= 2) {
@@ -3209,7 +3209,7 @@ if (threshold > 1.0) threshold = 1.0;
                 double conf = raw_s >= 1000 ? 1.0 : (double)raw_s / 1000.0;
                 if (raw_s < 5) conf *= (double)raw_s / 5.0;
                 if (!raw_s && threshold >= 1.0) conf = 1.0;
-                if ((double)raw_s < 30.0 * (1 + max_wl) || conf < 0.50) s = 0;
+                if ((double)raw_s < 100.0 * (1 + max_wl) * (1 + max_wl) || conf < 0.50) s = 0;
                 printf("%.6g\t%.17g\t%llu\t%d\t%.4g\n", s, raw_sum, (unsigned long long)raw_s, max_wl, conf);
             }
             else printf("ERR\n");
