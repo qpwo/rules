@@ -2496,14 +2496,14 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
 double max_w = threshold > 1.0 ? threshold : 20.0;
 double sample_rate = threshold < 1.0 ? threshold : 1.0;
 
-                                double count_est = 0; uint64_t raw_count = 0; double sum = 0; double raw_sum = 0; double w2_sum = 0; double ac_sum = 0; int max_wl = 0;
+                                double count_est = 0; uint64_t raw_count = 0; double sum = 0; double raw_sum = 0; double w2_sum = 0; double ac_sum = 0; double ac_w_sum = 0; int max_wl = 0;
 
                                 { SRV_READ_LOCK(db_path);
                                 uint64_t start_idx, end_idx;
                                 ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
                                 uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
                                 uint64_t *offs = get_sorted_offs(start_idx, count);
-                                #pragma omp parallel for reduction(+:count_est,raw_count,sum,raw_sum,w2_sum,ac_sum) reduction(max:max_wl) schedule(static, 4096) num_threads(worker_threads())
+                                #pragma omp parallel for reduction(+:count_est,raw_count,sum,raw_sum,w2_sum,ac_sum,ac_w_sum) reduction(max:max_wl) schedule(static, 4096) num_threads(worker_threads())
                                 for (uint64_t i = 0; i < count; i++) {
                                     if (i + 16 < count) __builtin_prefetch(map_base + (offs ? offs[i + 16] : (ht[start_idx + i + 16].off1 - 1)), 0, 0);
                                     Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
@@ -2577,6 +2577,7 @@ double ac = is_decay ? __builtin_fabs(cur) : 1.0;
 if (ac > 1.0) ac = 1.0;
 double eff_w = db_w;
 count_est += eff_w;
+                                    ac_w_sum += ac * eff_w;
                                     w2_sum += eff_w * eff_w;
                                     ac_sum += ac;
                                     raw_count++;
@@ -2605,7 +2606,7 @@ count_est += eff_w;
                                 if (max_wl < 0) max_wl = 0;
 double ess = count_est > 0 && w2_sum > 0 ? count_est * count_est / w2_sum : (count_est > 0 ? count_est : 0);
 double ess_conf = ess >= 1000 ? 1.0 : ess / 1000.0;
-double decay_conf = raw_count > 0 ? ac_sum / (double)raw_count : 1.0;
+double decay_conf = count_est > 0 ? ac_w_sum / count_est : (raw_count > 0 ? ac_sum / (double)raw_count : 1.0);
 double confidence = ess_conf * decay_conf;
                                 if (count_est < 0.5) count_est = 0;
                                 if (__builtin_fabs(sum) < 5e-15) sum = 0;
