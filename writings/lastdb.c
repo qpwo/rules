@@ -2642,11 +2642,11 @@ count_est += eff_w;
 double ess = count_est > 0 && w2_sum > 0 ? count_est * count_est / w2_sum : (count_est > 0 ? count_est : 0);
 double ess_conf = ess >= 1000 ? 1.0 : ess / 1000.0;
 double decay_conf = count_est > 0 ? ac_w_sum / count_est : (raw_count > 0 ? ac_sum / (double)raw_count : 1.0);
-double confidence = ess_conf * decay_conf;
+double confidence = ess_conf < decay_conf ? ess_conf : decay_conf;
                                 if (count_est < 0.5) count_est = 0;
                                 if (__builtin_fabs(sum) < 5e-15) sum = 0;
                                 if (raw_count < 5) confidence *= (double)raw_count / 5.0;
-                                if (ess < 30.0 * (double)(1 + max_wl) || confidence < 0.30) { count_est = 0; sum = 0; }
+                                if (ess < 30.0 * (double)(1 + max_wl) || confidence < 0.50) { count_est = 0; sum = 0; }
                                 if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu\t%d\t%.4g", count_est, (unsigned long long)raw_count, max_wl, confidence);
                                 else vl_out = snprintf(val, sizeof(val), "%.6g\t%.17g\t%llu\t%d\t%.4g", sum, raw_sum, (unsigned long long)raw_count, max_wl, confidence);
                                 send_response(fd, cipherkey, 0, val, vl_out);
