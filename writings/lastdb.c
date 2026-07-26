@@ -2317,7 +2317,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                 uint64_t last_compact_size = 0;
                 while (1) {
                     usleep(1000000);
-                    int need_compact = 0;
+                    int need_compact = 0, disk_urgent = 0;
         { SRV_READ_LOCK(db_path);
             if (srv_db_fd >= 0) {
                 struct statvfs st;
@@ -2325,13 +2325,14 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                     uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
                     uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.15L);
                     if (free_bytes < reserve_bytes) need_compact = 1;
+                    if (free_bytes < (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.05L)) disk_urgent = 1;
                 }
                 (void)fdatasync(srv_db_fd);
             }
             if (!last_compact_size) last_compact_size = valid_size;
             if (valid_size > 1073741824ULL && valid_size > last_compact_size * 3 / 2) need_compact = 1;
         }
-                    if (need_compact) { double _l[1]; if (getloadavg(_l,1)==1 && _l[0] > (double)omp_get_num_procs()*0.8) continue; SRV_WRITE_LOCK(db_path); do_compact(db_path); if (srv_db_fd >= 0) { close(srv_db_fd); srv_db_fd = -1; } load_db(db_path); if (srv_db_fd < 0) srv_db_fd = open_append(db_path); last_compact_size = valid_size; }
+                    if (need_compact) { double _l[1]; if (!disk_urgent && getloadavg(_l,1)==1 && _l[0] > (double)omp_get_num_procs()*0.8) continue; SRV_WRITE_LOCK(db_path); do_compact(db_path); if (srv_db_fd >= 0) { close(srv_db_fd); srv_db_fd = -1; } load_db(db_path); if (srv_db_fd < 0) srv_db_fd = open_append(db_path); last_compact_size = valid_size; }
                 }
             }
             while (1) {
