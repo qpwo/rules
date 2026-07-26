@@ -2310,7 +2310,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey, int32_t a
                     uint64_t free_bytes = (uint64_t)st.f_bavail * st.f_frsize;
                     uint64_t reserve_bytes = (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.15L);
                     if (free_bytes < reserve_bytes) need_compact = 1;
-                    if (free_bytes < (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.05L)) disk_urgent = 1;
+                    if (free_bytes < (uint64_t)((long double)st.f_blocks * st.f_frsize * 0.12L)) disk_urgent = 1;
                 }
                 (void)fdatasync(srv_db_fd);
             }
