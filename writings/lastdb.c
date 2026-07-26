@@ -2331,7 +2331,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
             if (!last_compact_size) last_compact_size = valid_size;
             if (valid_size > 1073741824ULL && valid_size > last_compact_size * 3 / 2) need_compact = 1;
         }
-                    if (need_compact) { SRV_WRITE_LOCK(db_path); do_compact(db_path); if (srv_db_fd >= 0) { close(srv_db_fd); srv_db_fd = -1; } load_db(db_path); if (srv_db_fd < 0) srv_db_fd = open_append(db_path); last_compact_size = valid_size; }
+                    if (need_compact) { double _l[1]; if (getloadavg(_l,1)==1 && _l[0] > (double)omp_get_num_procs()*0.8) continue; SRV_WRITE_LOCK(db_path); do_compact(db_path); if (srv_db_fd >= 0) { close(srv_db_fd); srv_db_fd = -1; } load_db(db_path); if (srv_db_fd < 0) srv_db_fd = open_append(db_path); last_compact_size = valid_size; }
                 }
             }
             while (1) {
