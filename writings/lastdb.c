@@ -1529,7 +1529,7 @@ static int do_compact(const char *path)
         {
             int keep = 1;
             uint8_t new_wl = r->weight_log;
-            if (decay_factor > 0 && r->t_len > 0 && rec_t(r)[0] != '0' && !(r->v_len > 0 && r->v_len < 192 && rec_v(r)[0] == '\x1F')) {
+            if (decay_factor > 0 && r->t_len > 0 && rec_t(r)[0] != '0') {
                 int ewl = (int)((valid_size - off) * decay_factor);
                 if (ewl > 20) ewl = 20;
                 uint8_t twl = r->weight_log > ewl ? r->weight_log : ewl;
@@ -2556,7 +2556,7 @@ if (match) {
 
                                         double disp_w = is_decay ? db_w * __builtin_fabs(cur) : db_w;
                                         if ((op == 4 || op == 5) && disp_w < min_weight) continue;
-                                        if ((op == 8 || op == 9) && disp_w < min_weight) continue;
+
                                         if (r->weight_log > max_wl) max_wl = r->weight_log;
                                         if (op == 4 || op == 5) {
                                             char weight[32];
