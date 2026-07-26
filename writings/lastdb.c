@@ -2635,14 +2635,15 @@ count_est += eff_w;
                                     char val[128]; int vl_out = 0;
                                 if (max_wl < 0) max_wl = 0;
 double ess = count_est > 0 && w2_sum > 0 ? count_est * count_est / w2_sum : (count_est > 0 ? count_est : 0);
-double ess_conf = ess >= 1000 ? 1.0 : ess / 1000.0;
+double ess_thresh = 100.0 * (double)(1 + max_wl);
+                                double ess_conf = ess >= ess_thresh ? 1.0 : ess / ess_thresh;
 double decay_conf = count_est > 0 ? ac_w_sum / count_est : (raw_count > 0 ? ac_sum / (double)raw_count : 1.0);
 double confidence = ess_conf < decay_conf ? ess_conf : decay_conf;
                                 if (count_est < 0.5) count_est = 0;
                                 if (__builtin_fabs(sum) < 5e-15) sum = 0;
                                 if (raw_count < 5) confidence *= (double)raw_count / 5.0;
                                 if (!raw_count && sample_rate >= 1.0) confidence = 1.0;
-                                if (ess < 100.0 * (double)(1 + max_wl) || confidence < 0.50) { count_est = 0; sum = 0; }
+                                if (confidence < 0.50) { count_est = 0; sum = 0; }
                                 if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu\t%d\t%.4g", count_est, (unsigned long long)raw_count, max_wl, confidence);
                                 else vl_out = snprintf(val, sizeof(val), "%.6g\t%.17g\t%llu\t%d\t%.4g", sum, raw_sum, (unsigned long long)raw_count, max_wl, confidence);
                                 send_response(fd, cipherkey, 0, val, vl_out);
@@ -3147,11 +3148,12 @@ if (threshold > 1.0) threshold = 1.0;
                 }
                 if (offs) munmap(offs, count * 8);
                 double ess = count_est > 0 && w2_sum > 0 ? count_est * count_est / w2_sum : (count_est > 0 ? count_est : 0);
-double conf = ess >= 1000 ? 1.0 : ess / 1000.0;
+double ess_thresh = 100.0 * (double)(1 + max_wl);
+                double conf = ess >= ess_thresh ? 1.0 : ess / ess_thresh;
                 if (count_est < 0.5) count_est = 0;
                 if (raw_c < 5) conf *= (double)raw_c / 5.0;
                 if (!raw_c && threshold >= 1.0) conf = 1.0;
-                if (ess < 100.0 * (double)(1 + max_wl) || conf < 0.50) count_est = 0;
+                if (conf < 0.50) count_est = 0;
                 printf("%.4g\t%llu\t%d\t%.4g\n", count_est, (unsigned long long)raw_c, max_wl, conf);
             }
             else if (!strcmp(args[0], "sum") && n >= 2) {
@@ -3203,10 +3205,12 @@ if (threshold > 1.0) threshold = 1.0;
                 if (offs) munmap(offs, count * 8);
                 if (__builtin_fabs(s) < 5e-15) s = 0;
                 double ess = count_est > 0 && w2_sum > 0 ? count_est * count_est / w2_sum : (count_est > 0 ? count_est : 0);
-                double conf = ess >= 1000 ? 1.0 : ess / 1000.0;
+                double ess_thresh = 100.0 * (double)(1 + max_wl);
+                double conf = ess >= ess_thresh ? 1.0 : ess / ess_thresh;
                 if (raw_s < 5) conf *= (double)raw_s / 5.0;
                 if (!raw_s && threshold >= 1.0) conf = 1.0;
-                if (ess < 100.0 * (1 + max_wl) || conf < 0.50) s = 0;
+                if (conf < 0.50) s = 0;
+
                 printf("%.6g\t%.17g\t%llu\t%d\t%.4g\n", s, raw_sum, (unsigned long long)raw_s, max_wl, conf);
             }
             else printf("ERR\n");
