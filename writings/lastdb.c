@@ -3138,6 +3138,10 @@ if (threshold > 1.0) threshold = 1.0;
             double db_w = (double)(1ULL << (r->weight_log > 31 ? 31 : r->weight_log));
             if (r->weight_log > max_wl) max_wl = r->weight_log;
 
+            if (r->v_len > 0 && r->v_len < 192 && rec_v(r)[0] == '\x1F') {
+                double dc;
+                if (decay_value_at(rec_v(r), r->v_len, now, &dc) && dc == 0) continue;
+            }
             double w = (threshold < 1.0 && r->weight_log == 0) ? db_w / threshold : db_w;
             count_est += w;
             w2_sum += w * w;
