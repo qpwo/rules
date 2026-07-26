@@ -429,7 +429,6 @@ static uint64_t ht_lower_bound(uint64_t hash) {
         base = ht_sorted_len - step;
     }
     for (step >>= 1; step; step >>= 1) {
-        if (step > 1) __builtin_prefetch(&ht[base + (step >> 1)], 0, 0);
         if (ht[base + step].hash < hash) base += step;
     }
     return base + (ht[base].hash < hash);
