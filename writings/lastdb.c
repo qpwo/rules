@@ -2606,8 +2606,18 @@ if (match) {
                                                 out[my_off++] = '\n';
                                             }
                                         } else {
-double ac = is_decay ? __builtin_fabs(cur) : 1.0;
-if (ac > 1.0) ac = 1.0;
+double ac = 1.0;
+if (is_decay) {
+    char db[192] = {0};
+    memcpy(db, rec_v(r) + 1, r->v_len - 1);
+    char *t1 = strchr(db, '\t');
+    char *t2 = t1 ? strchr(t1+1, '\t') : NULL;
+    if (t2) {
+        double sv = strtod(t2+1, NULL);
+        ac = sv != 0 ? __builtin_fabs(cur / sv) : 1.0;
+        if (ac > 1.0) ac = 1.0;
+    }
+}
 double eff_w = db_w;
 count_est += eff_w;
                                     ac_w_sum += ac * eff_w;
