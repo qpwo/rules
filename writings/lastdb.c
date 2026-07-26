@@ -1545,7 +1545,7 @@ static int do_compact(const char *path)
         {
             int keep = 1;
             uint8_t new_wl = r->weight_log;
-            if (decay_factor > 0 && r->t_len > 0 && rec_t(r)[0] != '0') {
+            if (decay_factor > 0 && r->t_len > 0 && rec_t(r)[0] != '0' && !(r->v_len > 0 && r->v_len < 192 && rec_v(r)[0] == '\x1F')) {
                 int ewl = (int)((valid_size - off) * decay_factor);
                 if (ewl > 20) ewl = 20;
                 uint8_t twl = r->weight_log > ewl ? r->weight_log : ewl;
