@@ -2283,7 +2283,7 @@ static inline void srv_unlock_write_attr(int *dummy) { (void)dummy; pthread_rwlo
 #define SRV_READ_LOCK(path) int _srv_r __attribute__((cleanup(srv_unlock_read_attr))) = srv_read_lock_func(path)
 #define SRV_WRITE_LOCK(path) int _srv_w __attribute__((cleanup(srv_unlock_write_attr))) = srv_write_lock_func(path)
 
-static void do_serve(const char *db_path, int port, int32_t cipherkey) {
+static void do_serve(const char *db_path, int port, int32_t cipherkey, int32_t admin_user, int32_t admin_pass) {
     omp_set_dynamic(1);
     omp_set_max_active_levels(2);
 
@@ -2404,7 +2404,7 @@ static void do_serve(const char *db_path, int port, int32_t cipherkey) {
                                         }
                                     }
                                 }
-                                if (user == 0 && pass == 0) perms = 7;
+                                if (user == admin_user && pass == admin_pass) perms = 7;
                             }
 
                             char full_tenant[65536];
@@ -3089,7 +3089,7 @@ static void usage(const char *prog)
     fputs("  batch TENANT     # stdin: key<TAB>value\n", stderr);
     fputs("  compact\n", stderr);
     fputs("  closest TYPE TENANT KEY\n", stderr);
-    fputs("  serve CIPHERKEY     # always port 51515\n", stderr);
+    fputs("  serve ADMIN_USER ADMIN_PASS CIPHERKEY  # always port 51515\n", stderr);
     exit(2);
 }
 
@@ -3102,8 +3102,8 @@ int main(int argc, char **argv)
     const char *db = argv[1];
     const char *cmd = argv[2];
 
-    if (!strcmp(cmd, "serve") && argc == 4) {
-        do_serve(db, 51515, atoi(argv[3]));
+    if (!strcmp(cmd, "serve") && argc == 6) {
+        do_serve(db, 51515, atoi(argv[5]), atoi(argv[3]), atoi(argv[4]));
         return 0;
     }
 
