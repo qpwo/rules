@@ -1310,6 +1310,16 @@ static int do_search(const char *t, int num_words, char **words)
     ht_tenant_range(t, tl, &start_idx, &end_idx);
     uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
     uint64_t *offs = get_sorted_offs(start_idx, count);
+    if (offs && count > 1) {
+        uint64_t lo = offs[0], hi = offs[count-1] + 65536;
+        if (hi > map_size) hi = map_size;
+        if (hi > lo) {
+            (void)madvise(map_base + lo, hi - lo, MADV_SEQUENTIAL);
+            uint64_t ra = hi - lo;
+            if (ra > 33554432) ra = 33554432;
+            (void)madvise(map_base + lo, ra, MADV_WILLNEED);
+        }
+    }
     size_t out_cap = 256 * 1024 * 1024;
     char *out = mmap(NULL, out_cap, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
     if (out == MAP_FAILED) die("mmap search out");
@@ -1382,6 +1392,16 @@ static int do_scan(const char *t, const char *prefix)
     ht_tenant_range(t, tl, &start_idx, &end_idx);
     uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
     uint64_t *offs = get_sorted_offs(start_idx, count);
+    if (offs && count > 1) {
+        uint64_t lo = offs[0], hi = offs[count-1] + 65536;
+        if (hi > map_size) hi = map_size;
+        if (hi > lo) {
+            (void)madvise(map_base + lo, hi - lo, MADV_SEQUENTIAL);
+            uint64_t ra = hi - lo;
+            if (ra > 33554432) ra = 33554432;
+            (void)madvise(map_base + lo, ra, MADV_WILLNEED);
+        }
+    }
     size_t out_cap = 256 * 1024 * 1024;
     char *out = mmap(NULL, out_cap, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
     if (out == MAP_FAILED) die("mmap scan out");
@@ -2505,6 +2525,18 @@ double sample_rate = threshold < 1.0 ? threshold : 1.0;
                                 ht_tenant_range(full_tenant, ft_len, &start_idx, &end_idx);
                                 uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
                                 uint64_t *offs = get_sorted_offs(start_idx, count);
+                                uint64_t madv_lo = 0, madv_hi = 0;
+                                if (offs && count > 1) {
+                                    madv_lo = offs[0];
+                                    madv_hi = offs[count-1] + 65536;
+                                    if (madv_hi > map_size) madv_hi = map_size;
+                                    if (madv_hi > madv_lo) {
+                                        (void)madvise(map_base + madv_lo, madv_hi - madv_lo, MADV_SEQUENTIAL);
+                                        uint64_t ra = madv_hi - madv_lo;
+                                        if (ra > 33554432) ra = 33554432;
+                                        (void)madvise(map_base + madv_lo, ra, MADV_WILLNEED);
+                                    }
+                                }
                                 #pragma omp parallel for reduction(+:count_est,raw_count,sum,raw_sum,w2_sum,ac_sum,ac_w_sum) reduction(max:max_wl) schedule(static, 4096) num_threads(worker_threads())
                                 for (uint64_t i = 0; i < count; i++) {
                                     if (i + 16 < count) __builtin_prefetch(map_base + (offs ? offs[i + 16] : (ht[start_idx + i + 16].off1 - 1)), 0, 0);
@@ -2598,6 +2630,7 @@ count_est += eff_w;
                                         }
                                     }
                                 }
+                                if (madv_hi > madv_lo) (void)madvise(map_base + madv_lo, madv_hi - madv_lo, MADV_RANDOM);
                                 if (offs) munmap(offs, count * 8);
                                 }
                                 if (op == 4 || op == 5) {
