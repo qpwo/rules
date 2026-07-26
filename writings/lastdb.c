@@ -2647,7 +2647,7 @@ double confidence = ess_conf < decay_conf ? ess_conf : decay_conf;
                                 if (__builtin_fabs(sum) < 5e-15) sum = 0;
                                 if (raw_count < 5) confidence *= (double)raw_count / 5.0;
                                 if (!raw_count && sample_rate >= 1.0) confidence = 1.0;
-                                if (ess < 100.0 * (double)(1 + max_wl) * (double)(1 + max_wl) || confidence < 0.50) { count_est = 0; sum = 0; }
+                                if (ess < 100.0 * (double)(1 + max_wl) || confidence < 0.50) { count_est = 0; sum = 0; }
                                 if (op == 8) vl_out = snprintf(val, sizeof(val), "%.4g\t%llu\t%d\t%.4g", count_est, (unsigned long long)raw_count, max_wl, confidence);
                                 else vl_out = snprintf(val, sizeof(val), "%.6g\t%.17g\t%llu\t%d\t%.4g", sum, raw_sum, (unsigned long long)raw_count, max_wl, confidence);
                                 send_response(fd, cipherkey, 0, val, vl_out);
@@ -3156,11 +3156,11 @@ double conf = ess >= 1000 ? 1.0 : ess / 1000.0;
                 if (count_est < 0.5) count_est = 0;
                 if (raw_c < 5) conf *= (double)raw_c / 5.0;
                 if (!raw_c && threshold >= 1.0) conf = 1.0;
-                if (ess < 100.0 * (double)(1 + max_wl) * (double)(1 + max_wl) || conf < 0.50) count_est = 0;
+                if (ess < 100.0 * (double)(1 + max_wl) || conf < 0.50) count_est = 0;
                 printf("%.4g\t%llu\t%d\t%.4g\n", count_est, (unsigned long long)raw_c, max_wl, conf);
             }
             else if (!strcmp(args[0], "sum") && n >= 2) {
-                double s = 0; uint64_t raw_s = 0; double raw_sum = 0; int max_wl = 0;
+                double s = 0; uint64_t raw_s = 0; double raw_sum = 0; double w2_sum = 0; double count_est = 0; int max_wl = 0;
                 size_t tl = strlen(args[1]);
                 size_t pl = n >= 3 ? strlen(args[2]) : 0;
                 double threshold = n >= 4 ? strtod(args[3], NULL) : 1.0;
@@ -3170,7 +3170,7 @@ if (threshold > 1.0) threshold = 1.0;
             uint64_t start_idx, end_idx; ht_tenant_range(args[1], tl, &start_idx, &end_idx);
             uint64_t count = end_idx > start_idx ? end_idx - start_idx : 0;
             uint64_t *offs = get_sorted_offs(start_idx, count);
-            #pragma omp parallel for reduction(+:s,raw_s,raw_sum) reduction(max:max_wl) schedule(static, 4096) num_threads(worker_threads())
+            #pragma omp parallel for reduction(+:s,raw_s,raw_sum,w2_sum,count_est) reduction(max:max_wl) schedule(static, 4096) num_threads(worker_threads())
             for (uint64_t i = 0; i < count; i++) {
                 if (i + 16 < count) __builtin_prefetch(map_base + (offs ? offs[i + 16] : (ht[start_idx + i + 16].off1 - 1)), 0, 0);
                 Record *r = rec_at(offs ? offs[i] : (ht[start_idx + i].off1 - 1));
@@ -3191,6 +3191,7 @@ if (threshold > 1.0) threshold = 1.0;
             }
             if (is_decay && cur == 0) continue;
             raw_s++;
+            w2_sum += w * w; count_est += w;
             if (r->v_len > 0) {
                 if (is_decay) {
                     s += w * cur;
@@ -3206,10 +3207,11 @@ if (threshold > 1.0) threshold = 1.0;
                 }
                 if (offs) munmap(offs, count * 8);
                 if (__builtin_fabs(s) < 5e-15) s = 0;
-                double conf = raw_s >= 1000 ? 1.0 : (double)raw_s / 1000.0;
+                double ess = count_est > 0 && w2_sum > 0 ? count_est * count_est / w2_sum : (count_est > 0 ? count_est : 0);
+                double conf = ess >= 1000 ? 1.0 : ess / 1000.0;
                 if (raw_s < 5) conf *= (double)raw_s / 5.0;
                 if (!raw_s && threshold >= 1.0) conf = 1.0;
-                if ((double)raw_s < 100.0 * (1 + max_wl) * (1 + max_wl) || conf < 0.50) s = 0;
+                if (ess < 100.0 * (1 + max_wl) || conf < 0.50) s = 0;
                 printf("%.6g\t%.17g\t%llu\t%d\t%.4g\n", s, raw_sum, (unsigned long long)raw_s, max_wl, conf);
             }
             else printf("ERR\n");
