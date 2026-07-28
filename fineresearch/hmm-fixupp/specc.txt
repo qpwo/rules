@@ -172,7 +172,10 @@ The fact that the user uploaded the trace means it was good.
     d. compute advantage = score - mean(group of k=5 scores)
     e. GRPO loss = -mean(advantage * log_ratio) + KL_coef * KL(pi, pi_base)
        where pi_base = original gemma before any training
-       KL_coef = 0.001 (start), increase to 0.01 if any forgetting detected
+       KL_coef = 0.005 (start), increase to 0.01 if any forgetting detected
+       note: GRPO is on-policy, which naturally preserves IFeval better than
+       SFT (SDFT 2601.19897: on-policy KL shift << off-policy SFT KL shift).
+       the KL reg here serves the same function as SDFT self-distillation.
     f. backprop through KeepLoRA weights only (base model frozen)
     g. KeepLoRA residual subspace projection (see 5.5)
 
@@ -219,6 +222,19 @@ The fact that the user uploaded the trace means it was good.
       subspace AND restricted to gate_proj/up_proj only
     - Small adapters: ~0.3% of model size (gate_proj + up_proj only, rank 8-16)
 
+  FALLBACK (if IFeval drops on MoE):
+    If Selective KeepLoRA causes IFeval drop on Gemma 4 26B MoE (untested combo),
+    switch to MoRAM (2506.21035, ICML 2026):
+      - TESTED ON GEMMA (Gemma-2B, BWT 2.74 vs O-LoRA 12.36, 4.5x less forgetting)
+      - Self-activation routing (no external router = no routing collapse)
+      - Rank-1 associative memory atoms (fine-grained, less interference)
+      - Public code: github.com/Artificer-AI-Lab/MoRAM
+      - LoRA-based (4.4M params, same size as LoRA)
+      - Tradeoff: input-dependent routing needs custom serving (not vLLM LoRA).
+        merge atoms into single LoRA adapter for vLLM, or use custom backend.
+    MoRAM is the most bulletproof alternative because it was actually tested
+    on Gemma and eliminates routing collapse entirely via self-activation.
+
 5.6 Sanity Check
   - after training, eval on 3 held-out traces (or replay the same trace)
   - check IFeval (agentic instruction following canary, SFT destroys 74.3->35.3)
@@ -259,7 +275,7 @@ The fact that the user uploaded the trace means it was good.
 
 [training]
 algorithm = grpo
-kl_coef = 0.001
+kl_coef = 0.005
 group_size = 5
 actor_lr = 1e-6
 temperature = 0.7
@@ -307,6 +323,7 @@ Implementation stack:
 
 8.1 Always Stronger (never weaker)
   - KL reg (R2=0.96 with forgetting): model CANNOT drift from base [RLS Razor]
+  - GRPO is on-policy: naturally preserves IFeval (SDFT insight, same MIT lab)
   - Selective KeepLoRA: updates orthogonal to principal subspace (SOTA MTIL)
     AND restricted to gate_proj+up_proj (freeze down_proj for MoE routing)
     [KeepLoRA 2601.19659 + Selective Tuning 2510.08564]
@@ -372,3 +389,7 @@ Implementation stack:
   PaST           arxiv 2601.11258  orthogonal skills (cosine ~0.00), GRPO recipe
   OpenClaw       arxiv 2603.10165  GUI agent RL framework, hybrid feedback
   DES-MoE        arxiv 2509.16882  MoE fine-tuning, ESFT-Gate preserves IFEval best
+  MoRAM          arxiv 2506.21035  tested on Gemma, self-activation routing, ICML 2026
+  SDFT           arxiv 2601.19897  on-policy preserves IFeval, same lab as RL's Razor
+  SAME           arxiv 2602.01990  MoE stabilization, spectral-aware routing
+  Brainstacks    arxiv 2604.01152  tested on Gemma 3 12B, zero forgetting, null-space SVD
