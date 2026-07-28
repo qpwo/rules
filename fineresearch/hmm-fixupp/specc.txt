@@ -8,7 +8,7 @@ A service where users:
   - upload successful pi agent traces to improve their named version
   - chat with their named version via OpenAI-compatible API
 
-Core loop: upload trace -> GRPO + CURLoRA -> gemma gets a tiny bit better -> chat API
+Core loop: upload trace -> GRPO + Selective KeepLoRA -> gemma gets a tiny bit better -> chat API
 
 The system makes the named gemma a tiny bit better from each trace.
 The trace could be anything. The system is domain-agnostic.
@@ -20,7 +20,7 @@ The fact that the user uploaded the trace means it was good.
   User
     v
   API (FastAPI)
-    - POST /v1/models/create      -> create named version (new CURLoRA adapter)
+    - POST /v1/models/create      -> create named version (new KeepLoRA adapter)
     - POST /v1/traces/upload       -> queue training job
     - GET  /v1/jobs/{id}           -> check training status
     - POST /v1/chat/completions    -> serve named version (OpenAI-compatible)
@@ -32,16 +32,16 @@ The fact that the user uploaded the trace means it was good.
     - generate k=5 rollouts per step using trace as reference
     - score rollouts: +1 if matches expert action, 0 if not (SOD step-level)
     - GRPO loss with high KL regularization (RLS Razor)
-    - CURLoRA weight update + orthogonalize (CURLoRA)
+    - Selective KeepLoRA weight update (KeepLoRA on gate_proj+up_proj only)
     - sanity check: revert if any metric drops
     v
   Model Registry (SQLite + filesystem)
     - base models: gemma-26b, gemma-31b (shared in GPU memory)
-    - named versions = CURLoRA adapters (.safetensors, ~0.5% of model size)
+    - named versions = KeepLoRA adapters (.safetensors, ~0.3% of model size)
     - metadata: name, base_model, version, traces_trained, metrics
     v
   vLLM Serving
-    - load base model + CURLoRA adapter
+    - load base model + KeepLoRA adapter
     - OpenAI-compatible /v1/chat/completions
     - vision: accept image_url in messages (screenshot input)
     - hot-swap adapters after training (no dropped requests)
@@ -54,7 +54,7 @@ The fact that the user uploaded the trace means it was good.
   POST /v1/models/create
   request: {"name": "my-explorer", "base_model": "gemma-26b"}
   response: 201 {"name": "my-explorer", "base_model": "gemma-26b", "version": 0, "traces_trained": 0}
-  notes: creates a new CURLoRA adapter initialized to zero.
+  notes: creates a new KeepLoRA adapter initialized to zero.
     at this point the model is identical to base gemma-26b.
 
 3.2 Upload Trace
@@ -173,21 +173,46 @@ The fact that the user uploaded the trace means it was good.
     e. GRPO loss = -mean(advantage * log_ratio) + KL_coef * KL(pi, pi_base)
        where pi_base = original gemma before any training
        KL_coef = 0.001 (start), increase to 0.01 if any forgetting detected
-    f. backprop through CURLoRA weights only (base model frozen)
-    g. CURLoRA orthogonalization (see 5.5)
+    f. backprop through KeepLoRA weights only (base model frozen)
+    g. KeepLoRA residual subspace projection (see 5.5)
 
-5.5 CURLoRA Update (CURLoRA paper, 10000x less degradation)
+5.5 Selective KeepLoRA Update
 
-  Standard LoRA: h = Wx + (alpha/r) * B @ A @ x
-  CURLoRA adds one step after each gradient update:
+  WHY SELECTIVE (not all projections):
+    MoE models have gate_proj, up_proj, and down_proj in each expert.
+    down_proj is the "unconstrained write-back" that causes output distribution
+    drift and routing instability. From Selective Component Tuning (2510.08564):
+      Full FT: learn +29.9, forget -27.4
+      MLP(Gate&Up only): learn +35.1, forget -2.1  (13x less forgetting, BETTER learning)
+    From MoEEdit (2602.10965): FT on MoE causes routing stability RS=23-30%
+    (severe disruption). Not touching down_proj avoids this.
 
-    after updating B and A, orthogonalize B against all previous B matrices:
-      B_orth = B - B @ B_prev.T @ pinv(B_prev @ B_prev.T) @ B_prev
-    then set B = B_orth
+  WHY KeepLoRA (not standard LoRA or CURLoRA):
+    KeepLoRA constrains LoRA updates to the residual subspace (orthogonal to
+    the principal subspace of pretrained weights). This provides:
+      - SOTA on MTIL benchmark (Transfer 86.5 vs O-LoRA 82.4, CURLoRA untested)
+      - Theoretical guarantee of forward + backward stability
+      - Public code: github.com/MaolinLuo/KeepLoRA
+    CURLoRA was never tested on MoE, never tested at 26B scale, and does not
+    address routing stability. KeepLoRA + selective projection does.
 
-  Result: base perplexity stays at 5.44 after sequential training.
-  Standard LoRA: explodes to 53896.68. Model destroyed.
-  CURLoRA: model fine. Always.
+  METHOD:
+    1. Apply LoRA ONLY to gate_proj and up_proj (NOT down_proj, NOT attention)
+    2. Compute SVD of pretrained gate_proj and up_proj weights to find
+       principal subspace (top-r singular vectors)
+    3. After each gradient step, project LoRA updates into the residual
+       subspace (orthogonal complement of principal subspace):
+         grad_residual = grad - (grad @ V_principal) @ V_principal.T
+       where V_principal = top-r right singular vectors of pretrained weights
+    4. Initialize LoRA A matrix with first-step gradient for plasticity
+    5. This ensures new knowledge does not overwrite existing knowledge
+
+  RESULT:
+    - Forgetting prevention: SOTA on MTIL (KeepLoRA) + MoE routing stability
+      (freeze down_proj) + KL regularization (R^2=0.96 with forgetting)
+    - Base model capabilities preserved: updates are orthogonal to principal
+      subspace AND restricted to gate_proj/up_proj only
+    - Small adapters: ~0.3% of model size (gate_proj + up_proj only, rank 8-16)
 
 5.6 Sanity Check
   - after training, eval on 3 held-out traces (or replay the same trace)
@@ -201,7 +226,7 @@ The fact that the user uploaded the trace means it was good.
 
 6.1 vLLM with LoRA Adapters
   - load base model (gemma-26b or gemma-31b) in GPU memory (shared)
-  - load CURLoRA adapter for requested model name
+  - load KeepLoRA adapter for requested model name
   - vLLM supports multiple LoRA adapters simultaneously
   - route by "model" field in request
 
@@ -218,8 +243,8 @@ The fact that the user uploaded the trace means it was good.
 
 6.4 Multi-User
   - single base model in GPU memory
-  - each user has own named versions (CURLoRA adapters)
-  - adapters are small (~0.5% of model, ~130MB for 26B)
+  - each user has own named versions (KeepLoRA adapters)
+  - adapters are small (~0.3% of model, ~80MB for 26B)
   - vLLM serves dozens of adapters simultaneously
 
 
@@ -238,11 +263,13 @@ max_response = 1024
 batch_size = 32
 precision = bf16
 
-[curlora]
+[keepLoRA]
 rank = 8
 alpha = 64
-target_modules = q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj
-orthogonalize = true
+target_modules = gate_proj,up_proj
+freeze_modules = down_proj,q_proj,k_proj,v_proj,o_proj
+residual_subspace = true
+svd_components = 64
 
 [filtering]
 skip_if_match_rate = 0.8
@@ -272,10 +299,13 @@ Implementation stack:
 
 8.1 Always Stronger (never weaker)
   - KL reg (R2=0.96 with forgetting): model CANNOT drift from base [RLS Razor]
-  - CURLoRA (5.44 vs 53896.68): base model CANNOT degrade [CURLoRA]
+  - Selective KeepLoRA: updates orthogonal to principal subspace (SOTA MTIL)
+    AND restricted to gate_proj+up_proj (freeze down_proj for MoE routing)
+    [KeepLoRA 2601.19659 + Selective Tuning 2510.08564]
+  - MoE routing stability: freeze down_proj avoids RS=23-30% disruption
+    [MoEEdit 2602.10965: FT RS=23-30%, avoiding down_proj preserves routing]
   - only successful traces: no negative signal
   - only traces where gemma fails: maximally informative [CSO]
-  - orthogonal skills (cosine ~0.00): no interference [PaST]
   - sanity check: revert if any drop > 5%
 
 8.2 Compound Boost
@@ -286,7 +316,8 @@ Implementation stack:
 
 8.3 Reliable
   - GRPO: used in every reference paper. standard. proven.
-  - CURLoRA: one orthogonalization line. same cost as LoRA.
+  - KeepLoRA: SOTA on MTIL. public code. theoretical guarantee.
+  - Selective projection: 13x less forgetting + better learning (2510.08564)
   - vLLM: production-grade. supports LoRA adapters.
   - OpenAI-compatible API: works with existing tools.
 
@@ -309,7 +340,7 @@ Implementation stack:
         - generate 5 action predictions
         - score: 2 match expert (+1.0), 1 partial (+0.5), 2 wrong (0.0)
         - GRPO loss with KL=0.001
-        - update CURLoRA weights, orthogonalize
+        - update KeepLoRA weights (gate_proj+up_proj only, residual subspace)
      e. sanity check: match rate improved 0.2 -> 0.6 -> save adapter v1
 
   4. User chats: POST /v1/chat/completions {"model": "my-agent", "messages": [...]}
@@ -318,15 +349,18 @@ Implementation stack:
   5. User uploads 10 more traces over time
      -> adapter versions: v2, v3, ..., v11
      -> model gets a tiny bit better from each trace
-     -> model does NOT forget (orthogonal skills + KL reg + CURLoRA)
+     -> model does NOT forget (residual subspace + KL reg + freeze down_proj)
 
 
 10. REFERENCES
 
-  RLS Razor  arxiv 2509.04259  KL=forgetting (R2=0.96), RL > SFT
-  CURLoRA    arxiv 2408.14572  base model preservation (5.44 vs 53896.68)
-  SOD        arxiv 2605.07725  step-level scoring (36.27% vs 25.59%, 1.4x)
-  CSO        arxiv 2602.03412  trace filtering (49.5% vs 46.6%), k=5 optimal
-  ATLAS      arxiv 2503.02197  critical step extraction (76.4% vs 54.8%, 1.4x)
-  PaST       arxiv 2601.11258  orthogonal skills (cosine ~0.00), GRPO recipe
-  OpenClaw   arxiv 2603.10165  GUI agent RL framework, hybrid feedback
+  RLS Razor      arxiv 2509.04259  KL=forgetting (R2=0.96), RL > SFT
+  KeepLoRA       arxiv 2601.19659  SOTA MTIL, residual subspace, github.com/MaolinLuo/KeepLoRA
+  Selective Tune arxiv 2510.08564  freeze W_down, 13x less forgetting, better learning
+  MoEEdit        arxiv 2602.10965  MoE routing stability, RS metric, per-expert null-space
+  SOD            arxiv 2605.07725  step-level scoring (36.27% vs 25.59%, 1.4x)
+  CSO            arxiv 2602.03412  trace filtering (49.5% vs 46.6%), k=5 optimal
+  ATLAS          arxiv 2503.02197  critical step extraction (76.4% vs 54.8%, 1.4x)
+  PaST           arxiv 2601.11258  orthogonal skills (cosine ~0.00), GRPO recipe
+  OpenClaw       arxiv 2603.10165  GUI agent RL framework, hybrid feedback
+  DES-MoE        arxiv 2509.16882  MoE fine-tuning, ESFT-Gate preserves IFEval best
