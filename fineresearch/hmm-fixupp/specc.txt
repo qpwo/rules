@@ -366,7 +366,7 @@ Implementation stack:
         - construct prompt from history + screenshots
         - generate 5 action predictions
         - score: 2 match expert (+1.0), 1 partial (+0.5), 2 wrong (0.0)
-        - GRPO loss with KL=0.001
+        - GRPO loss with KL=0.005
         - update KeepLoRA weights (gate_proj+up_proj only, residual subspace)
      e. sanity check: match rate improved 0.2 -> 0.6 -> save adapter v1
 
