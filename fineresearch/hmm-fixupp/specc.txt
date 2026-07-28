@@ -4,19 +4,15 @@ Gemma Trace-Based RL Improvement System
 1. OVERVIEW
 
 A service where users:
-  - create named gemma versions (e.g. "my-county-explorer")
+  - create named gemma versions (e.g. "my-explorer")
   - upload successful pi agent traces to improve their named version
   - chat with their named version via OpenAI-compatible API
 
-Core loop: upload trace -> GRPO + CURLoRA + step-level scoring -> stronger gemma -> chat API
+Core loop: upload trace -> GRPO + CURLoRA -> gemma gets a tiny bit better -> chat API
 
-The system ALWAYS makes the named gemma stronger (never weaker) because:
-  - KL regularization prevents forgetting (R2=0.96 with forgetting, RLS Razor)
-  - CURLoRA prevents base model degradation (5.44 vs 53896.68 perplexity)
-  - only successful traces are used (no negative signal)
-  - only traces where gemma currently fails are trained on (CSO)
-  - skills are orthogonal across county sites (cosine ~0.00, PaST)
-  - sanity check reverts if any metric drops > 5%
+The system makes the named gemma a tiny bit better from each trace.
+The trace could be anything. The system is domain-agnostic.
+The fact that the user uploaded the trace means it was good.
 
 
 2. ARCHITECTURE
@@ -31,13 +27,13 @@ The system ALWAYS makes the named gemma stronger (never weaker) because:
     - GET  /v1/models              -> list all named versions
     v
   Training Engine (background worker)
-    - parse trace, extract critical steps (ATLAS)
-    - filter: skip if gemma already succeeds (CSO)
-    - generate k=5 rollouts per step using trace screenshots as environment
-    - score rollouts step-by-step using 3-point reward (SOD)
-    - GRPO loss with KL regularization (RLS Razor, PaST)
+    - parse JSONL trace, extract steps
+    - filter: skip if gemma already produces similar trace (CSO)
+    - generate k=5 rollouts per step using trace as reference
+    - score rollouts: +1 if matches expert action, 0 if not (SOD step-level)
+    - GRPO loss with high KL regularization (RLS Razor)
     - CURLoRA weight update + orthogonalize (CURLoRA)
-    - sanity check: eval on held-out traces, revert if metric drops
+    - sanity check: revert if any metric drops
     v
   Model Registry (SQLite + filesystem)
     - base models: gemma-26b, gemma-31b (shared in GPU memory)
@@ -56,8 +52,8 @@ The system ALWAYS makes the named gemma stronger (never weaker) because:
 
 3.1 Create Model
   POST /v1/models/create
-  request: {"name": "my-county-explorer", "base_model": "gemma-26b"}
-  response: 201 {"name": "my-county-explorer", "base_model": "gemma-26b", "version": 0, "traces_trained": 0}
+  request: {"name": "my-explorer", "base_model": "gemma-26b"}
+  response: 201 {"name": "my-explorer", "base_model": "gemma-26b", "version": 0, "traces_trained": 0}
   notes: creates a new CURLoRA adapter initialized to zero.
     at this point the model is identical to base gemma-26b.
 
@@ -66,24 +62,23 @@ The system ALWAYS makes the named gemma stronger (never weaker) because:
   request (multipart form):
     gemma_name: string (which named version to improve)
     trace_file: JSONL file (pi agent session, ~/.pi/agent/sessions/.../*.jsonl)
-    scores: JSON (optional, 3-point scoring, see 4.2)
   response: 202 {"job_id": "abc123", "status": "queued"}
-  notes: if scores not provided, system derives them by analyzing
-    the session output (checking for .gov URLs, business names, etc.)
+  notes: the trace is a successful pi agent session. the system learns from it.
+    no scores or labels needed. the trace itself IS the signal.
 
 3.3 Job Status
   GET /v1/jobs/{job_id}
   response: 200 {"job_id": "abc123", "status": "done",
-    "metrics": {"reward_before": 1.2, "reward_after": 2.8, "kl": 0.003,
+    "metrics": {"reward_before": 0.3, "reward_after": 0.8, "kl": 0.003,
     "steps_trained": 12, "skipped": false, "reverted": false}}
   status values: queued, filtering, training, done, skipped, failed
 
 3.4 Chat Completions (OpenAI-compatible)
   POST /v1/chat/completions
-  request: {"model": "my-county-explorer", "messages": [
-    {"role": "user", "content": "Find health inspection for Johns Restaurant"},
+  request: {"model": "my-explorer", "messages": [
+    {"role": "user", "content": "Do the thing"},
     {"role": "user", "content": [
-      {"type": "text", "text": "What action should I take on this page?"},
+      {"type": "text", "text": "What action should I take?"},
       {"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}}
     ]}
   ], "temperature": 0.7, "max_tokens": 1024}
@@ -92,7 +87,7 @@ The system ALWAYS makes the named gemma stronger (never weaker) because:
 3.5 List Models
   GET /v1/models
   response: 200 {"models": [
-    {"name": "my-county-explorer", "base_model": "gemma-26b", "version": 7, "traces_trained": 23}
+    {"name": "my-explorer", "base_model": "gemma-26b", "version": 7, "traces_trained": 23}
   ]}
 
 
@@ -119,24 +114,20 @@ The system ALWAYS makes the named gemma stronger (never weaker) because:
                    "content":[{"type":"text","text":"..."},{"type":"image","data":"base64..."}]}
 
   A "step" is the group: (assistant toolCall) -> (bashExecution) -> (toolResult)
-  Steps are chained by parentId. Compaction events are skipped (they just drop turns).
+  Steps are chained by parentId. Compaction events are skipped.
   Screenshots are base64 PNG in toolResult content with type:"image".
 
-4.2 Scores (3-point scoring)
-  Provided separately in the upload request (or derived by the system):
-  {
-    "business_docs":      {"found": true, "real": true, "source": true, "source_url": "..."},
-    "health_inspection":  {"found": true, "real": true, "source": true, "source_url": "..."},
-    "reviews":             {"found": true, "real": true, "source": true, "source_url": "..."}
-  }
-  source = true means from gov/original, not aggregator.
-  If not provided, system derives by analyzing session output for .gov URLs,
-  business name matches, inspection dates, and review sources.
+4.2 Reward (generic)
+  The trace is a successful session. The user uploaded it because it was good.
+  The reward for GRPO is simple: does the model's action match the expert's action?
+    +1.0  if model's bash command matches expert's bash command at this step
+    +0.5  if model's bash command is similar (same tool, similar target)
+     0.0  if model's bash command is different
+  This is domain-agnostic. Works for any type of trace.
 
 4.3 Query Extraction
-  The query is extracted from the first user message in the JSONL.
-  Example: "lookup Johns Restaurant in Springfield, IL and get all business
-  incorporation docs and health inspection and google reviews..."
+  The initial prompt/query is extracted from the first user message in the JSONL.
+  This is used as the starting point for GRPO rollouts.
 
 
 5. TRAINING PIPELINE
@@ -148,37 +139,36 @@ The system ALWAYS makes the named gemma stronger (never weaker) because:
   - group events into steps: (assistant toolCall + bashExecution + toolResult)
   - extract screenshots from toolResult messages with image content
   - extract query from first user message
-  - extract or receive 3-point scores
 
-5.2 Extract Critical Steps (ATLAS, 1.4x boost)
-  - analyze each step's bash command to determine importance:
-      1.0  if command output contains a .gov URL matching a scored source_url
-      0.5  if command navigates to .gov domain or extracts key data (name, date, etc.)
-      0.1  if command is on path (searching, listing, navigating to relevant site)
-      0.0  otherwise (setup, echo, ls, cat, etc.)
+5.2 Extract Steps (ATLAS, 1.4x boost)
+  - all steps where the assistant made a toolCall are training instances
+  - weight by importance:
+      1.0  if step produced significant output (large toolResult, image, or state change)
+      0.5  if step is a decision point (navigate, search, extract)
+      0.1  if step is minor (echo, ls, setup)
   - discard steps with weight < 0.1
-  - remaining steps are training instances
-  - ATLAS Table 6: this gives 1.4x improvement over training on all steps
+  - ATLAS Table 6: training on weighted steps gives 1.4x over all steps
 
 5.3 Filter (CSO, 1.16x boost)
-  - run current gemma on same query with k=5 rollouts
+  - run current gemma on the same query with k=5 rollouts
   - use trace screenshots as environment (offline replay)
-  - if gemma already achieves total_score 3: SKIP (not informative)
-  - if gemma fails: QUEUE for training (expert success + policy failure)
-  - CSO Table: 49.5% vs 46.6% for all traces
+  - if gemma already produces a similar trace (high action match rate): SKIP
+  - if gemma fails to match: QUEUE for training
+  - CSO Table: expert success + policy failure = 49.5% vs 46.6% for all traces
 
 5.4 GRPO Training (RLS Razor, PaST, OpenClaw-RL)
 
-  For each critical step in the trace:
+  For each extracted step in the trace:
 
-    a. construct prompt: screenshot + query + action history up to this step
+    a. construct prompt: conversation history up to this step
+       (text messages, bash outputs, screenshots from previous toolResults)
     b. generate k=5 action predictions with current gemma (vLLM, temp=0.7)
     c. score each prediction (step-level reward, SOD 1.4x boost):
-         +1.0  if matches expert action AND step weight = 1.0
-         +0.5  if matches expert action AND step weight = 0.5
-         +0.1  if matches expert action AND step weight = 0.1
-          0.0  if does not match expert action
-         -0.5  if action goes to aggregator or wrong domain
+         +1.0  if matches expert bash command AND step weight = 1.0
+         +0.5  if matches expert bash command AND step weight = 0.5
+         +0.1  if matches expert bash command AND step weight = 0.1
+          0.0  if does not match expert bash command
+       "matches" = same command intent (fuzzy: same tool, same target/path)
     d. compute advantage = score - mean(group of k=5 scores)
     e. GRPO loss = -mean(advantage * log_ratio) + KL_coef * KL(pi, pi_base)
        where pi_base = original gemma before any training
@@ -200,10 +190,10 @@ The system ALWAYS makes the named gemma stronger (never weaker) because:
   CURLoRA: model fine. Always.
 
 5.6 Sanity Check
-  - after training, eval on 3 held-out traces
-  - if any score drops > 5%: revert to previous adapter version
+  - after training, eval on 3 held-out traces (or replay the same trace)
+  - if action match rate drops > 5%: revert to previous adapter version
   - otherwise: save new adapter, increment version
-  - log: {"version": 8, "reward_before": 1.2, "reward_after": 2.8,
+  - log: {"version": 8, "reward_before": 0.3, "reward_after": 0.8,
     "kl": 0.003, "loss": 0.045, "steps_trained": 12, "reverted": false}
 
 
@@ -218,7 +208,6 @@ The system ALWAYS makes the named gemma stronger (never weaker) because:
 6.2 Vision Support
   - gemma vision: accept image_url in messages
   - screenshots sent as base64-encoded images
-  - model sees screenshot and generates text response
 
 6.3 Hot-Swap
   - when training completes, load new adapter version
@@ -256,7 +245,7 @@ target_modules = q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj
 orthogonalize = true
 
 [filtering]
-skip_if_gemma_score = 3
+skip_if_match_rate = 0.8
 min_traces_per_batch = 1
 max_traces_per_batch = 16
 
@@ -286,12 +275,12 @@ Implementation stack:
   - CURLoRA (5.44 vs 53896.68): base model CANNOT degrade [CURLoRA]
   - only successful traces: no negative signal
   - only traces where gemma fails: maximally informative [CSO]
-  - orthogonal skills (cosine ~0.00): no interference across sites [PaST]
+  - orthogonal skills (cosine ~0.00): no interference [PaST]
   - sanity check: revert if any drop > 5%
 
 8.2 Compound Boost
   - step-level scoring: 1.4x [SOD]
-  - critical step extraction: 1.4x [ATLAS]
+  - step extraction: 1.4x [ATLAS]
   - trace filtering: 1.16x [CSO]
   - total: 1.4 * 1.4 * 1.16 = 2.27x over baseline GRPO
 
@@ -304,34 +293,32 @@ Implementation stack:
 
 9. DATA FLOW EXAMPLE
 
-  1. User creates: POST /v1/models/create {"name": "county-pro", "base_model": "gemma-26b"}
+  1. User creates: POST /v1/models/create {"name": "my-agent", "base_model": "gemma-26b"}
      -> adapter v0 (identical to base gemma-26b)
 
-  2. User uploads trace: POST /v1/traces/upload {"gemma_name": "county-pro", "trace": {...}}
+  2. User uploads trace: POST /v1/traces/upload
+     gemma_name: "my-agent"
+     trace_file: session.jsonl (a successful pi agent session)
 
   3. Training engine:
-     a. parse: 20 steps, 3/3 score
-     b. extract critical steps: 7 of 20 are critical
-     c. filter: run county-pro on same query, gets 1/3 -> QUEUE
-     d. for each of 7 critical steps:
-        - show screenshot to gemma
+     a. parse JSONL: 20 steps extracted
+     b. extract weighted steps: 12 of 20 are significant (weight >= 0.1)
+     c. filter: run my-agent on same query, match rate 0.2 -> QUEUE
+     d. for each of 12 steps:
+        - construct prompt from history + screenshots
         - generate 5 action predictions
-        - score: 2 match (+1.0), 2 partial (+0.5), 1 wrong (0.0)
+        - score: 2 match expert (+1.0), 1 partial (+0.5), 2 wrong (0.0)
         - GRPO loss with KL=0.001
         - update CURLoRA weights, orthogonalize
-     e. sanity check: all 3 held-out traces improve -> save adapter v1
+     e. sanity check: match rate improved 0.2 -> 0.6 -> save adapter v1
 
-  4. User chats: POST /v1/chat/completions {"model": "county-pro", "messages": [...]}
+  4. User chats: POST /v1/chat/completions {"model": "my-agent", "messages": [...]}
      -> served by vLLM with adapter v1
 
   5. User uploads 10 more traces over time
      -> adapter versions: v2, v3, ..., v11
-     -> model gets progressively better at:
-        - finding .gov sources (not aggregators)
-        - extracting real business docs
-        - finding real health inspections
-        - verifying reviews from source
-     -> model does NOT forget previous county sites (orthogonal skills)
+     -> model gets a tiny bit better from each trace
+     -> model does NOT forget (orthogonal skills + KL reg + CURLoRA)
 
 
 10. REFERENCES
