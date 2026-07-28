@@ -1,0 +1,7 @@
+!lone-geniuses.log
+go/
+greats/
+fineresearch/packet/repos/
+*.pack
+*.idx
+!*.txt

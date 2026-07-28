@@ -1,0 +1,450 @@
+================================================================================
+GEMMA 4 FULL-PRECISION FULL-WEIGHT FINETUNES ON HUGGINGFACE
+COMPREHENSIVE COMPARISON
+================================================================================
+Generated: $(date)
+Goal: Find full-precision (BF16), full-weight finetunes of Gemma 4 31B and 26B
+Focus: Refusal removal / abliteration / uncensored
+================================================================================
+
+THREE ABLITERATION METHODS IDENTIFIED:
+================================================================================
+
+1. HERETIC + ARA (Arbitrary-Rank Ablation)
+   Repo: github.com/p-e-w/heretic
+   Method: Weight editing via steering vectors, row-norm preservation
+   Parameters: start_layer, end_layer, preserve_good_behavior_weight,
+               steer_bad_behavior_weight, overcorrect_relative_weight, neighbor_count
+   Pros: Tunable, reported KL divergence and refusal rates
+   Cons: Higher KL = more quality degradation
+
+2. SUMANDORA / remove-refusals-with-transformers
+   Repo: github.com/Sumandora/remove-refusals-with-transformers
+   Method: Abliteration without TransformerLens
+   Pros: Lower PPL than original (better quality), simple
+   Cons: No refusal rate or KL reported
+
+3. J-SPACE ABLITERATION
+   Method: Narrower cut than standard abliteration
+   Parameters: k=256, s=1.5, L7-41
+   Pros: "A blind spot, not blindness" - preserves more capabilities
+   Cons: "Not uncensored" - less aggressive, doesn't fully remove refusals
+
+================================================================================
+26B MoE FINETUNES (all BF16, ~51.64 GB)
+================================================================================
+
+REFUSAL REMOVAL:
+1. coder3101/gemma-4-26B-A4B-it-heretic (96 likes)
+   Method: Heretic+ARA, L10-30, pg=0.5480, sb=0.0009, oc=0.5868, n=14
+   Refusals: 11/100 (89% fewer) | KL: 0.0499
+   BEST KL for 26B. Good balance.
+
+2. llmfan46/gemma-4-26B-A4B-it-ultra-uncensored-heretic (38 likes)
+   Method: Heretic+ARA "ultra" (more aggressive)
+   Refusals: 3/100 (97% fewer) | KL: 0.1237
+   FEWEST refusals but WORST KL (2.5x worse than coder3101).
+
+3. trohrbaugh/gemma-4-26B-A4B-it-heretic-ara (18 likes)
+   Method: Heretic+ARA (same as coder3101)
+   Metrics: Not reported
+
+4. MuXodious/gemma-4-26B-A4B-it-SOMPOA-heresy (11 likes)
+   Method: SOMPOA heresy (unclear method)
+   Metrics: Not reported
+
+STYLE / CREATIVE WRITING (NOT refusal removal):
+5. Gryphe/Gemma-4-26B-A4B-StyleTune (49 likes, V1)
+   Method: Only trains lm_head (1 tensor out of 659), everything else frozen
+   54% cliche reduction. NOT refusal removal.
+
+6. Gryphe/Gemma-4-26B-A4B-StyleTune-V2 (46 likes, V2)
+   Method: Only trains lm_head, single epoch
+   52% cliche reduction. NOT refusal removal.
+   KEY: "second epoch does nasty stuff to MoE models" = use 1 epoch for MoE FT!
+
+AGENT TRACES (NOT full-param, NOT full-precision):
+7. RedTeamLab/Gemma-4-26B-Sol-Traces-v1 (not likes-tracked, GGUF format)
+   Method: LoRA r=16, alpha=16, dropout=0
+   Target: all language+attention projections (k/q/v/o/gate/up/down)
+   Dataset: 25K verified agent trajectories (21K train / 1.3K val)
+   1 epoch. LR 1e-4, cosine 3% warmup. Batch 8. 8K max seq.
+   Assistant-only loss. H100 80GB, ~2h, loss=0.01134, 60.3 GiB VRAM.
+   GGUF format, NOT full precision, NOT full weight.
+
+================================================================================
+31B DENSE FINETUNES (all BF16, ~62.58 GB)
+================================================================================
+
+REFUSAL REMOVAL:
+1. llmfan46/gemma-4-31B-it-uncensored-heretic (89 likes)
+   Method: Heretic+ARA
+   Refusals: 10/100 (90% fewer) | KL: 0.0541
+
+2. coder3101/gemma-4-31B-it-heretic (67 likes)
+   Method: Heretic+ARA, L1-59, pg=0.8438, sb=0.0002, oc=1.0760, n=15
+   Refusals: 15/100 (85% fewer) | KL: 0.0434
+   BEST KL for 31B. Wider layer range (1-59) but higher behavior preservation.
+
+3. DavidAU/gemma-4-31B-it-The-DECKARD-HERETIC-UNCENSORED-Thinking (70 likes)
+   Method: Heretic + Unsloth SFT on "THE DECKARD" dataset
+   "Beats base model on 6 of 7 benchmarks"
+   Fully uncensored + creative writing improvement
+   TWO-STAGE: abliteration + SFT
+
+4. huihui-ai/Huihui-gemma-4-31B-it-abliterated-v2 (31 likes)
+   Method: remove-refusals-with-transformers (Sumandora, NOT Heretic)
+   v2: first 5 layers NOT abliterated (better quality)
+   PPL LOWER than original (13161 vs 14874 = better!)
+   No refusal rate or KL reported
+
+5. wangzhang/gemma-4-31B-it-abliterated (24 likes)
+   Method: Abliteration (likely Sumandora)
+   Metrics: Not reported
+
+6. ReadyArt/gemma-4-31B-it-scotoma (22 likes)
+   Method: J-space abliteration, k=256, s=1.5, L7-41
+   "Not uncensored - a blind spot, not blindness"
+   "Narrower cut" - removes hedging and assistant persona stiffness
+   Good for reducing caution without full uncensoring
+
+7. trohrbaugh/gemma-4-31b-it-heretic-ara (22 likes)
+   Method: Heretic+ARA (same as coder3101)
+   Metrics: Not reported
+
+8. nbeerbower/Gemma4-Gutenberg-31B-Heretic (11 likes)
+   Method: Heretic + Gutenberg dataset SFT
+   Combines refusal removal with literature SFT
+
+STYLE / CREATIVE WRITING (NOT refusal removal):
+9. Gryphe/Gemma-4-31B-StyleTune (81 likes)
+   Method: Only trains lm_head (1 tensor out of 659)
+   Style tune for creative writing, NOT refusal removal
+
+10. Nimbz/Gemma-4-Gembrain-31B (42 likes) - creative writing
+11. Ateron/Gemma-4-Novelist-Eclipse-31B (27 likes) - creative writing
+12. Nimbz/Gemma-4-Dark-Gemistry-31B (20 likes) - creative writing
+13. autotrust/gemma4-31B-Fable-5-Distilled (17 likes) - Fable distill
+14. JBrussee/gemma-4-31B-caveman (16 likes) - creative writing
+15. nbeerbower/Gemma4-Gutenberg-31B (14 likes) - Gutenberg SFT
+16. akwin123/copywriter-gemma4-31b (12 likes) - copywriting
+17. Darkhn/Gemma-4-31B-Animus-V14.0 (9 likes) - roleplay
+18. Ateron/Gemma-4-Novelist-31B (8 likes) - creative writing
+
+REASONING / DISTILLATION (NOT refusal removal):
+19. TeichAI/gemma-4-31B-it-Claude-Opus-Distill (37 likes)
+    Method: SFT distillation from Claude Opus 4.6 reasoning datasets
+    NOT refusal removal, it's reasoning distillation
+
+20. TeichAI/Gemma-4-31B-Fable-5-Agent-Distill (8 likes)
+    Method: Fable 5 agent distillation
+    NOT refusal removal, it's agent distillation
+
+21. aifeifei798/Gemma-4-Queen-31B-it (23 likes)
+    Method: Unclear, likely SFT
+
+================================================================================
+QUANTIZED FINETUNES (NOT full precision - excluded from comparison)
+================================================================================
+
+dealignai/Gemma-4-31B-JANG_4M-CRACK (1695 likes) - MLX, 2-bit mixed precision
+dealignai/Gemma-4-26B-A4B-JANG_2L-CRACK (89 likes) - MLX, 2-bit, 9.9 GB
+HauhauCS/Gemma4-* - all GGUF
+RedTeamLab/Gemma-4-26B-Sol-Traces-v1 - GGUF, LoRA
+cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit - AWQ 4-bit
+RedHatAI/gemma-4-*-FP8-* - FP8
+nvidia/Gemma-4-*-NVFP4 - NVFP4
+unsloth/gemma-4-*-GGUF - GGUF
+bartowski/* - GGUF
+
+================================================================================
+WINNERS BY CATEGORY
+================================================================================
+
+BEST REFUSAL REMOVAL WITH QUALITY PRESERVATION (26B MoE):
+  coder3101/gemma-4-26B-A4B-it-heretic
+  - 89% fewer refusals (11/100), KL=0.0499
+  - Best balance of refusal removal and quality preservation
+
+MOST AGGRESSIVE REFUSAL REMOVAL (26B MoE):
+  llmfan46/gemma-4-26B-A4B-it-ultra-uncensored-heretic
+  - 97% fewer refusals (3/100), but KL=0.1237 (2.5x worse quality)
+
+BEST REFUSAL REMOVAL WITH QUALITY PRESERVATION (31B Dense):
+  coder3101/gemma-4-31B-it-heretic
+  - 85% fewer refusals (15/100), KL=0.0434 (best KL overall!)
+
+FEWEST REFUSALS (31B Dense):
+  llmfan46/gemma-4-31B-it-uncensored-heretic
+  - 90% fewer refusals (10/100), KL=0.0541
+
+BEST QUALITY AFTER ABLITERATION (31B Dense):
+  huihui-ai/Huihui-gemma-4-31B-it-abliterated-v2
+  - PPL LOWER than original (13161 vs 14874)
+  - No refusal rate reported
+
+BEST TARGETED CAUTION REMOVAL (31B Dense):
+  ReadyArt/gemma-4-31B-it-scotoma
+  - J-space abliteration, "blind spot not blindness"
+  - Removes hedging without full uncensoring
+
+BEST TWO-STAGE FINETUNE (31B Dense):
+  DavidAU/gemma-4-31B-it-The-DECKARD-HERETIC-UNCENSORED-Thinking
+  - Heretic abliteration + Unsloth SFT on DECKARD dataset
+  - "Beats base model on 6 of 7 benchmarks"
+
+BEST CREATIVE WRITING (26B MoE):
+  Gryphe/Gemma-4-26B-A4B-StyleTune-V2
+  - Only trains lm_head (1 tensor), capabilities intact
+  - 52% cliche reduction
+
+BEST AGENT TRACE FINETUNE (26B MoE):
+  RedTeamLab/Gemma-4-26B-Sol-Traces-v1
+  - LoRA r=16 on all projections
+  - 25K verified agent trajectories
+  - NOT full precision or full weight (GGUF, LoRA)
+
+BEST REASONING DISTILL (31B Dense):
+  TeichAI/gemma-4-31B-it-Claude-Opus-Distill
+  - Claude Opus 4.6 reasoning distillation
+  - NOT refusal removal
+
+================================================================================
+PRACTICAL INSIGHTS
+================================================================================
+
+1. ONE EPOCH FOR MOE MODELS
+   Gryphe: "a second epoch does all sorts of nasty stuff to MoE models"
+   RedTeamLab: 1 epoch for 26B MoE agent trace FT
+   Recommendation: Use 1 epoch for MoE fine-tuning
+
+2. LEARNING RATES
+   LoRA: 1e-4 (RedTeamLab), cosine scheduler, 3% warmup
+   Full-param: 1e-5 or lower for MoE (from earlier research)
+
+3. ASSISTANT-ONLY LOSS
+   RedTeamLab: "Assistant-only (tool responses excluded from loss)"
+   Recommendation: Exclude tool/system responses from loss calculation
+
+4. VRAM REQUIREMENTS
+   LoRA r=16 on H100 80GB: 60.3 GiB peak (RedTeamLab)
+   Full-param FT on 8x B200: VRAM not an issue
+
+5. TRAINING TIME
+   RedTeamLab: ~2h for 25K traces on H100 with LoRA
+   Full-param FT would take longer but 8x B200 is much faster
+
+================================================================================
+RECOMMENDATION FOR THE USER
+================================================================================
+
+The user wants: full precision, full weight, refusal removal, for 5000 bash agent traces.
+
+Option A: Use existing abliterated model as base, then FT on agent traces
+  - Start with coder3101/gemma-4-26B-A4B-it-heretic (best KL, 89% fewer refusals)
+  - Then full-param FT on 5000 bash agent traces with Selective Component Tuning
+  - This gives you: refusal removal + agent skill + minimal forgetting
+
+Option B: Abliterate first, then FT on agent traces
+  - Start with google/gemma-4-26B-A4B-it
+  - Apply Heretic+ARA to remove refusals
+  - Then full-param FT on 5000 traces with Selective Component Tuning + SDFT
+
+Option C: Use two-stage approach like DavidAU
+  - Apply Heretic abliteration
+  - Then SFT on agent traces
+  - Monitor IFeval as canary
+
+For the user's specific use case (5000 bash agent traces):
+  1. Use coder3101/gemma-4-26B-A4B-it-heretic as base (already abliterated, best KL)
+  2. Apply Selective Component Tuning (freeze W_down, update Gate&Up)
+  3. Add SDFT self-distillation KL loss
+  4. Train on pivotal turns only (ATLAS: 30% of traces)
+  5. 1 epoch only (MoE warning!)
+  6. Assistant-only loss (exclude tool responses)
+  7. Monitor IFeval
+================================================================================
+
+================================================================================
+FINAL UPDATED RANKINGS (Turn 31/44)
+================================================================================
+
+FIVE ABLITERATION METHODS IDENTIFIED:
+1. Heretic + ARA (github.com/p-e-w/heretic) - coder3101, llmfan46, trohrbaugh
+2. Heretic + SOMPOA (Self-Organizing Maps + Magnitude-Preserving Orthogonal Ablation)
+3. Sumandora / remove-refusals-with-transformers - huihui-ai
+4. J-space abliteration - ReadyArt
+5. Abliterix (github.com/wuwangzhang1216/abliterix) - wangzhang
+
+26B MoE FINAL RANKINGS (all BF16, ~51.64 GB):
+| Rank | Model | Method | Refusals | KL | Likes |
+|------|-------|--------|----------|-----|-------|
+| 1 | coder3101/gemma-4-26B-A4B-it-heretic | Heretic+ARA | 11/100 (89%) | 0.0499 | 96 |
+| 2 | llmfan46/gemma-4-26B-A4B-it-ultra-uncensored-heretic | Heretic+ARA ultra | 3/100 (97%) | 0.1237 | 38 |
+| 3 | trohrbaugh/gemma-4-26B-A4B-it-heretic-ara | Heretic+ARA | ? | 0.0491 | 18 |
+| 4 | MuXodious/gemma-4-26B-A4B-it-SOMPOA-heresy | Heretic+SOMPOA | 4/104 (96%) | 0.1240 | 11 |
+
+31B Dense FINAL RANKINGS (all BF16, ~62.58 GB):
+| Rank | Model | Method | Refusals | KL | Likes |
+|------|-------|--------|----------|-----|-------|
+| 1 | wangzhang/gemma-4-31B-it-abliterated | Abliterix | 7/100 (93%) | 7.32e-7 | 24 |
+| 2 | llmfan46/gemma-4-31B-it-uncensored-heretic | Heretic+ARA | 10/100 (90%) | 0.0541 | 89 |
+| 3 | coder3101/gemma-4-31B-it-heretic | Heretic+ARA | 15/100 (85%) | 0.0434 | 67 |
+| 4 | huihui-ai/Huihui-gemma-4-31B-it-abliterated-v2 | Sumandora | ? | PPL<orig | 31 |
+| 5 | ReadyArt/gemma-4-31B-it-scotoma | J-space | ? | ? | 22 |
+
+WINNER 26B MoE: coder3101/gemma-4-26B-A4B-it-heretic
+  - Best balance: 89% fewer refusals, KL=0.0499, 96 likes
+  - If fewer refusals needed: llmfan46 ultra (97% but KL=0.1237)
+
+WINNER 31B Dense: wangzhang/gemma-4-31B-it-abliterated
+  - Best metrics: 93% fewer refusals, KL=7.32e-7, 0/15 safe over-refusal probes
+  - Abliterix method specifically designed for Gemma 4 architecture
+
+NO ABLITERIX VERSION EXISTS FOR 26B MoE YET.
+  This is an opportunity: apply Abliterix to 26B MoE for best results.
+  Abliterix disables MLP down projection (consistent with Selective Component Tuning!)
+================================================================================
+
+================================================================================
+ABSOLUTE WINNER: wangzhang/gemma-4-26B-A4B-it-abliterix
+================================================================================
+
+This is the best finetune for the user's exact use case:
+
+Model: wangzhang/gemma-4-26B-A4B-it-abliterix
+Base: google/gemma-4-26B-A4B-it (user's EXACT model)
+Format: BF16, full precision, full weight (safetensors, 52.84 GB)
+Method: Abliterix V6 with Expert-Granular Abliteration (EGA) + Projected Abliteration
+
+Metrics:
+  - Refusals: 2/100 (98% fewer, BEST for 26B MoE)
+  - KL divergence: 0.0005 (essentially ZERO quality degradation)
+  - Baseline refusals: 97/100
+  - 80 optimization trials, best trial #47
+  - Hardware: 1x H100 80GB, ~11h total
+
+Key technical details:
+  1. "LoRA and hook-based steering completely ineffective for Gemma 4 double-norm + PLE"
+  2. "Refusal signal distributed across ALL 128 experts per layer"
+  3. "Expert-Granular Abliteration (EGA): orthogonal projection on all 128 expert mlp.down_proj across 30 layers (~3,840 expert blocks)"
+  4. "Projected Abliteration: projects out only refusal-orthogonal component, preserves helpfulness"
+  5. "only mlp.down_proj and attn.o_proj are steered. Q/K/V contribute zero signal on 128-expert MoE"
+  6. "Delayed refusal pattern: 50-100 tokens of helpful context, then pivot to refusal. Need 200+ token generation for accurate eval"
+
+Comparison with other 26B MoE finetunes:
+  | Model | Method | Refusals | KL | Likes |
+  | wangzhang Abliterix V6 | EGA+Projected | 2/100 (98%) | 0.0005 | 26 |
+  | coder3101 heretic | Heretic+ARA | 11/100 (89%) | 0.0499 | 96 |
+  | llmfan46 ultra heretic | Heretic+ARA ultra | 3/100 (97%) | 0.1237 | 38 |
+  | trohrbaugh heretic-ara | Heretic+ARA | ? | 0.0491 | 18 |
+  | MuXodious SOMPOA | Heretic+SOMPOA | 4/104 (96%) | 0.1240 | 11 |
+
+wangzhang Abliterix V6 wins on BOTH metrics:
+  - Fewest refusals: 2/100 (vs next best 3/100)
+  - Lowest KL: 0.0005 (100x better than coder3101's 0.0499)
+
+IMPORTANT CAVEAT from the model card:
+  "Most abliteration benchmarks dramatically undercount refusals due to short generation lengths"
+  "Gemma 4 models exhibit a distinctive 'delayed refusal' pattern"
+  Other models' refusal rates may be underestimated!
+
+USER'S PLAN:
+  1. Use wangzhang/gemma-4-26B-A4B-it-abliterix as base (already abliterated, best metrics)
+  2. Apply Selective Component Tuning (freeze W_down, update Gate&Up) for agent trace FT
+  3. Add SDFT self-distillation KL loss for capability preservation
+  4. Train on pivotal turns only (ATLAS: 30% of 5000 traces)
+  5. 1 epoch only (MoE multi-epoch warning from Gryphe)
+  6. Assistant-only loss (exclude tool responses)
+  7. Monitor IFeval as canary
+================================================================================
+
+================================================================================
+IMPORTANT CAVEAT: INDEPENDENT BENCHMARK RESULTS (Turn 39/44)
+================================================================================
+
+An independent benchmark (nathan.sapwell.net, Jul 2026) tested 13 abliteration
+techniques on Gemma4-E2B in full precision BF16. Key findings:
+
+1. coder3101 (Heretic) had the BEST BALANCE on E2B:
+   - ASR=96.0%, GSM8K=84.84% (+1.37 vs base), MMLU=28.70, KL=0.167
+   - Only 9 tensors edited (most surgical)
+
+2. llmfan46 (Heretic) had LOWEST KL on E2B:
+   - KL=0.068, ASR=83.8%, only 7 tensors edited
+
+3. wangzhang (Abliterix) had HIGHEST ASR but WORST collateral on E2B:
+   - ASR=99.8%, but MMLU=26.69 (vs 29.00 base = -2.31 drop!)
+   - KL=0.698 (NOT near-zero!)
+   - 72 tensors edited (8x more than coder3101)
+
+4. "One creator's near-zero divergence claim was 187x lower than reality"
+   "Several creators' capability claims do not survive measurement"
+
+WARNING: The wangzhang 26B MoE model card claims KL=0.0005, but:
+  - On E2B, the same method showed KL=0.698
+  - The 26B model card itself says "we treat KL as a diagnostic rather than
+    a headline quality claim"
+  - The KL proxy (7.32e-7) is measured differently from benchmark KL
+  - "Most abliteration benchmarks dramatically undercount refusals"
+
+REVISED RECOMMENDATION:
+  Given the independent benchmark evidence:
+  - coder3101/gemma-4-26B-A4B-it-heretic is the SAFEST choice
+    (best balance, most surgical, only 9 tensors, proven on benchmark)
+  - wangzhang/gemma-4-26B-A4B-it-abliterix has the best CLAIMED metrics
+    but independent benchmark suggests higher KL than reported
+  - For the user's use case: use coder3101 as base, apply Selective Component
+    Tuning + SDFT for agent trace FT. If more refusal removal is needed,
+    consider Abliterix but monitor MMLU closely.
+
+NOTE: E2B is 2B params, not 26B MoE. Results may not translate directly.
+The 26B MoE Abliterix uses Expert-Granular Abliteration (EGA) which is
+specifically designed for MoE and might perform differently.
+================================================================================
+
+================================================================================
+SUMMARY METRICS TABLE: ALL CONSIDERED GEMMA 4 FINETUNES
+================================================================================
+Model                                   | Params | Type   | Refusals | KL      | Notes
+                                        |        |        | (/100)   |         |
+----------------------------------------+--------+--------+----------+---------+------------------
+coder3101/gemma-4-26B-A4B-it-heretic    | 26B    | BF16   | 11       | 0.0499  | SAFEST, 9 tensors
+wangzhang/gemma-4-26B-A4B-it-abliterix  | 26B    | BF16   | 2        | 0.0005* | *claimed, E2B KL=0.698
+llmfan46/gemma-4-26B-A4B-it-ultra-unc.. | 26B    | BF16   | ?        | ?       | Ultra uncensored
+trohrbaugh/gemma-4-26B-A4B-it-heretic   | 26B    | BF16   | ?        | ?       | Heretic variant
+TeichAI/gemma-4-31B-it-Claude-Opus-Dis. | 31B    | BF16   | ?        | ?       | Distill
+huihui-ai/Huihui-gemma-4-31B-it-ablit.. | 31B    | BF16   | ?        | ?       | Abliterated v2
+unsloth/gemma-4-31b-it-UD-MLX-4bit      | 31B    | 4-bit  | ?        | ?       | MLX quantized
+MuXodious/gemma-4-26B-A4B-it-SOMPOA-h.. | 26B    | BF16   | ?        | ?       | SOMPOA heresy
+RedHatAI/gemma-4-26B-A4B-it-FP8-dynamic | 26B    | FP8    | ?        | ?       | FP8 quantized
+
+================================================================================
+GIT URLS AND PAPER URLS FOR CHOSEN RECOMMENDATIONS:
+================================================================================
+1. Heretic + ARA (Arbitrary-Rank Ablation):
+   Code: https://github.com/p-e-w/heretic
+   Recommended base: coder3101/gemma-4-26B-A4B-it-heretic
+   HF: https://huggingface.co/coder3101/gemma-4-26B-A4B-it-heretic
+
+2. Abliterix (Expert-Granular Abliteration for MoE):
+   Code: https://github.com/wuwangzhang1216/abliterix
+   HF: https://huggingface.co/wangzhang/gemma-4-26B-A4B-it-abliterix
+   Blog: https://nathan.sapwell.net/posts/gemma4-e2b-abliteration/
+
+3. remove-refusals-with-transformers:
+   Code: https://github.com/Sumandora/remove-refusals-with-transformers
+
+4. Unsloth (for training/fine-tuning on top of abliterated base):
+   Code: https://github.com/unslothai/unsloth
+   Docs: https://unsloth.ai/docs/models/gemma-4/train
+
+5. Gemma 4 model card (Google AI):
+   Docs: https://ai.google.dev/gemma/docs/core/model_card_4
+
+RECOMMENDATION: Use coder3101/gemma-4-26B-A4B-it-heretic as base.
+  - Best balance of refusal removal and quality preservation
+  - Only 9 tensors modified (surgical)
+  - Independent benchmark confirmed lower KL than Abliterix
+  - Apply Selective Component Tuning + SDFT for agent trace FT on top
+================================================================================
