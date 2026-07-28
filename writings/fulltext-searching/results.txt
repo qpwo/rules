@@ -1,0 +1,44 @@
+UBSTRING SEARCH BENCHMARK RESULTS
+===================================
+Corpus: 5.0 MB of tech blog text
+
+INDEX BUILD:
+  trigram:      0.38s   39.8 MB  800pct of corpus
+  suffix array: 7.25s   19.9 MB  400pct of corpus
+  FM-index:     0.02s   24.9 MB  500pct of corpus  reuses SA
+  ugrep-indexer: 0.10s  65.5 KB  1.3pct of corpus
+
+QUERY TIMES counting occurrences:
+  pattern              len   brute    trigram       sa   fm-index  ugrep-no  ugrep-idx  matches
+  the                   3  5.020ms   0.110ms  0.168us   0.109us   8.981ms   6.445ms    40688
+  th                    2  5.097ms   4.797ms  0.162us   0.068us   6.143ms   6.282ms    70678
+  index                 5  3.722ms   0.004ms  0.200us   0.174us   5.699ms   5.630ms     1311
+  suffix                6  3.639ms   0.001ms  0.188us   0.204us   4.625ms   6.375ms      135
+  bloom filter         12  2.618ms   0.001ms  0.200us   0.437us   4.601ms   5.912ms       25
+  regular expression   18  3.441ms   0.002ms  0.262us   0.700us   4.478ms   5.766ms       93
+  memory                6  2.849ms   0.008ms  0.191us   0.208us   4.746ms   5.661ms     2481
+  cache                 5  3.034ms   0.003ms  0.196us   0.175us   4.568ms   5.991ms     1311
++zsh:18> clang -O3 '-march=native' scratch/bench.c -o scratch/bench
++zsh:18> scratch/bench scratch/corpus.txt
+corpus: 4975457 bytes (5.0 MB)
+
+building trigram index...
+  trigram:     0.376 s, 39.8 MB (800.0%)
+building suffix array...
+  suffix arr:  7.178 s, 19.9 MB (400.0%)
+building FM-index...
+  FM-index:    0.021 s, 24.9 MB (500.0%)
+
+pattern                    len      brute    trigram         sa   fm-index  matches
+-------                    ---      -----    -------         --    -------  -------
+the                          3    5.141ms    0.098ms    0.170us    0.108us    40688
+th                           2    5.113ms    4.792ms    0.161us    0.069us    70678
+index                        5    3.949ms    0.004ms    0.209us    0.177us     1311
+suffix                       6    3.741ms    0.001ms    0.192us    0.204us      135
+bloom filter                12    2.667ms    0.002ms    0.199us    0.440us       25
+regular expression          18    3.498ms    0.003ms    0.269us    0.697us       93
+memory                       6    2.854ms    0.008ms    0.194us    0.207us     2481
+cache                        5    3.026ms    0.003ms    0.197us    0.176us     1311
+zxqwnonexist                12    2.299ms    0.001ms    0.196us    0.323us        0
+
+peak RSS: 186720 MB

@@ -1,0 +1,33 @@
+SUBSTRING SEARCH BENCHMARK RESULTS
+===================================
+Corpus: 5.0 MB of tech blog text
+
+INDEX BUILD:
+  trigram:      0.38s   39.8 MB  800pct of corpus
+  suffix array: 7.25s   19.9 MB  400pct of corpus
+  FM-index:     0.02s   24.9 MB  500pct of corpus  reuses SA
+  ugrep-indexer: 0.10s  65.5 KB  1.3pct of corpus
+
+QUERY TIMES counting occurrences:
+  pattern              len   brute    trigram       sa   fm-index  ugrep-no  ugrep-idx  matches
+  the                   3  5.020ms   0.110ms  0.168us   0.109us   8.981ms   6.445ms    40688
+  th                    2  5.097ms   4.797ms  0.162us   0.068us   6.143ms   6.282ms    70678
+  index                 5  3.722ms   0.004ms  0.200us   0.174us   5.699ms   5.630ms     1311
+  suffix                6  3.639ms   0.001ms  0.188us   0.204us   4.625ms   6.375ms      135
+  bloom filter         12  2.618ms   0.001ms  0.200us   0.437us   4.601ms   5.912ms       25
+  regular expression   18  3.441ms   0.002ms  0.262us   0.700us   4.478ms   5.766ms       93
+  memory                6  2.849ms   0.008ms  0.191us   0.208us   4.746ms   5.661ms     2481
+  cache                 5  3.034ms   0.003ms  0.196us   0.175us   4.568ms   5.991ms     1311
+  zxqwnonexist         12  2.360ms   0.001ms  0.195us   0.323us   4.448ms   5.593ms        0
+
+KEY FINDINGS:
+  1. SA and FM-index are 10000x-50000x faster than ugrep for substring counting
+  2. FM-index is fastest for short patterns 0.068us for 2-char th
+  3. SA is more stable across pattern lengths 0.162-0.262us
+  4. FM-index scales with pattern length 0.068-0.700us backward search
+  5. Trigram is fast for rare patterns but slow for common ones the 0.110ms
+  6. Trigram CANNOT handle patterns less than 3 chars falls back to brute force
+  7. ugrep index is SLOWER than no index for single file designed for multi-file
+  8. ugrep counts matching lines not total occurrences different workload
+  9. FM-index build is very fast 0.02s but requires SA first 7.25s
+  10. SA build is the bottleneck prefix-doubling with qsort O n log2 n
