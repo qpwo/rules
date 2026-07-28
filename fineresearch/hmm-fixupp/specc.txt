@@ -63,8 +63,13 @@ The system ALWAYS makes the named gemma stronger (never weaker) because:
 
 3.2 Upload Trace
   POST /v1/traces/upload
-  request: {"gemma_name": "my-county-explorer", "trace": {...}}
+  request (multipart form):
+    gemma_name: string (which named version to improve)
+    trace_file: JSONL file (pi agent session, ~/.pi/agent/sessions/.../*.jsonl)
+    scores: JSON (optional, 3-point scoring, see 4.2)
   response: 202 {"job_id": "abc123", "status": "queued"}
+  notes: if scores not provided, system derives them by analyzing
+    the session output (checking for .gov URLs, business names, etc.)
 
 3.3 Job Status
   GET /v1/jobs/{job_id}
@@ -93,60 +98,67 @@ The system ALWAYS makes the named gemma stronger (never weaker) because:
 
 4. TRACE FORMAT
 
-{
-  "query": "lookup Johns Restaurant in Springfield, IL and get all business incorporation docs and health inspection and google reviews to validate them for uber eats membership",
-  "steps": [
-    {
-      "id": 0,
-      "screenshot": "base64:iVBOR...",
-      "action": {"type": "navigate", "url": "https://www.ilsos.gov/corporatellc/"},
-      "result": {"url": "...", "title": "IL Corporation Search", "text": ""}
-    },
-    {
-      "id": 1,
-      "screenshot": "base64:iVBOR...",
-      "action": {"type": "type", "selector": "#search-input", "text": "Johns Restaurant"},
-      "result": {"url": "...", "title": "Search Results", "text": "Found 3 results"}
-    },
-    {
-      "id": 5,
-      "screenshot": "base64:iVBOR...",
-      "action": {"type": "extract", "field": "business_name"},
-      "result": {"text": "Johns Restaurant LLC", "url": "https://www.ilsos.gov/..."}
-    }
-  ],
-  "scores": {
-    "business_docs": {"found": true, "real": true, "source": true,
-      "source_url": "https://www.ilsos.gov/...", "step_id": 5},
-    "health_inspection": {"found": true, "real": true, "source": true,
-      "source_url": "https://www.dph.illinois.gov/...", "step_id": 12},
-    "reviews": {"found": true, "real": true, "source": true,
-      "source_url": "https://www.google.com/maps/...", "step_id": 18}
-  },
-  "total_score": 3
-}
+4.1 Pi Agent Session (JSONL)
+  The trace is a JSONL file from the pi agent (~/.pi/agent/sessions/.../*.jsonl).
+  Each line is one JSON event. Events linked by id/parentId forming a chain.
 
-action types: navigate, click, type, scroll, extract, verify
-score fields: found (bool), real (bool), source (bool, true=gov/original not aggregator),
-  source_url (string), step_id (int, which step achieved this point)
+  Event types:
+    session:       {"type":"session","version":3,"id":"...","timestamp":"...","cwd":"..."}
+    model_change:  {"type":"model_change","id":"...","parentId":null,"provider":"...","modelId":"..."}
+    message:       {"type":"message","id":"...","parentId":"...","timestamp":"...","message":{...}}
+    compaction:    {"type":"compaction","id":"...","parentId":"...","summary":"...","tokensBefore":...}
+
+  Message roles (inside "message" field):
+    user:          {"role":"user","content":[{"type":"text","text":"..."}]}
+    assistant:     {"role":"assistant","content":[
+                     {"type":"thinking","thinking":"..."},
+                     {"type":"toolCall","id":"...","name":"bash","arguments":{"command":"..."}}
+                   ]}
+    bashExecution: {"role":"bashExecution","command":"...","output":"...","exitCode":0}
+    toolResult:    {"role":"toolResult","toolCallId":"...","toolName":"bash",
+                   "content":[{"type":"text","text":"..."},{"type":"image","data":"base64..."}]}
+
+  A "step" is the group: (assistant toolCall) -> (bashExecution) -> (toolResult)
+  Steps are chained by parentId. Compaction events are skipped (they just drop turns).
+  Screenshots are base64 PNG in toolResult content with type:"image".
+
+4.2 Scores (3-point scoring)
+  Provided separately in the upload request (or derived by the system):
+  {
+    "business_docs":      {"found": true, "real": true, "source": true, "source_url": "..."},
+    "health_inspection":  {"found": true, "real": true, "source": true, "source_url": "..."},
+    "reviews":             {"found": true, "real": true, "source": true, "source_url": "..."}
+  }
+  source = true means from gov/original, not aggregator.
+  If not provided, system derives by analyzing session output for .gov URLs,
+  business name matches, inspection dates, and review sources.
+
+4.3 Query Extraction
+  The query is extracted from the first user message in the JSONL.
+  Example: "lookup Johns Restaurant in Springfield, IL and get all business
+  incorporation docs and health inspection and google reviews..."
 
 
 5. TRAINING PIPELINE
 
 5.1 Parse Trace
-  - validate JSON structure
-  - extract steps array with screenshots and actions
-  - extract scores: map each of the 3 points to its achieving step_id
-  - extract the query string
+  - read JSONL file line by line
+  - parse each line as JSON event
+  - build event chain by following parentId links (skip compaction events)
+  - group events into steps: (assistant toolCall + bashExecution + toolResult)
+  - extract screenshots from toolResult messages with image content
+  - extract query from first user message
+  - extract or receive 3-point scores
 
 5.2 Extract Critical Steps (ATLAS, 1.4x boost)
-  - weight each step:
-      1.0  if step achieved a point (step_id matches a score)
-      0.5  if step directly enabled a scored step (parent navigate/click)
-      0.1  if step is on correct path (correct .gov domain, correct form)
-      0.0  otherwise
+  - analyze each step's bash command to determine importance:
+      1.0  if command output contains a .gov URL matching a scored source_url
+      0.5  if command navigates to .gov domain or extracts key data (name, date, etc.)
+      0.1  if command is on path (searching, listing, navigating to relevant site)
+      0.0  otherwise (setup, echo, ls, cat, etc.)
   - discard steps with weight < 0.1
-  - remaining steps are training instances (ATLAS Table 6: 1.4x improvement)
+  - remaining steps are training instances
+  - ATLAS Table 6: this gives 1.4x improvement over training on all steps
 
 5.3 Filter (CSO, 1.16x boost)
   - run current gemma on same query with k=5 rollouts
