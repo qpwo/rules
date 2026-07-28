@@ -8,7 +8,7 @@ A service where users:
   - upload successful pi agent traces to improve their named version
   - chat with their named version via OpenAI-compatible API
 
-Core loop: upload trace -> GRPO + Selective KeepLoRA -> gemma gets a tiny bit better -> chat API
+Core loop: upload trace -> GRPO + MoRA adapter -> gemma gets a tiny bit better -> chat API
 
 The system makes the named gemma a tiny bit better from each trace.
 The trace could be anything. The system is domain-agnostic.
@@ -20,7 +20,7 @@ The fact that the user uploaded the trace means it was good.
   User
     v
   API (FastAPI)
-    - POST /v1/models/create      -> create named version (new KeepLoRA adapter)
+    - POST /v1/models/create      -> create named version (new adapter)
     - POST /v1/traces/upload       -> queue training job
     - GET  /v1/jobs/{id}           -> check training status
     - POST /v1/chat/completions    -> serve named version (OpenAI-compatible)
@@ -32,16 +32,16 @@ The fact that the user uploaded the trace means it was good.
     - generate k=5 rollouts per step using trace as reference
     - score rollouts: +1 if matches expert action, 0 if not (SOD step-level)
     - GRPO loss with high KL regularization (RLS Razor)
-    - Selective KeepLoRA weight update (KeepLoRA on gate_proj+up_proj only)
+    - MoRA adapter weight update (self-activation, no routing collapse)
     - sanity check: revert if any metric drops
     v
   Model Registry (SQLite + filesystem)
     - base models: gemma-26b, gemma-31b (shared in GPU memory)
-    - named versions = KeepLoRA adapters (.safetensors, ~0.3% of model size)
+    - named versions = MoRA adapters (.safetensors, ~0.3% of model size)
     - metadata: name, base_model, version, traces_trained, metrics
     v
   vLLM Serving
-    - load base model + KeepLoRA adapter
+    - load base model + MoRA adapter (merged for serving)
     - OpenAI-compatible /v1/chat/completions
     - vision: accept image_url in messages (screenshot input)
     - hot-swap adapters after training (no dropped requests)
@@ -54,7 +54,7 @@ The fact that the user uploaded the trace means it was good.
   POST /v1/models/create
   request: {"name": "my-explorer", "base_model": "gemma-26b"}
   response: 201 {"name": "my-explorer", "base_model": "gemma-26b", "version": 0, "traces_trained": 0}
-  notes: creates a new KeepLoRA adapter initialized to zero.
+  notes: creates a new adapter initialized to zero.
     at this point the model is identical to base gemma-26b.
 
 3.2 Upload Trace
@@ -119,11 +119,17 @@ The fact that the user uploaded the trace means it was good.
 
 4.2 Reward (generic)
   The trace is a successful session. The user uploaded it because it was good.
-  The reward for GRPO is simple: does the model's action match the expert's action?
+  The reward for GRPO is: does the model's action match the expert's action?
     +1.0  if model's bash command matches expert's bash command at this step
     +0.5  if model's bash command is similar (same tool, similar target)
      0.0  if model's bash command is different
   This is domain-agnostic. Works for any type of trace.
+
+  Matching is defined as:
+    exact:  the command strings are identical after normalizing whitespace
+    similar: the first token (the tool/program name) matches AND the primary
+             argument (the file path or URL or search target) matches
+    different: everything else
 
 4.3 Query Extraction
   The initial prompt/query is extracted from the first user message in the JSONL.
@@ -168,7 +174,8 @@ The fact that the user uploaded the trace means it was good.
          +0.5  if matches expert bash command AND step weight = 0.5
          +0.1  if matches expert bash command AND step weight = 0.1
           0.0  if does not match expert bash command
-       "matches" = same command intent (fuzzy: same tool, same target/path)
+       "matches" = exact match after whitespace normalization, OR
+                   same first token (tool name) + same primary argument
     d. compute advantage = score - mean(group of k=5 scores)
     e. GRPO loss = -mean(advantage * log_ratio) + KL_coef * KL(pi, pi_base)
        where pi_base = original gemma before any training
@@ -176,66 +183,58 @@ The fact that the user uploaded the trace means it was good.
        note: GRPO is on-policy, which naturally preserves IFeval better than
        SFT (SDFT 2601.19897: on-policy KL shift << off-policy SFT KL shift).
        the KL reg here serves the same function as SDFT self-distillation.
-    f. backprop through KeepLoRA weights only (base model frozen)
-    g. KeepLoRA residual subspace projection (see 5.5)
+    f. backprop through adapter weights only (base model frozen)
 
-5.5 Selective KeepLoRA Update
+5.5 MoRA Adapter Update (PRIMARY METHOD)
 
-  WHY SELECTIVE (not all projections):
-    MoE models have gate_proj, up_proj, and down_proj in each expert.
-    down_proj is the "unconstrained write-back" that causes output distribution
-    drift and routing instability. From Selective Component Tuning (2510.08564):
-      Full FT: learn +29.9, forget -27.4
-      MLP(Gate&Up only): learn +35.1, forget -2.1  (13x less forgetting, BETTER learning)
-    From MoEEdit (2602.10965): FT on MoE causes routing stability RS=23-30%
-    (severe disruption). Not touching down_proj avoids this.
+  WHY MoRA (not KeepLoRA or CURLoRA):
+    MoRAM (2506.21035, ICML 2026) was actually tested on Gemma:
+      - Gemma-2B: BWT 12.65 (lowest among 9 methods incl MoE-LoRA 13.56)
+      - LLaMA-3-7B: BWT 3.46 (lowest among 9 methods, 1.5x less than L2P 5.25)
+      - Highest OP on both Gemma-2B (33.73) and LLaMA-3-7B (43.52)
+    Self-activation routing: no external router = no routing collapse
+    Rank-1 associative memory atoms: fine-grained, less interference
+    LoRA-based: 4.4M params, same size as standard LoRA
+    Public code: github.com/Artificer-AI-Lab/MoRAM
 
-  WHY KeepLoRA (not standard LoRA or CURLoRA):
-    KeepLoRA constrains LoRA updates to the residual subspace (orthogonal to
-    the principal subspace of pretrained weights). This provides:
-      - SOTA on MTIL benchmark (Transfer 86.5 vs O-LoRA 82.4, CURLoRA untested)
-      - Theoretical guarantee of forward + backward stability
-      - Public code: github.com/MaolinLuo/KeepLoRA
-    CURLoRA was never tested on MoE, never tested at 26B scale, and does not
-    address routing stability. KeepLoRA + selective projection does.
+    CURLoRA was never tested on MoE, never at 26B scale, and does not address
+    routing stability. KeepLoRA was never tested on MoE either.
 
   METHOD:
-    1. Apply LoRA ONLY to gate_proj and up_proj (NOT down_proj, NOT attention)
-    2. Compute SVD of pretrained gate_proj and up_proj weights to find
-       principal subspace (top-r singular vectors)
-    3. After each gradient step, project LoRA updates into the residual
-       subspace (orthogonal complement of principal subspace):
-         grad_residual = grad - (grad @ V_principal) @ V_principal.T
-       where V_principal = top-r right singular vectors of pretrained weights
-    4. Initialize LoRA A matrix with first-step gradient for plasticity
-    5. This ensures new knowledge does not overwrite existing knowledge
-    6. MoE router is implicitly frozen (not in target_modules). this is
-       intentional for conservative updates. from mechanistic analysis,
-       freezing router limits plasticity but prevents routing collapse.
-       if more plasticity is needed, unfreeze router with soft L2 penalty
-       on gate logits (NOT full unfreeze).
+    1. MoRAM uses rank-1 associative memory atoms that self-activate based on
+       input. Each atom is a (key, value) pair where the key is learned from
+       input features and the value is the adapter weight.
+    2. Self-activation means the routing is determined by the input itself,
+       not by a separate router network. This eliminates routing collapse
+       entirely (the main failure mode of MoE fine-tuning).
+    3. Atoms are merged into a single LoRA adapter for serving. During training,
+       individual atoms are updated. For serving, atoms are merged into one
+       LoRA matrix that vLLM can load.
+    4. Base model is frozen. Only MoRAM atoms are updated.
+    5. MoE router is never touched. This is critical for Gemma MoE models.
 
   RESULT:
-    - Forgetting prevention: SOTA on MTIL (KeepLoRA) + MoE routing stability
-      (freeze down_proj) + KL regularization (R^2=0.96 with forgetting)
-    - Base model capabilities preserved: updates are orthogonal to principal
-      subspace AND restricted to gate_proj/up_proj only
-    - Small adapters: ~0.3% of model size (gate_proj + up_proj only, rank 8-16)
+    - Forgetting prevention: BWT 12.65 on Gemma-2B (lowest among all methods)
+    - No routing collapse: self-activation eliminates this failure mode
+    - Base model capabilities preserved: base model frozen, only atoms updated
+    - Small adapters: ~4.4M params (~0.02% of 26B model)
 
-  FALLBACK (if IFeval drops on MoE):
-    If Selective KeepLoRA causes IFeval drop on Gemma 4 26B MoE (untested combo),
-    switch to MoRAM (2506.21035, ICML 2026):
-      - TESTED ON GEMMA (Gemma-2B: BWT 12.65, lowest among 9 methods incl MoE-LoRA 13.56)
-      - LLaMA-3-7B: BWT 3.46, lowest among 9 methods (1.5x less than next best L2P 5.25)
-      - Highest OP (overall performance) on both Gemma-2B (33.73) and LLaMA-3-7B (43.52)
-      - Self-activation routing (no external router = no routing collapse)
-      - Rank-1 associative memory atoms (fine-grained, less interference)
-      - Public code: github.com/Artificer-AI-Lab/MoRAM
-      - LoRA-based (4.4M params, same size as LoRA)
-      - Tradeoff: input-dependent routing needs custom serving (not vLLM LoRA).
-        merge atoms into single LoRA adapter for vLLM, or use custom backend.
-    MoRAM is the most bulletproof alternative because it was actually tested
-    on Gemma and eliminates routing collapse entirely via self-activation.
+  FALLBACK (if MoRAM underperforms on Gemma 26B MoE):
+    If MoRAM causes insufficient learning on 26B, switch to KeepLoRA:
+      - KeepLoRA constrains LoRA updates to the residual subspace (orthogonal
+        to principal subspace of pretrained weights)
+      - SOTA on MTIL benchmark (Transfer 86.5 vs O-LoRA 82.4)
+      - Theoretical guarantee of forward + backward stability
+      - Public code: github.com/MaolinLuo/KeepLoRA
+      - Apply KeepLoRA to gate_proj + up_proj only (NOT down_proj)
+        From Selective Component Tuning (2510.08564):
+          Full FT: learn +29.9, forget -27.4
+          MLP(Gate&Up only): learn +35.1, forget -2.1 (13x less forgetting)
+      - Risk: KeepLoRA was not tested on MoE. MoEEdit (2602.10965) shows
+        FT on MoE causes RS=23-30% routing disruption. Freezing down_proj
+        may help but is not guaranteed.
+      - Tradeoff: KeepLoRA is compatible with vLLM LoRA serving out of the box.
+        MoRAM requires atom merging for vLLM, or custom serving backend.
 
 5.6 Sanity Check
   - after training, eval on 3 held-out traces (or replay the same trace)
@@ -251,7 +250,8 @@ The fact that the user uploaded the trace means it was good.
 
 6.1 vLLM with LoRA Adapters
   - load base model (gemma-26b or gemma-31b) in GPU memory (shared)
-  - load KeepLoRA adapter for requested model name
+  - MoRAM atoms are merged into a single LoRA adapter for serving
+  - vLLM loads the merged LoRA adapter for the requested model name
   - vLLM supports multiple LoRA adapters simultaneously
   - route by "model" field in request
 
@@ -260,7 +260,8 @@ The fact that the user uploaded the trace means it was good.
   - screenshots sent as base64-encoded images
 
 6.3 Hot-Swap
-  - when training completes, load new adapter version
+  - when training completes, merge MoRAM atoms into new LoRA adapter
+  - load new adapter version into vLLM
   - in-flight requests finish with old adapter
   - new requests use new adapter
   - keep previous adapter for revert
@@ -268,8 +269,8 @@ The fact that the user uploaded the trace means it was good.
 
 6.4 Multi-User
   - single base model in GPU memory
-  - each user has own named versions (KeepLoRA adapters)
-  - adapters are small (~0.3% of model, ~80MB for 26B)
+  - each user has own named versions (merged LoRA adapters)
+  - adapters are small (~4.4M params, ~17MB for 26B)
   - vLLM serves dozens of adapters simultaneously
 
 
@@ -288,14 +289,13 @@ max_response = 1024
 batch_size = 32
 precision = bf16
 
-[keepLoRA]
-rank = 8
-alpha = 64
-target_modules = gate_proj,up_proj
-freeze_modules = down_proj,q_proj,k_proj,v_proj,o_proj
-residual_subspace = true
-svd_components = 64
-svd_rank_ratio = 0.20
+[morAM]
+method = moram
+num_atoms = 64
+atom_rank = 1
+target_modules = gate_proj,up_proj,down_proj
+freeze_modules = q_proj,k_proj,v_proj,o_proj
+merge_for_serving = true
 
 [filtering]
 skip_if_match_rate = 0.8
@@ -312,8 +312,14 @@ max_model_len = 8192
 gpu_memory_utilization = 0.9
 enable_vision = true
 
+[hardware]
+# minimum for gemma-26b: 2x A100 80GB or 4x A100 40GB
+# minimum for gemma-31b: 4x A100 80GB or 8x A100 40GB
+# training with k=5 rollouts needs ~1.5x inference memory
+# recommended: 4x A100 80GB for 26B, 8x A100 80GB for 31B
+
 Implementation stack:
-  - training: PyTorch + transformers + peft
+  - training: PyTorch + transformers + peft + MoRAM
   - rollouts: vLLM (with LoRA adapter support)
   - serving: vLLM with OpenAI-compatible API
   - API: FastAPI
@@ -326,25 +332,25 @@ Implementation stack:
 8.1 Always Stronger (never weaker)
   - KL reg (R2=0.96 with forgetting): model CANNOT drift from base [RLS Razor]
   - GRPO is on-policy: naturally preserves IFeval (SDFT insight, same MIT lab)
-  - Selective KeepLoRA: updates orthogonal to principal subspace (SOTA MTIL)
-    AND restricted to gate_proj+up_proj (freeze down_proj for MoE routing)
-    [KeepLoRA 2601.19659 + Selective Tuning 2510.08564]
-  - MoE routing stability: freeze down_proj avoids RS=23-30% disruption
-    [MoEEdit 2602.10965: FT RS=23-30%, avoiding down_proj preserves routing]
+  - MoRAM: tested on Gemma, BWT=12.65 (lowest forgetting among 9 methods)
+    Self-activation routing eliminates routing collapse entirely
+  - Base model frozen: only small adapter atoms are updated
+  - MoE router never touched: no routing disruption
   - only successful traces: no negative signal
   - only traces where gemma fails: maximally informative [CSO]
   - sanity check: revert if any drop > 5%
 
-8.2 Compound Boost
+8.2 Compound Boost (conservative estimate)
   - step-level scoring: 1.4x [SOD]
   - step extraction: 1.4x [ATLAS]
   - trace filtering: 1.16x [CSO]
-  - total: 1.4 * 1.4 * 1.16 = 2.27x over baseline GRPO
+  - theoretical max: 1.4 * 1.4 * 1.16 = 2.27x
+  - realistic estimate: 1.3-1.5x (techniques have overlapping benefits)
+  - do not expect 2.27x in practice. diminishing returns are real.
 
 8.3 Reliable
   - GRPO: used in every reference paper. standard. proven.
-  - KeepLoRA: SOTA on MTIL. public code. theoretical guarantee.
-  - Selective projection: 13x less forgetting + better learning (2510.08564)
+  - MoRAM: tested on Gemma. ICML 2026. public code. lowest BWT.
   - vLLM: production-grade. supports LoRA adapters.
   - OpenAI-compatible API: works with existing tools.
 
@@ -367,22 +373,22 @@ Implementation stack:
         - generate 5 action predictions
         - score: 2 match expert (+1.0), 1 partial (+0.5), 2 wrong (0.0)
         - GRPO loss with KL=0.005
-        - update KeepLoRA weights (gate_proj+up_proj only, residual subspace)
+        - update MoRAM atoms
      e. sanity check: match rate improved 0.2 -> 0.6 -> save adapter v1
 
   4. User chats: POST /v1/chat/completions {"model": "my-agent", "messages": [...]}
-     -> served by vLLM with adapter v1
+     -> served by vLLM with merged adapter v1
 
   5. User uploads 10 more traces over time
      -> adapter versions: v2, v3, ..., v11
      -> model gets a tiny bit better from each trace
-     -> model does NOT forget (residual subspace + KL reg + freeze down_proj)
+     -> model does NOT forget (MoRAM self-activation + KL reg + frozen base)
 
 
 10. REFERENCES
 
   RLS Razor      arxiv 2509.04259  KL=forgetting (R2=0.96), RL > SFT
-  KeepLoRA       arxiv 2601.19659  SOTA MTIL, residual subspace, github.com/MaolinLuo/KeepLoRA
+  MoRAM          arxiv 2506.21035  tested on Gemma (BWT 12.65), self-activation, ICML 2026
   Selective Tune arxiv 2510.08564  freeze W_down, 13x less forgetting, better learning
   MoEEdit        arxiv 2602.10965  MoE routing stability, RS metric, per-expert null-space
   SOD            arxiv 2605.07725  step-level scoring (36.27% vs 25.59%, 1.4x)
@@ -391,7 +397,7 @@ Implementation stack:
   PaST           arxiv 2601.11258  orthogonal skills (cosine ~0.00), GRPO recipe
   OpenClaw       arxiv 2603.10165  GUI agent RL framework, hybrid feedback
   DES-MoE        arxiv 2509.16882  MoE fine-tuning, ESFT-Gate preserves IFEval best
-  MoRAM          arxiv 2506.21035  tested on Gemma (BWT 12.65), self-activation, ICML 2026
+  KeepLoRA       arxiv 2601.19659  SOTA MTIL, residual subspace (FALLBACK only)
   SDFT           arxiv 2601.19897  on-policy preserves IFeval, same lab as RL's Razor
   SAME           arxiv 2602.01990  MoE stabilization, spectral-aware routing
   Brainstacks    arxiv 2604.01152  tested on Gemma 3 12B, zero forgetting, null-space SVD
