@@ -225,7 +225,9 @@ The fact that the user uploaded the trace means it was good.
   FALLBACK (if IFeval drops on MoE):
     If Selective KeepLoRA causes IFeval drop on Gemma 4 26B MoE (untested combo),
     switch to MoRAM (2506.21035, ICML 2026):
-      - TESTED ON GEMMA (Gemma-2B, BWT 2.74 vs O-LoRA 12.36, 4.5x less forgetting)
+      - TESTED ON GEMMA (Gemma-2B: BWT 12.65, lowest among 9 methods incl MoE-LoRA 13.56)
+      - LLaMA-3-7B: BWT 3.46, lowest among 9 methods (1.5x less than next best L2P 5.25)
+      - Highest OP (overall performance) on both Gemma-2B (33.73) and LLaMA-3-7B (43.52)
       - Self-activation routing (no external router = no routing collapse)
       - Rank-1 associative memory atoms (fine-grained, less interference)
       - Public code: github.com/Artificer-AI-Lab/MoRAM
@@ -389,7 +391,8 @@ Implementation stack:
   PaST           arxiv 2601.11258  orthogonal skills (cosine ~0.00), GRPO recipe
   OpenClaw       arxiv 2603.10165  GUI agent RL framework, hybrid feedback
   DES-MoE        arxiv 2509.16882  MoE fine-tuning, ESFT-Gate preserves IFEval best
-  MoRAM          arxiv 2506.21035  tested on Gemma, self-activation routing, ICML 2026
+  MoRAM          arxiv 2506.21035  tested on Gemma (BWT 12.65), self-activation, ICML 2026
   SDFT           arxiv 2601.19897  on-policy preserves IFeval, same lab as RL's Razor
   SAME           arxiv 2602.01990  MoE stabilization, spectral-aware routing
   Brainstacks    arxiv 2604.01152  tested on Gemma 3 12B, zero forgetting, null-space SVD
+  TFGN           arxiv 2605.15053  BWT=-0.007 on LLaMA 8B (zero forgetting), full arch
