@@ -151,7 +151,7 @@ The fact that the user uploaded the trace means it was good.
 
 5.3 Filter (CSO, 1.16x boost)
   - run current gemma on the same query with k=5 rollouts
-  - use trace screenshots as environment (offline replay)
+  - use expert trace history as context (teacher forcing, no live environment needed)
   - if gemma already produces a similar trace (high action match rate): SKIP
   - if gemma fails to match: QUEUE for training
   - CSO Table: expert success + policy failure = 49.5% vs 46.6% for all traces
@@ -206,6 +206,11 @@ The fact that the user uploaded the trace means it was good.
        where V_principal = top-r right singular vectors of pretrained weights
     4. Initialize LoRA A matrix with first-step gradient for plasticity
     5. This ensures new knowledge does not overwrite existing knowledge
+    6. MoE router is implicitly frozen (not in target_modules). this is
+       intentional for conservative updates. from mechanistic analysis,
+       freezing router limits plasticity but prevents routing collapse.
+       if more plasticity is needed, unfreeze router with soft L2 penalty
+       on gate logits (NOT full unfreeze).
 
   RESULT:
     - Forgetting prevention: SOTA on MTIL (KeepLoRA) + MoE routing stability
@@ -216,10 +221,12 @@ The fact that the user uploaded the trace means it was good.
 
 5.6 Sanity Check
   - after training, eval on 3 held-out traces (or replay the same trace)
-  - if action match rate drops > 5%: revert to previous adapter version
+  - check IFeval (agentic instruction following canary, SFT destroys 74.3->35.3)
+  - if action match rate drops > 5% OR IFeval drops: revert to previous adapter
   - otherwise: save new adapter, increment version
   - log: {"version": 8, "reward_before": 0.3, "reward_after": 0.8,
-    "kl": 0.003, "loss": 0.045, "steps_trained": 12, "reverted": false}
+    "kl": 0.003, "loss": 0.045, "steps_trained": 12, "reverted": false,
+    "ifeval_before": 74.3, "ifeval_after": 74.1}
 
 
 6. SERVING
@@ -270,6 +277,7 @@ target_modules = gate_proj,up_proj
 freeze_modules = down_proj,q_proj,k_proj,v_proj,o_proj
 residual_subspace = true
 svd_components = 64
+svd_rank_ratio = 0.20
 
 [filtering]
 skip_if_match_rate = 0.8
