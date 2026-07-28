@@ -11,7 +11,7 @@ THREE ABLITERATION METHODS IDENTIFIED:
 ================================================================================
 
 1. HERETIC + ARA (Arbitrary-Rank Ablation)
-   Repo: github.com/p-e-w/heretic
+   Repo: https://github.com/p-e-w/heretic
    Method: Weight editing via steering vectors, row-norm preservation
    Parameters: start_layer, end_layer, preserve_good_behavior_weight,
                steer_bad_behavior_weight, overcorrect_relative_weight, neighbor_count
@@ -19,7 +19,7 @@ THREE ABLITERATION METHODS IDENTIFIED:
    Cons: Higher KL = more quality degradation
 
 2. SUMANDORA / remove-refusals-with-transformers
-   Repo: github.com/Sumandora/remove-refusals-with-transformers
+   Repo: https://github.com/Sumandora/remove-refusals-with-transformers
    Method: Abliteration without TransformerLens
    Pros: Lower PPL than original (better quality), simple
    Cons: No refusal rate or KL reported
@@ -270,11 +270,11 @@ FINAL UPDATED RANKINGS (Turn 31/44)
 ================================================================================
 
 FIVE ABLITERATION METHODS IDENTIFIED:
-1. Heretic + ARA (github.com/p-e-w/heretic) - coder3101, llmfan46, trohrbaugh
+1. Heretic + ARA (https://github.com/p-e-w/heretic) - coder3101, llmfan46, trohrbaugh
 2. Heretic + SOMPOA (Self-Organizing Maps + Magnitude-Preserving Orthogonal Ablation)
 3. Sumandora / remove-refusals-with-transformers - huihui-ai
 4. J-space abliteration - ReadyArt
-5. Abliterix (github.com/wuwangzhang1216/abliterix) - wangzhang
+5. Abliterix (https://github.com/wuwangzhang1216/abliterix) - wangzhang
 
 26B MoE FINAL RANKINGS (all BF16, ~51.64 GB):
 | Rank | Model | Method | Refusals | KL | Likes |

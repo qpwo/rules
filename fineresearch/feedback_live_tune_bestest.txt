@@ -15,7 +15,7 @@ THE 10x METHODS (confirmed by research):
    9.7-12.5x training speedups."
    KEY: Mitigates overfitting to website-specific artifacts.
    PERFECT for user: train on some county sites, generalize to all 3000 with 10x speedup.
-   Code: https://github.com/yeonjooooni/WEASEL (or via paper)
+   Code: https://github.com/fatemehpesaran310/weasel
 
 2. Web-Shepherd (2505.15277, NeurIPS 2025 Spotlight) - 10x CHEAPER + 10.9 POINTS BETTER
    "First process reward model (PRM) for web navigation. 10.9 points better performance,
@@ -292,7 +292,7 @@ GIT URLS AND PAPER URLS FOR CHOSEN RECOMMENDATIONS:
 ================================================================================
 1. WEASEL (9.7-12.5x training speedup + OOD generalization):
    Paper: https://arxiv.org/abs/2605.20291
-   Code: https://github.com/yeonjooooni/WEASEL
+   Code: https://github.com/fatemehpesaran310/weasel
 
 2. Web-Shepherd (10x cheaper PRM for web navigation):
    Paper: https://arxiv.org/abs/2505.15277

@@ -198,7 +198,7 @@ PRACTICAL STARTING POINT:
 ================================================================================
 ALTERNATIVE: If fine-tuning is too risky, use Memento (2508.16153)
 - Memory-based agent learning WITHOUT touching LLM weights
-- Code: github.com/Memento-Teams/Memento
+- Code: https://github.com/Memento-Teams/Memento
 - From UCL + Huawei Noah's Ark Lab
 ================================================================================
 
@@ -214,13 +214,13 @@ TIER 1: THE 10x METHODS (pick one as baseline)
 1. SELECTIVE COMPONENT TUNING (2510.08564) - 38.8x less forgetting
    SIMPLEST. Just freeze W_down, update Gate&Up only.
    Learns BETTER than full FT (+35.1 vs +29.9) with 11-38x less forgetting.
-   Code: github.com/jessemelpolio/LMM_CL
+   Code: https://github.com/jessemelpolio/LMM_CL
    "THIS SHOULD BE YOUR BASELINE. Change 1 config line."
 
 2. SDFT (2601.19897) - 8.85x better IFeval preservation
    Self-distillation KL loss during full-param FT.
    IFeval: 74.3->72.3 (preserved) vs SFT 74.3->35.3 (destroyed).
-   Code: github.com/idanshen/Self-Distillation
+   Code: https://github.com/idanshen/Self-Distillation
    Designed for learning from traces without breaking capabilities.
 
 3. DES-MoE (2509.16882, EMNLP 2025) - 89% less forgetting
@@ -242,13 +242,13 @@ TIER 2: MoE-SPECIFIC METHODS (add on top of Tier 1)
 
 7. MoRAM (2506.21035, ICML 2026) - 3.1x less forgetting
    TESTED ON GEMMA. Rank-1 experts as key-value memory.
-   Code: github.com/Artificer-AI-Lab/MoRAM
+   Code: https://github.com/Artificer-AI-Lab/MoRAM
 
 TIER 3: AGENT TRACE OPTIMIZATION (add for your specific use case)
 --------------------------------------------------------------------------------
 8. SOD (2605.07725) - 20.86% over second-best
    Step-wise distillation for pivotal turns. Matches your bash agent traces.
-   Code: github.com/YoungZ365/SOD
+   Code: https://github.com/YoungZ365/SOD
 
 9. ATLAS (2503.02197) - finetuning on ~30% critical steps
    Non-critical steps have NEGATIVE impact.
@@ -260,7 +260,7 @@ TIER 4: TRAIN-WHILE-SERVING (for production)
 --------------------------------------------------------------------------------
 11. TEMPO (2604.19295) - +18.1 pts AIME 2024
     Test-time EM policy optimization. Sustained 350+ steps.
-    Code: github.com/QingyangZhang/TEMPO
+    Code: https://github.com/QingyangZhang/TEMPO
 
 12. CLaaS (2606.05559) - 3x pass rate, 1/2 forgetting
     Async LoRA hot-reload to vLLM. Docker setup.
@@ -268,17 +268,17 @@ TIER 4: TRAIN-WHILE-SERVING (for production)
 
 13. OpenClaw-RL (2603.10165) - 4.76x improvement
     Uses next-state signals as live training source.
-    Code: github.com/Gen-Verse/OpenClaw-RL
+    Code: https://github.com/Gen-Verse/OpenClaw-RL
 
 TIER 5: ALTERNATIVES (if full-param FT is too risky)
 --------------------------------------------------------------------------------
 14. Memento (2508.16153, UCL+Huawei)
     Memory-based agent learning WITHOUT touching LLM weights.
-    Code: github.com/Memento-Teams/Memento
+    Code: https://github.com/Memento-Teams/Memento
 
 15. SkillOpt (2605.23904, Microsoft)
     Text-space skill optimization for frozen agents. 52/52 wins.
-    Code: github.com/microsoft/SkillOpt
+    Code: https://github.com/microsoft/SkillOpt
 
 ================================================================================
 WHAT TO DO MONDAY MORNING:
@@ -331,10 +331,10 @@ FOR FORGETTING PREVENTION (your main concern):
   1. Selective Component Tuning: 38.8x less forgetting
      - Just freeze W_down, update Gate&Up only
      - Also LEARNS BETTER than full FT (+35.1 vs +29.9)
-     - Code: github.com/jessemelpolio/LMM_CL
+     - Code: https://github.com/jessemelpolio/LMM_CL
   2. MoRAM: 3.1x less forgetting + 3x param efficiency
      - TESTED ON GEMMA (gemma-2B-it), ICML 2026
-     - Code: github.com/Artificer-AI-Lab/MoRAM
+     - Code: https://github.com/Artificer-AI-Lab/MoRAM
   3. DES-MoE: 89% less forgetting
      - MoE-specific, EMNLP 2025
      - Adaptive router + expert isolation + progressive freezing
@@ -344,10 +344,10 @@ FOR YOUR 5000 BASH AGENT TRACES (data efficiency):
      - Train on ~30% pivotal turns only (non-critical have negative impact)
   2. SOD: 20.86% over second-best
      - Step-wise reweighting, attenuates high-divergence steps
-     - Code: github.com/YoungZ365/SOD
+     - Code: https://github.com/YoungZ365/SOD
   3. SDFT: infinitely better retention
      - IFeval: 74.3->72.3 (preserved) vs SFT 74.3->35.3 (destroyed)
-     - Code: github.com/idanshen/Self-Distillation
+     - Code: https://github.com/idanshen/Self-Distillation
 
 FOR MoE ROUTING STABILITY (Gemma 4 specific):
   1. MoEEdit: 3x routing stability (per-expert null-space projection)
@@ -498,7 +498,7 @@ THE 10x ANSWER:
   Selective Component Tuning (2510.08564): 38.8x less forgetting
   - Freeze W_down, update Gate&Up only. 1 config change.
   - Also LEARNS BETTER than full FT (+35.1 vs +29.9).
-  - Code: github.com/jessemelpolio/LMM_CL
+  - Code: https://github.com/jessemelpolio/LMM_CL
 
 YOUR MONDAY MORNING:
   1. Freeze W_down, update Gate&Up (38x less forgetting)
@@ -529,7 +529,7 @@ Method                          | Forgetting   | Learning    | Extra  | Notes
 --------------------------------+--------------+-------------+--------+------------------
 Selective Component Tuning      | 6-38x better | +35.1 learn | 0      | Freeze W_down
 SDFT (Self-Distillation FT)     | 8.85x IFeval | Standard    | 0      | KL to base
-AlphaEdit (2502.11943)          | 10x better   | Standard    | 0      | Null-space proj
+AlphaEdit (2410.02355)          | 10x better   | Standard    | 0      | Null-space proj
 MIFO (2603.17673)               | Good         | +4.76x      | 0      | Interleave SFT/RL
 MoEEdit (2602.10965)            | 3x routing   | Standard    | 0      | Per-expert null-space
 ATLAS (pivotal turns)           | N/A          | 30% data    | 0      | Step reweighting
@@ -552,23 +552,23 @@ GIT URLS AND PAPER URLS FOR CHOSEN RECOMMENDATIONS:
 
 2. SDFT (Self-Distillation Fine-Tuning):
    Paper: https://arxiv.org/abs/2601.19897
-   Code: github.com/idanshen/Self-Distillation
+   Code: https://github.com/idanshen/Self-Distillation
 
 3. AlphaEdit:
-   Paper: https://arxiv.org/abs/2502.11943
-   Code: github.com/jiang-ai-arith/AlphaEdit
+   Paper: https://arxiv.org/abs/2410.02355
+   Code: https://github.com/jianghoucheng/AlphaEdit
 
 4. MoEEdit:
    Paper: https://arxiv.org/abs/2602.10965
    Code: (not yet released at time of writing)
 
 5. ATLAS / SOD:
-   Code: github.com/YoungZ365/SOD
+   Code: https://github.com/YoungZ365/SOD
 
 6. Unsloth (training framework):
-   Code: github.com/unslothai/unsloth
+   Code: https://github.com/unslothai/unsloth
    Docs: https://unsloth.ai/docs/models/gemma-4/train
 
 7. Heretic (abliteration tool for base model prep):
-   Code: github.com/p-e-w/heretic
+   Code: https://github.com/p-e-w/heretic
 ================================================================================
