@@ -1,0 +1,22 @@
+S-TIER RULES
+
+1. Single author blog posts only. No company blogs. No corporate horse shit.
+2. Personal blogs by real longtime veteran developers. No posers.
+3. The technique described must be at least 4x better than the state of the art before the technique.
+4. No GPU-dependent techniques. No macOS-dependent techniques. Linux only.
+5. No commercial entity blogs (ClickHouse, Redpanda, Simplyblock, Tigris, etc).
+6. If unsure which post to use, use the original first post found.
+7. Count out your turns. Don't waste a single one.
+8. Each turn should be productive: webcat, cdpturn, pdf2md, or serp.
+9. Never use placeholders or dummy data.
+10. Never fake tests or force passes.
+11. Stick to the format. [STRICT] prefix for entries in stuff.txt.
+12. Replacements go at the bottom of stuff.txt, replacing the weakest entries.
+13. No markdown in answers. No bold. No backticks. No code fences.
+14. Make small changes. Only change what is asked.
+15. Code should be terse.
+16. Prefer ag over grep. Prefer fd over find.
+17. All output is shell. Every line that is not a command must be commented with #.
+18. Small turns. Append to handwritten-observations.log each turn. 200-400 chars.
+19. Never let a script append to handwritten-observations.log. Only manual DIY append.
+20. If done, say # done. If keepgoing is said, you will keep going.
